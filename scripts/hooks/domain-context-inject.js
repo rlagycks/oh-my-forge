@@ -136,18 +136,17 @@ function loadIndex(pluginRoot) {
 }
 
 /**
- * Resolve the plugin root by checking CLAUDE_PLUGIN_ROOT env first,
- * then walking up from the file path and cwd looking for the ontology marker.
+ * Resolve the plugin root by walking up from the file path first,
+ * then falling back to CLAUDE_PLUGIN_ROOT and cwd.
+ *
+ * File-path walk comes first so that when editing files in the source
+ * directory (e.g. oh-my-forge dev repo), the local ontology is used
+ * rather than the cached plugin copy pointed to by CLAUDE_PLUGIN_ROOT.
  */
 function resolvePluginRoot(filePath) {
-  const envRoot = process.env.CLAUDE_PLUGIN_ROOT || '';
-  if (envRoot) {
-    const marker = path.join(envRoot, '.claude', 'ontology', 'index.json');
-    if (fs.existsSync(marker)) return envRoot;
-  }
-
   const fsRoot = path.parse(path.resolve(filePath)).root;
 
+  // 1. Walk up from the edited file — finds the ontology closest to the file
   let dir = path.resolve(path.dirname(filePath));
   let depth = 0;
   while (dir !== fsRoot && depth < 10) {
@@ -156,6 +155,14 @@ function resolvePluginRoot(filePath) {
     depth++;
   }
 
+  // 2. Fall back to CLAUDE_PLUGIN_ROOT (e.g. cached plugin install)
+  const envRoot = (process.env.CLAUDE_PLUGIN_ROOT || '').trim();
+  if (envRoot) {
+    const marker = path.join(envRoot, '.claude', 'ontology', 'index.json');
+    if (fs.existsSync(marker)) return envRoot;
+  }
+
+  // 3. Walk up from cwd
   dir = process.cwd();
   depth = 0;
   while (dir !== fsRoot && depth < 10) {
