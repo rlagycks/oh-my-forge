@@ -4,6 +4,33 @@
 > Load policy: **on-demand** — not always in context
 > Load triggers: `/qa-loop`, `e2e-rca` skill, `qa-context-inject` hook (file match)
 
+## 목적
+
+QA 지식 계층은 모든 워크플로에 걸쳐 공유되는 메모리 시스템이다. 페르소나 정의, 버그 히스토리, RCA 레코드를 저장하며, 알려진 이슈가 있는 컴포넌트를 편집할 때 `qa-context-inject` 훅이 자동으로 관련 버그 컨텍스트를 주입한다. 같은 버그가 반복 발생하는 것을 방지하는 것이 핵심 목표다.
+
+## 진입점
+
+- `commands/qa-loop.md` — `/qa-loop` 슬래시 커맨드 정의 (e2e-rca 워크플로 진입)
+- `scripts/hooks/qa-context-inject.js` — PreToolUse 훅. 편집 파일이 bug-topology 맵에 있으면 컨텍스트 주입
+- `docs/qa/bug-topology.md` — 파일→버그 매핑 JSON 맵 (qa-context-inject가 읽음)
+- `docs/qa/personas.md` — 페르소나 역할×상태 매트릭스
+- `docs/qa/rca-history/` — 각 `/qa-loop` 실행의 Phase 5 보고서 아카이브
+
+## 핵심 제약
+
+- `qa-context-inject`는 반드시 `exit 0` — 버그 히스토리 조회 실패가 편집을 막으면 안 됨
+- 훅 출력은 반드시 `{ hookSpecificOutput: { additionalContext } }` JSON 형식
+- `docs/qa/bug-topology.md` 수동 편집 금지 — `/qa-loop` 이후 개발자 승인 후에만 업데이트
+- RCA 보고서는 `docs/qa/rca-history/YYYY-MM-DD-[project].md` 명명 규칙 준수
+
+## 관련 도메인
+
+- `domain_hooks` — `qa-context-inject.js`는 훅 시스템의 PreToolUse 훅으로 등록
+- `domain_session` — 세션 시작 시 bug-topology 맵을 미리 로드하지 않음 (on-demand)
+- `domain_codex` — Codex에 버그 수정 위임 시 domain_qa 스펙을 BRIEF에 포함
+
+---
+
 The QA knowledge layer is a shared memory system across all workflows. It stores persona definitions, bug history, and RCA records that any agent can read when working on components with known issues.
 
 ---
