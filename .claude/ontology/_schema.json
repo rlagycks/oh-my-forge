@@ -26,6 +26,11 @@
           "pattern": "^docs/features/.+\\.md$",
           "description": "Path to the feature doc under docs/features/. Claude reads only this file to understand business intent."
         },
+        "detail": {
+          "type": "string",
+          "pattern": "^\\.claude/ontology/domain_.+\\.json$",
+          "description": "Path to the rich machine-readable domain JSON under .claude/ontology/. Loaded on-demand for Codex BRIEF generation."
+        },
         "owner": {
           "type": "string",
           "description": "Team or area that owns this domain (informational)."
