@@ -1,9 +1,11 @@
 {
-  "$version": "2.0",
+  "$schema": "./.claude/ontology/_schema.json",
   "domain_common": {
     "files": [".claude-plugin/plugin.json", "CLAUDE.md", "README.md", "package.json"],
-    "spec": ".claude/ontology/domain_common.json",
+    "spec": "docs/features/common.md",
+    "detail": ".claude/ontology/domain_common.json",
     "owner": "oh-my-forge",
+    "codexWorkerHint": "read-only",
     "constraints": [
       "파일명은 반드시 소문자 하이픈 (lowercase-hyphen) — 예: python-reviewer.md",
       "에이전트: YAML frontmatter (name, description, tools, model) 필수"
@@ -11,8 +13,10 @@
   },
   "domain_agents": {
     "files": ["agents/", ".agents/"],
-    "spec": ".claude/ontology/domain_agents.json",
+    "spec": "docs/features/agents.md",
+    "detail": ".claude/ontology/domain_agents.json",
     "owner": "oh-my-forge",
+    "codexWorkerHint": "workspace-write",
     "constraints": [
       "에이전트 파일 위치: agents/ (배포용) 또는 .agents/ (내부용)",
       "YAML frontmatter: name, description, tools, model 모두 필수"
@@ -20,8 +24,10 @@
   },
   "domain_skills": {
     "files": ["skills/", ".agents/skills/"],
-    "spec": ".claude/ontology/domain_skills.json",
+    "spec": "docs/features/skills.md",
+    "detail": ".claude/ontology/domain_skills.json",
     "owner": "oh-my-forge",
+    "codexWorkerHint": "workspace-write",
     "constraints": [
       "큐레이션 스킬: skills/ 디렉터리 — PR 리뷰 후 병합",
       "생성/임포트 스킬: ~/.claude/skills/ — 자동 생성 허용 (docs/SKILL-PLACEMENT-POLICY.md 참조)"
@@ -29,8 +35,10 @@
   },
   "domain_commands": {
     "files": ["commands/", "COMMANDS-QUICK-REF.md"],
-    "spec": ".claude/ontology/domain_commands.json",
+    "spec": "docs/features/commands.md",
+    "detail": ".claude/ontology/domain_commands.json",
     "owner": "oh-my-forge",
+    "codexWorkerHint": "workspace-write",
     "constraints": [
       "커맨드 파일 위치: commands/<name>.md",
       "description frontmatter 필수 — Skill 툴의 args 파라미터로 노출"
@@ -45,11 +53,15 @@
       "scripts/hooks/qa-context-inject.js",
       "scripts/lib/hook-flags.js"
     ],
-    "spec": ".claude/ontology/domain_hooks.json",
+    "spec": "docs/features/hooks.md",
+    "detail": ".claude/ontology/domain_hooks.json",
     "owner": "oh-my-forge",
+    "codexWorkerHint": "workspace-write",
+    "riskLevel": "high",
+    "dependsOn": ["domain_common", "domain_state_store"],
     "constraints": [
       "모든 훅은 비치명적 오류 시 반드시 exit 0",
-      "블로킹 훅(PreToolUse, Stop): 200ms 이하 — 네트워크 호출 금지"
+      "블로킹 훅(PreToolUse, Stop): 200ms 이하 — 네트워크 호출 금지|pattern:require(\"node-fetch\")|pattern:require(\"axios\")"
     ]
   },
   "domain_rules": {
@@ -62,8 +74,10 @@
       "rules/swift/",
       "rules/php/"
     ],
-    "spec": ".claude/ontology/domain_rules.json",
+    "spec": "docs/features/rules.md",
+    "detail": ".claude/ontology/domain_rules.json",
     "owner": "oh-my-forge",
+    "codexWorkerHint": "workspace-write",
     "constraints": [
       "언어별 규칙이 common 규칙과 충돌 시 언어별 우선 (CSS specificity 방식)",
       "common/ 디렉터리는 언어 특정 코드 예시 포함 금지"
@@ -77,8 +91,11 @@
       "scripts/lib/session-manager.js",
       "scripts/lib/session-aliases.js"
     ],
-    "spec": ".claude/ontology/domain_session.json",
+    "spec": "docs/features/session.md",
+    "detail": ".claude/ontology/domain_session.json",
     "owner": "oh-my-forge",
+    "codexWorkerHint": "workspace-write",
+    "dependsOn": ["domain_state_store"],
     "constraints": [
       "세션 매칭 우선순위 변경 금지: worktree exact match > project name > recency",
       "stdout 출력은 반드시 JSON { hookSpecificOutput: { additionalContext } }"
@@ -92,8 +109,10 @@
       "manifests/install-modules.json",
       "manifests/install-components.json"
     ],
-    "spec": ".claude/ontology/domain_install.json",
+    "spec": "docs/features/install.md",
+    "detail": ".claude/ontology/domain_install.json",
     "owner": "oh-my-forge",
+    "codexWorkerHint": "workspace-write",
     "constraints": [
       "설치 대상 경로는 manifests/ 에만 정의 — 코드 하드코딩 금지",
       "기존 파일 덮어쓰기 전 백업 생성"
@@ -106,8 +125,10 @@
       "scripts/lib/state-store/queries.js",
       "scripts/lib/state-store/migrations.js"
     ],
-    "spec": ".claude/ontology/domain_state_store.json",
+    "spec": "docs/features/state-store.md",
+    "detail": ".claude/ontology/domain_state_store.json",
     "owner": "oh-my-forge",
+    "codexWorkerHint": "workspace-write",
     "constraints": [
       "sql.js(WASM) 유지 — better-sqlite3로 교체 금지 (Node.js 바이너리 의존성 제거 이유)",
       "트랜잭션 없이 직접 쓰기 금지 — 모든 변경은 트랜잭션으로 감쌀 것"
@@ -121,8 +142,11 @@
       "scripts/lib/orchestration-session.js",
       "commands/orchestrate.md"
     ],
-    "spec": ".claude/ontology/domain_orchestration.json",
+    "spec": "docs/features/orchestration.md",
+    "detail": ".claude/ontology/domain_orchestration.json",
     "owner": "oh-my-forge",
+    "codexWorkerHint": "workspace-write",
+    "dependsOn": ["domain_session", "domain_state_store"],
     "constraints": [
       "launcherCommand에는 플레이스홀더({worker_name}, {worktree_path})만 사용",
       "seedPaths는 존재하는 파일만 — 없는 경로 지정 시 워크트리 생성 실패"
@@ -130,8 +154,10 @@
   },
   "domain_package_manager": {
     "files": ["scripts/lib/package-manager.js"],
-    "spec": ".claude/ontology/domain_package_manager.json",
+    "spec": "docs/features/package-manager.md",
+    "detail": ".claude/ontology/domain_package_manager.json",
     "owner": "oh-my-forge",
+    "codexWorkerHint": "workspace-write",
     "constraints": [
       "감지 순서 변경 금지: env var → project config → package.json → lockfile → global config → default npm",
       "getAvailablePackageManagers() 감지 6단계에 재추가 금지 (Windows freeze #162)"
@@ -145,8 +171,10 @@
       ".codex/agents/explorer.toml",
       ".codex/agents/reviewer.toml"
     ],
-    "spec": ".claude/ontology/domain_codex.json",
+    "spec": "docs/features/codex.md",
+    "detail": ".claude/ontology/domain_codex.json",
     "owner": "oh-my-forge",
+    "codexWorkerHint": "read-only",
     "constraints": [
       "explorer/reviewer/docs-researcher의 sandbox_mode = read-only 변경 금지 (OS 레벨 격리)",
       "merge-mcp-config.js(sync-ecc-to-codex.sh)는 기존 사용자 설정 삭제/수정 금지 — add-only"
@@ -154,8 +182,11 @@
   },
   "domain_qa": {
     "files": ["commands/qa-loop.md", "scripts/hooks/qa-context-inject.js"],
-    "spec": ".claude/ontology/domain_qa.json",
+    "spec": "docs/features/qa-knowledge-layer.md",
+    "detail": ".claude/ontology/domain_qa.json",
     "owner": "oh-my-forge",
+    "codexWorkerHint": "workspace-write",
+    "dependsOn": ["domain_hooks"],
     "constraints": [
       "qa-context-inject는 항상 exit 0 — 버그 히스토리 조회 실패가 편집을 막으면 안 됨",
       "훅 출력은 반드시 JSON { hookSpecificOutput: { additionalContext } } 형식"

@@ -4,13 +4,19 @@ Claude의 도메인 라우팅 인덱스. 각 `domain_*` 키는 `.claude/ontology
 
 | Domain ID | 기능 요약 | 스펙 문서 | 소유 팀 |
 |-----------|-----------|-----------|---------|
+| `domain_common` | 루트 구성 계층 (plugin.json, CLAUDE.md, 파일명 컨벤션) | [common.md](common.md) | oh-my-forge |
+| `domain_agents` | 전문화된 서브에이전트 시스템 (agents/, .agents/) | [agents.md](agents.md) | oh-my-forge |
+| `domain_skills` | 재사용 가능한 워크플로 및 도메인 지식 패키지 | [skills.md](skills.md) | oh-my-forge |
+| `domain_commands` | 슬래시 커맨드 시스템 (/tdd, /plan, /qa-loop 등) | [commands.md](commands.md) | oh-my-forge |
 | `domain_hooks` | 이벤트 훅 시스템 (PreToolUse/PostToolUse/Stop/SessionStart) | [hooks.md](hooks.md) | infra |
+| `domain_rules` | 코딩 표준·컨벤션·체크리스트 (common + 언어별) | [rules.md](rules.md) | oh-my-forge |
 | `domain_session` | 세션 컨텍스트 지속 및 복원 | [session.md](session.md) | dx |
 | `domain_orchestration` | tmux 워크트리 멀티 에이전트 오케스트레이션 | [orchestration.md](orchestration.md) | platform |
 | `domain_package_manager` | npm/pnpm/yarn/bun 자동 감지 | [package-manager.md](package-manager.md) | infra |
 | `domain_state_store` | SQLite 기반 세션/스킬/상태 영속성 | [state-store.md](state-store.md) | infra |
 | `domain_install` | ECC 컴포넌트 선택적 설치 시스템 | [install.md](install.md) | platform |
 | `domain_codex` | Codex CLI 통합 및 하이브리드 에이전트 설정 | [codex.md](codex.md) | platform |
+| `domain_qa` | QA 지식 계층 (버그 히스토리, RCA, qa-context-inject) | [qa-knowledge-layer.md](qa-knowledge-layer.md) | oh-my-forge |
 
 ## 라우팅 규칙
 
