@@ -226,13 +226,18 @@ oh-my-forge/
 
 ### 방법 1 — Claude Code 플러그인 마켓플레이스 (권장)
 
-Claude Code 세션 안에서 다음 명령 하나만 실행하세요:
+공식 마켓플레이스 등록 후, Claude Code 세션 안에서 다음 명령 하나만 실행하세요:
 
 ```
-/plugin install rlagycks/oh-my-forge
+/plugin install oh-my-forge@claude-plugins-official
 ```
 
-끝입니다. 클론이나 빌드 없이 스킬, 커맨드, 에이전트, 훅이 즉시 사용 가능합니다.
+클론이나 빌드 없이 스킬, 커맨드, 에이전트, 훅이 즉시 사용 가능합니다.
+
+> **마켓플레이스 등록 전이라면?** 심사 중에는 GitHub에서 직접 설치할 수 있습니다:
+> ```
+> /plugin install rlagycks/oh-my-forge
+> ```
 
 ### 방법 2 — 수동 설치 (기여자 또는 로컬 커스터마이징)
 
@@ -281,6 +286,14 @@ node scripts/ecc.js install
 # 파일 컨텍스트와 함께
 /error-capture path/to/file.js "여기서 에이전트가 무엇을 잘못 했는지"
 ```
+
+---
+
+## 개인정보 보호
+
+oh-my-forge는 어떠한 사용자 데이터도 수집, 전송, 저장하지 않습니다.
+모든 처리는 Claude Code 세션 내에서 로컬로 실행됩니다.
+이 플러그인은 텔레메트리, 분석, 외부 네트워크 호출을 일절 하지 않습니다.
 
 ---
 

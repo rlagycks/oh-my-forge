@@ -249,13 +249,18 @@ oh-my-forge/
 
 ### Option 1 — Claude Code plugin marketplace (recommended)
 
-Inside any Claude Code session:
+Once listed in the official marketplace, install with one command inside any Claude Code session:
 
 ```
-/plugin install rlagycks/oh-my-forge
+/plugin install oh-my-forge@claude-plugins-official
 ```
 
-That's it. Skills, commands, agents, and hooks are available immediately in the current session. No cloning or build step required.
+Skills, commands, agents, and hooks are available immediately. No cloning or build step required.
+
+> **Not listed yet?** While marketplace approval is pending, install directly from GitHub:
+> ```
+> /plugin install rlagycks/oh-my-forge
+> ```
 
 ### Option 2 — Manual install (for contributors or local customization)
 
@@ -304,6 +309,14 @@ After either install method, confirm the plugin is loaded:
 # With file context
 /error-capture path/to/file.js "what the agent did wrong here"
 ```
+
+---
+
+## Privacy
+
+oh-my-forge does not collect, transmit, or store any user data.
+All processing runs locally within your Claude Code session.
+No telemetry, no analytics, no external network calls are made by this plugin.
 
 ---
 
