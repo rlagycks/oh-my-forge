@@ -1,6 +1,5 @@
 {
   "name": "oh-my-forge",
-  "version": "1.9.0",
   "description": "Battle-tested Claude Code workflows — 125 skills, agents, commands, and hooks for TDD, security scanning, code review, and autonomous development.",
   "author": {
     "name": "rlagycks"
@@ -9,8 +8,6 @@
   "repository": "https://github.com/rlagycks/oh-my-forge",
   "license": "MIT",
   "keywords": ["claude-code", "agents", "skills", "tdd", "code-review", "security", "workflow", "automation"],
-  "skills": "./skills/",
-  "commands": "./commands/",
-  "agents": "./agents/",
-  "mcpServers": "./.mcp.json"
+  "skills": "./skills",
+  "commands": "./commands"
 }

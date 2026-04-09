@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "oh-my-forge",
-      "source": ".",
+      "source": "./",
       "description": "125 battle-tested skills, agents, commands, and hooks for TDD, security scanning, code review, and autonomous development.",
       "version": "1.9.0",
       "author": {
