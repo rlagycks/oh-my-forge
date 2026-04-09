@@ -1,0 +1,167 @@
+{
+  "$schema": "./_schema.json",
+  "domain_hooks": {
+    "files": [
+      "hooks/hooks.json",
+      ".codex/hooks.json",
+      "scripts/hooks/run-with-flags.js",
+      "scripts/hooks/domain-context-inject.js",
+      "scripts/hooks/qa-context-inject.js",
+      "scripts/lib/hook-flags.js"
+    ],
+    "spec": "docs/features/hooks.md",
+    "owner": "infra",
+    "symbols": ["isHookEnabled", "emitHookResult", "readStdinRaw", "run"],
+    "constraints": [
+      "모든 훅은 비치명적 오류 시 반드시 exit 0",
+      "블로킹 훅(PreToolUse, Stop)은 200ms 이하 — 네트워크 호출 금지",
+      "신규 훅은 run-with-flags.js 래퍼를 통해서만 등록",
+      "ECC_HOOK_PROFILE이 allowedProfiles에 포함될 때만 실행"
+    ],
+    "riskLevel": "high",
+    "codexWorkerHint": "workspace-write"
+  },
+  "domain_session": {
+    "files": [
+      "scripts/hooks/session-start.js",
+      "scripts/hooks/session-end.js",
+      "scripts/hooks/session-start-bootstrap.js",
+      "scripts/lib/session-manager.js",
+      "scripts/lib/session-aliases.js",
+      "scripts/lib/session-adapters/"
+    ],
+    "spec": "docs/features/session.md",
+    "owner": "dx",
+    "symbols": ["selectMatchingSession", "dedupeRecentSessions", "extractSessionSummary"],
+    "constraints": [
+      "세션 매칭 우선순위 변경 금지: worktree exact match > project name > recency",
+      "stdout 출력은 반드시 JSON { hookSpecificOutput: { additionalContext } }",
+      "state-store 쓰기 실패 시 exit 0 유지",
+      "CLAUDE_SESSION_ID 없으면 cwd SHA1로 폴백"
+    ],
+    "dependsOn": ["domain_state_store"],
+    "codexWorkerHint": "workspace-write"
+  },
+  "domain_orchestration": {
+    "files": [
+      "scripts/orchestrate-worktrees.js",
+      "scripts/orchestration-status.js",
+      "scripts/lib/tmux-worktree-orchestrator.js",
+      "scripts/lib/orchestration-session.js",
+      "commands/orchestrate.md"
+    ],
+    "spec": "docs/features/orchestration.md",
+    "owner": "platform",
+    "symbols": ["buildOrchestrationPlan", "executePlan", "materializePlan"],
+    "constraints": [
+      "launcherCommand에는 플레이스홀더({worker_name}, {worktree_path})만 사용",
+      "seedPaths는 존재하는 파일만 — 없는 경로 지정 시 워크트리 생성 실패",
+      "브랜치명 충돌 시 자동 suffix 추가 없음 — 플랜에서 고유 이름 보장 필요",
+      "핸드오프 문서 포맷: ## HANDOFF: [from] -> [to] 헤더 필수"
+    ],
+    "dependsOn": ["domain_hooks"],
+    "codexWorkerHint": "workspace-write"
+  },
+  "domain_package_manager": {
+    "files": [
+      "scripts/lib/package-manager.js"
+    ],
+    "spec": "docs/features/package-manager.md",
+    "owner": "infra",
+    "symbols": ["getPackageManager", "PACKAGE_MANAGERS", "detectFromLockfile"],
+    "constraints": [
+      "감지 순서 변경 금지: env var → project config → package.json → lockfile → global config → default npm",
+      "getAvailablePackageManagers()를 감지 6단계에 재추가 금지 (Windows freeze #162)",
+      "반환값은 반드시 PACKAGE_MANAGERS 키 중 하나 (npm|pnpm|yarn|bun)",
+      "메모이제이션 캐시 초기화 필요 시 clearCache() 사용"
+    ],
+    "codexWorkerHint": "workspace-write"
+  },
+  "domain_state_store": {
+    "files": [
+      "scripts/lib/state-store/index.js",
+      "scripts/lib/state-store/schema.js",
+      "scripts/lib/state-store/queries.js",
+      "scripts/lib/state-store/migrations.js"
+    ],
+    "spec": "docs/features/state-store.md",
+    "owner": "infra",
+    "symbols": ["wrapSqlJsDatabase", "getStateStore", "runMigrations"],
+    "constraints": [
+      "sql.js(WASM) 유지 — better-sqlite3로 교체 금지 (Node.js 바이너리 의존성 제거 이유)",
+      "트랜잭션 없이 직접 쓰기 금지 — 모든 변경은 트랜잭션으로 감쌀 것",
+      "마이그레이션은 항상 멱등 — 재실행 시 오류 없이 통과",
+      "DB 파일 기본 경로: ~/.claude/ecc-state.db"
+    ],
+    "riskLevel": "high",
+    "codexWorkerHint": "workspace-write"
+  },
+  "domain_install": {
+    "files": [
+      "scripts/install-apply.js",
+      "scripts/install-plan.js",
+      "scripts/lib/install/apply.js",
+      "scripts/lib/install/config.js",
+      "scripts/lib/install/request.js",
+      "scripts/lib/install/runtime.js",
+      "scripts/lib/install-manifests.js",
+      "scripts/lib/install-executor.js"
+    ],
+    "spec": "docs/features/install.md",
+    "owner": "platform",
+    "symbols": ["applyInstall", "planInstall", "loadManifest"],
+    "constraints": [
+      "설치 대상 경로는 manifests/에만 정의 — 코드 하드코딩 금지",
+      "기존 파일 덮어쓰기 전 백업 생성",
+      "설치 실패는 전체 중단 — 부분 롤백 없음 (일관성 보장)",
+      "--dry-run 플래그는 파일 시스템 변경 없이 계획만 출력"
+    ],
+    "codexWorkerHint": "workspace-write"
+  },
+  "domain_codex": {
+    "files": [
+      ".codex/config.toml",
+      ".codex/agents/",
+      "scripts/codex/merge-mcp-config.js"
+    ],
+    "spec": "docs/features/codex.md",
+    "owner": "platform",
+    "symbols": ["mergeMcpConfig"],
+    "constraints": [
+      "explorer/reviewer/docs-researcher의 sandbox_mode = read-only 변경 금지 (OS 격리)",
+      "merge-mcp-config.js는 기존 사용자 설정 삭제/수정 금지 (add-only)",
+      "Codex 훅은 .codex/hooks.json으로 설정 — run-with-flags.js 래퍼 없이 직접 호출"
+    ],
+    "dependsOn": ["domain_install"],
+    "codexWorkerHint": "workspace-write"
+  },
+  "domain_qa": {
+    "files": [
+      "skills/e2e-rca/SKILL.md",
+      "commands/qa-loop.md",
+      "docs/qa/personas.md",
+      "docs/qa/bug-topology.md",
+      "docs/qa/rca-history/",
+      "scripts/hooks/qa-context-inject.js",
+      "tests/fixtures/api-capture.ts"
+    ],
+    "spec": "docs/features/qa-knowledge-layer.md",
+    "owner": "qa",
+    "symbols": ["injectQaBugContext", "buildPersonaMatrix", "faultIsolation"],
+    "constraints": [
+      "bug-topology.md 업데이트는 developer 승인 후에만 (qa-loop Phase 5 완료 후)",
+      "qa-context-inject는 항상 exit 0 — 버그 히스토리 조회 실패가 편집을 막으면 안 됨",
+      "rca-history/는 최근 6개월 유지 — 오래된 것은 archive/로 이동",
+      "File→Bug 맵은 bug-topology.md의 JSON 블록으로만 관리 (qa-context-inject가 파싱)"
+    ],
+    "loadPolicy": "on-demand",
+    "loadTriggers": [
+      "/qa-loop",
+      "e2e-rca skill",
+      "file matches bug-topology entries"
+    ],
+    "dependsOn": ["domain_hooks"],
+    "codexWorkerHint": "workspace-read",
+    "_note": "loadPolicy:on-demand — NOT loaded in every session. Hook injects context only when editing files with known bug history."
+  }
+}

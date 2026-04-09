@@ -1,0 +1,25 @@
+{
+  "name": "oh-my-forge",
+  "owner": {
+    "name": "rlagycks"
+  },
+  "metadata": {
+    "description": "Battle-tested Claude Code workflows — skills, agents, commands, and hooks for professional development.",
+    "version": "1.9.0"
+  },
+  "plugins": [
+    {
+      "name": "oh-my-forge",
+      "source": ".",
+      "description": "125 battle-tested skills, agents, commands, and hooks for TDD, security scanning, code review, and autonomous development.",
+      "version": "1.9.0",
+      "author": {
+        "name": "gimhyochan"
+      },
+      "homepage": "https://github.com/rlagycks/oh-my-forge",
+      "license": "MIT",
+      "keywords": ["claude-code", "agents", "skills", "tdd", "code-review", "security", "workflow", "automation"],
+      "category": "productivity"
+    }
+  ]
+}

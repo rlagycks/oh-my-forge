@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"scripts/hooks/domain-context-inject.js\"",
+            "timeout": 5
+          }
+        ],
+        "description": "Inject ontology domain context when editing any file tracked in .claude/ontology/index.json. Resolves plugin root by walking up from the file path. Zero-cost when no match."
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"scripts/hooks/qa-context-inject.js\"",
+            "timeout": 5
+          }
+        ],
+        "description": "Inject QA bug history context when editing files with known issues from previous /qa-loop runs. Reads docs/qa/bug-topology.md. Zero-cost when no match."
+      }
+    ]
+  }
+}

@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: ESLint
+        run: yarn eslint .
+
+      - name: Markdownlint
+        run: yarn markdownlint '**/*.md' --ignore node_modules
+
+  validate:
+    name: Validate (${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: CI validations (agents, skills, hooks, rules…)
+        run: |
+          node scripts/ci/check-unicode-safety.js
+          node scripts/ci/validate-agents.js
+          node scripts/ci/validate-commands.js
+          node scripts/ci/validate-rules.js
+          node scripts/ci/validate-skills.js
+          node scripts/ci/validate-hooks.js
+          node scripts/ci/validate-install-manifests.js
+          node scripts/ci/validate-no-personal-paths.js
+          node scripts/ci/validate-ontology.js
+          node scripts/ci/catalog.js --text
+
+  test:
+    name: Test & Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run tests
+        run: node tests/run-all.js
+
+      - name: Coverage (80% threshold)
+        run: yarn coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
