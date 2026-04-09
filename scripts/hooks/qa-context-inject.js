@@ -16,7 +16,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const MAX_STDIN = 512 * 1024;
+const _MAX_STDIN = 512 * 1024;
 
 /**
  * Parse bug-topology.md to extract the JSON map section.
