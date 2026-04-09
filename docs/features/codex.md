@@ -4,6 +4,8 @@
 
 OpenAI Codex CLI를 ECC에 통합하여 Claude(오케스트레이터)와 Codex(구현자)의 하이브리드 멀티 에이전트 구조를 구성하는 시스템. `config.toml`이 Codex 행동을 제어(sandbox, approval, 역할별 지시)하고, `codex-plugin-cc`가 Claude-Codex 비동기 통신 채널을 제공한다. `merge-mcp-config.js`가 ECC MCP 서버 설정을 `~/.codex/config.toml`에 안전하게 병합한다.
 
+> **Codex 없이도 사용 가능**: `codex` 바이너리가 PATH에 없으면 `/plan`이 자동으로 `/claude-implement`로 폴백한다. Claude만 구독 중인 유저는 별도 설정 없이 동일한 온톨로지 GPS 워크플로우를 사용할 수 있다. 엔진 감지 로직은 `scripts/lib/utils.js`의 `detectImplementationEngine()`을 참고.
+
 ## 진입점
 
 - `.codex/config.toml` — Codex 런타임 설정. `approval_policy`, `sandbox_mode`, `notify`, `[agents]` 역할 정의

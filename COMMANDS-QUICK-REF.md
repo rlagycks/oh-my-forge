@@ -61,7 +61,8 @@
 
 | Command | What it does |
 |---------|-------------|
-| `/plan` | Implementation plan with risk assessment |
+| `/plan` | Implementation plan with risk assessment — auto-routes to `/codex-delegate` or `/claude-implement` based on engine availability |
+| `/claude-implement <domain> <task>` | Ontology-guided implementation by Claude directly — no Codex CLI required |
 | `/multi-plan` | Multi-model collaborative planning |
 | `/multi-workflow` | Multi-model collaborative development |
 | `/multi-backend` | Backend-focused multi-model development |

@@ -25,9 +25,14 @@
 
 에이전트가 실수할 때 기본 대응은 프롬프트를 패치하는 것이다. 하지만 이는 취약하다 — 새 세션에서 컨텍스트가 초기화되면 같은 실수가 반복된다. `oh-my-forge`는 실수를 시스템 신호로 취급한다: 각 오류를 분류하고 라우팅해서 구조적 변경(온톨로지에 새 제약 추가, 또는 학습 파이프라인에 failure instinct 생성)으로 전환한다. 같은 실수는 구조적으로 다시 발생할 수 없다.
 
-**2. 온톨로지를 Codex의 GPS로 활용**
+**2. 온톨로지를 구현 엔진의 GPS로 활용**
 
-Claude Code가 계획한다. Codex가 구현한다. 온톨로지 인덱스(`index.json`)는 좌표 지도 역할을 한다 — Claude는 전체 소스 트리를 탐색하는 대신 도메인 인덱스와 기능 명세 파일만 읽고(~3K 토큰), 구조화된 BRIEF를 생성해서 Codex에 위임한다. 컨텍스트 오버헤드를 줄이고 Claude는 추론 역할에만 집중할 수 있다.
+Claude Code가 계획한다. 온톨로지 인덱스(`index.json`)는 좌표 지도 역할을 한다 — Claude는 전체 소스 트리를 탐색하는 대신 도메인 인덱스와 기능 명세 파일만 읽고(~3K 토큰), 구조화된 BRIEF를 생성한다. 구현은 사용 가능한 엔진이 담당한다:
+
+- **Codex** — `codex` CLI가 설치된 경우 (`/codex-delegate`)
+- **Claude** — Codex가 없을 때 자동 폴백 (`/claude-implement`)
+
+별도 설정 없이 플랜 시점에 자동으로 엔진을 감지한다.
 
 세 가지 원칙:
 
@@ -67,28 +72,33 @@ Claude Code가 계획한다. Codex가 구현한다. 온톨로지 인덱스(`inde
 
 ---
 
-### 2. Codex 위임 (`/commands/codex-delegate.md`)
+### 2. 구현 위임 (`/commands/codex-delegate.md`, `/commands/claude-implement.md`)
 
-온톨로지 인덱스는 **Codex의 GPS**로도 동작한다. Codex에게 전체 소스 트리를 주는 대신, Claude가 `index.json`과 관련 기능 명세 파일만 읽고(~3K 토큰) 구조화된 BRIEF를 생성해 Codex에 위임한다.
+온톨로지 인덱스는 **구현 엔진의 GPS**로 동작한다. 전체 소스 트리를 주는 대신, Claude가 `index.json`과 관련 기능 명세 파일만 읽고(~3K 토큰) 구조화된 BRIEF를 생성한다.
 
 ```
-/codex-delegate domain_hooks "PostToolUse 핸들러에 ECC_DISABLED_HOOKS 지원 추가"
+/plan  →  엔진 자동 감지  →  /codex-delegate   (Codex CLI 설치된 경우)
+                          →  /claude-implement  (Codex 없음, Claude만 사용)
 ```
 
-실행 과정:
-1. Claude가 `index.json`에서 `domain_hooks` 항목 탐색 (파일 목록, 제약, 심볼)
-2. Claude가 `docs/features/hooks.md`를 읽어 비즈니스 의도 파악 (~3K 토큰)
-3. 파일 목록, 제약, 심볼, 핸드오프 형식이 담긴 BRIEF 생성
-4. Codex에 위임 (`/codex:rescue <BRIEF>` 또는 `codex "<BRIEF>"`)
+두 커맨드는 동일한 BRIEF 포맷을 사용하고 동일한 HANDOFF 결과를 반환한다 — 엔진은 교체 가능하다.
+
+**엔진 감지 순서 (첫 번째 매칭 사용):**
+1. `CLAUDE_IMPL_ENGINE` 환경변수 (`claude` 또는 `codex`)
+2. 프로젝트 `.claude/settings.json` → `implementationEngine` 필드
+3. 글로벌 `~/.claude/settings.json` → `implementationEngine` 필드
+4. 자동 감지: `codex` 바이너리 없음 → `"claude"` 자동 선택
+5. 기본값: `"codex"`
 
 **사용 기준:**
 
 | 조건 | 행동 |
 |------|------|
-| 단일 도메인 버그 수정 또는 기능 추가 | `/codex-delegate domain_X "task"` |
+| Codex CLI 설치된 경우 | `/codex-delegate domain_X "task"` (또는 `/plan`이 자동 라우팅) |
+| Claude만 구독 중인 경우 | `/claude-implement domain_X "task"` (또는 `/plan`이 자동 라우팅) |
 | 멀티 도메인 작업 | 먼저 분해 후 도메인별로 위임 |
-| 아키텍처 결정 | Claude에서 직접 처리 |
-| 보안 민감 코드 | `codexWorkerHint: read-only`로 위임 후 `/code-review` |
+| 아키텍처 결정 | Claude에서 직접 처리 — 위임하지 않음 |
+| 보안 민감 코드 | 구현 후 `/code-review` |
 
 ---
 
@@ -181,7 +191,7 @@ oh-my-forge/
 
 ## 명령어
 
-### 오류 방지 & Codex 위임
+### 오류 방지 & 구현 위임
 
 | 명령어 | 설명 |
 |--------|------|
@@ -189,6 +199,7 @@ oh-my-forge/
 | `/ontology-sync` | 온톨로지 인덱스를 코드베이스와 동기화 |
 | `/evolve` | failure instinct를 스킬, 룰, 또는 constraint로 승격 |
 | `/codex-delegate <도메인> <작업>` | 온톨로지 GPS를 통해 구현을 Codex에 위임 |
+| `/claude-implement <도메인> <작업>` | 동일하지만 Claude가 직접 구현 — Codex 불필요 |
 
 ### 개발
 

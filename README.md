@@ -25,9 +25,14 @@ The core addition: an **ontology-driven structural error prevention system** tha
 
 When an agent makes a mistake, the default response is to patch the prompt. That's fragile — the same mistake resurfaces in a new session with a fresh context. `oh-my-forge` treats mistakes as system signals: each error is classified, routed, and converted into a structural change (a new constraint in the ontology, or a failure instinct in the learning pipeline) so the same failure cannot happen again.
 
-**2. Ontology as a GPS for Codex**
+**2. Ontology as a GPS for implementation**
 
-Claude Code plans. Codex implements. The ontology index (`index.json`) acts as a coordinate map — Claude reads only the domain index and one spec doc (~3K tokens) instead of exploring the full source tree, then generates a structured BRIEF and hands it to Codex for implementation. This cuts context overhead and keeps Claude in the reasoning role.
+Claude Code plans. The ontology index (`index.json`) acts as a coordinate map — Claude reads only the domain index and one spec doc (~3K tokens) instead of exploring the full source tree, then generates a structured BRIEF. Implementation is handled by whichever engine is available:
+
+- **Codex** — if the `codex` CLI is installed (`/codex-delegate`)
+- **Claude** — automatic fallback when Codex is not installed (`/claude-implement`)
+
+No configuration needed. The engine is auto-detected at plan time.
 
 Three principles:
 
@@ -67,19 +72,23 @@ Each `domain_*` entry defines:
 
 ---
 
-### 2. Codex Delegation (`/commands/codex-delegate.md`)
+### 2. Implementation Delegation (`/commands/codex-delegate.md`, `/commands/claude-implement.md`)
 
-The ontology index doubles as a **GPS for Codex**. Instead of giving Codex the full source tree, Claude reads only `index.json` and the relevant spec doc (~3K tokens total), then generates a structured BRIEF for Codex to implement.
+The ontology index doubles as a **GPS for implementation**. Instead of giving the implementer the full source tree, Claude reads only `index.json` and the relevant spec doc (~3K tokens total), then generates a structured BRIEF.
 
 ```
-/codex-delegate domain_hooks "Add ECC_DISABLED_HOOKS support to the PostToolUse handler"
+/plan  →  auto-detects engine  →  /codex-delegate   (Codex CLI installed)
+                                →  /claude-implement  (no Codex, Claude-only)
 ```
 
-What happens:
-1. Claude reads `index.json` → finds `domain_hooks` entry (files, constraints, symbols)
-2. Claude reads `docs/features/hooks.md` (~3K tokens) → understands the business intent
-3. Claude generates a BRIEF with files, constraints, symbols, and handoff format
-4. BRIEF is delegated to Codex (`/codex:rescue <BRIEF>` or `codex "<BRIEF>"`)
+Both commands use the same BRIEF format and produce the same HANDOFF output — the engine is interchangeable.
+
+**Engine detection (first match wins):**
+1. `CLAUDE_IMPL_ENGINE` env var (`claude` or `codex`)
+2. Project `.claude/settings.json` → `implementationEngine`
+3. Global `~/.claude/settings.json` → `implementationEngine`
+4. Auto-detect: `codex` binary absent → `"claude"`
+5. Default: `"codex"`
 
 ```
 BRIEF
@@ -104,14 +113,15 @@ HANDOFF FORMAT:
   SUMMARY: <one paragraph>
 ```
 
-**When to use:**
+**When to use which:**
 
 | Condition | Action |
 |-----------|--------|
-| Single-domain bug fix or feature | `/codex-delegate domain_X "task"` |
+| Codex CLI installed | `/codex-delegate domain_X "task"` (or let `/plan` route automatically) |
+| Claude-only subscription | `/claude-implement domain_X "task"` (or let `/plan` route automatically) |
 | Multi-domain task | Decompose first, then delegate each domain |
-| Architecture decision | Handle in Claude directly |
-| Security-sensitive code | Delegate with `codexWorkerHint: read-only`, then `/code-review` |
+| Architecture decision | Handle in Claude directly — do not delegate |
+| Security-sensitive code | Implement, then `/code-review` |
 
 ---
 
@@ -204,7 +214,7 @@ oh-my-forge/
 
 ## Commands
 
-### Error Prevention & Codex Delegation
+### Error Prevention & Implementation Delegation
 
 | Command | Description |
 |---------|-------------|
@@ -212,6 +222,7 @@ oh-my-forge/
 | `/ontology-sync` | Sync ontology index with current codebase |
 | `/evolve` | Promote failure instincts to skills, rules, or constraints |
 | `/codex-delegate <domain> <task>` | Delegate implementation to Codex using ontology GPS |
+| `/claude-implement <domain> <task>` | Same as above but implemented by Claude — no Codex required |
 
 ### Development
 
