@@ -363,6 +363,52 @@ function appendFile(filePath, content) {
 }
 
 /**
+ * Detect which implementation engine to use: "codex" or "claude".
+ *
+ * Resolution order (first match wins):
+ * 1. CLAUDE_IMPL_ENGINE environment variable
+ * 2. Project-level .claude/settings.json implementationEngine field
+ * 3. Global ~/.claude/settings.json implementationEngine field
+ * 4. Auto-detect: if `codex` binary is not in PATH → "claude"
+ * 5. Default: "codex"
+ *
+ * @returns {"codex"|"claude"}
+ */
+function detectImplementationEngine() {
+  // 1. Environment variable override
+  const envEngine = process.env.CLAUDE_IMPL_ENGINE;
+  if (envEngine === 'claude' || envEngine === 'codex') return envEngine;
+
+  // 2. Project-level settings
+  const projectSettings = readFile(path.join(process.cwd(), '.claude', 'settings.json'));
+  if (projectSettings) {
+    try {
+      const parsed = JSON.parse(projectSettings);
+      if (parsed.implementationEngine === 'claude' || parsed.implementationEngine === 'codex') {
+        return parsed.implementationEngine;
+      }
+    } catch { /* ignore parse errors */ }
+  }
+
+  // 3. Global settings
+  const globalSettings = readFile(path.join(getClaudeDir(), 'settings.json'));
+  if (globalSettings) {
+    try {
+      const parsed = JSON.parse(globalSettings);
+      if (parsed.implementationEngine === 'claude' || parsed.implementationEngine === 'codex') {
+        return parsed.implementationEngine;
+      }
+    } catch { /* ignore parse errors */ }
+  }
+
+  // 4. Auto-detect: fall back to "claude" if codex binary is absent
+  if (!commandExists('codex')) return 'claude';
+
+  // 5. Default
+  return 'codex';
+}
+
+/**
  * Check if a command exists in PATH
  * Uses execFileSync to prevent command injection
  */
@@ -621,5 +667,6 @@ module.exports = {
   commandExists,
   runCommand,
   isGitRepo,
-  getGitModifiedFiles
+  getGitModifiedFiles,
+  detectImplementationEngine
 };

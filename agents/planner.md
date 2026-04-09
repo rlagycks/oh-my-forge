@@ -211,9 +211,25 @@ Each phase should be mergeable independently. Avoid plans that require all phase
 
 **Remember**: A great plan is specific, actionable, and considers both the happy path and edge cases. The best plans enable confident, incremental implementation.
 
-## Post-Confirmation: Ontology-Guided Codex Delegation
+## Post-Confirmation: Ontology-Guided Implementation Delegation
 
 After the user confirms the plan, before writing any code:
+
+### Step 0 — Detect implementation engine
+
+Check which engine is available by running:
+```bash
+node -e "const {detectImplementationEngine} = require('./scripts/lib/utils'); console.log(detectImplementationEngine())"
+```
+
+**Engine resolution order (first match wins):**
+1. `CLAUDE_IMPL_ENGINE` environment variable (`claude` or `codex`)
+2. Project `.claude/settings.json` → `implementationEngine` field
+3. Global `~/.claude/settings.json` → `implementationEngine` field
+4. **Auto-detect**: if `codex` binary is not found in PATH → `"claude"`
+5. Default: `"codex"`
+
+Store the result as `ENGINE = "codex"` or `ENGINE = "claude"`.
 
 ### Step 1 — Check for ontology index
 
@@ -237,11 +253,11 @@ For each matched domain, load its JSON file to read `constraints`, `endpoints`, 
 
 If **no phase maps to any domain**, skip to **Fallback**.
 
-### Step 3 — Route to Codex per domain via Agent tool
+### Step 3 — Route to implementation engine per domain
 
-Use the `Agent` tool to invoke `codex-delegate` for each domain. Pass the relevant portion of the confirmed plan directly into the prompt so Codex has full context — not just the task description but also the specific steps, risks, and dependencies from the plan.
+**If ENGINE = "codex"**: Use the `Agent` tool to invoke `codex-delegate` for each domain. Pass the relevant portion of the confirmed plan directly into the prompt so Codex has full context — not just the task description but also the specific steps, risks, and dependencies from the plan.
 
-**Single domain** — one Agent call:
+**Single domain (Codex)** — one Agent call:
 ```
 Agent({
   description: "Implement domain_inventory",
@@ -249,30 +265,34 @@ Agent({
 })
 ```
 
-**Multiple domains** — call Agent per domain, respecting `dependsOn` order from `index.json`:
+**If ENGINE = "claude"**: Use the `Agent` tool to invoke `claude-implement` for each domain. Pass the same BRIEF structure so Claude has full context.
+
+**Single domain (Claude)** — one Agent call:
 ```
-Agent({ description: "Implement domain_inventory", prompt: "..." })
-// wait for completion, then:
-Agent({ description: "Implement domain_recipe", prompt: "..." })
+Agent({
+  description: "Implement domain_inventory",
+  prompt: "Run /claude-implement domain_inventory with this plan context: <paste Phase 1 steps, risks, migration details from the confirmed plan>"
+})
 ```
 
-If domains are independent (no `dependsOn` between them), call Agents in parallel.
+**Multiple domains** — call Agent per domain, respecting `dependsOn` order from `index.json`. If domains are independent (no `dependsOn` between them), call Agents in parallel.
 
 **Files outside any domain**: Implement those directly (Claude handles them inline).
 
 ### Step 4 — Report delegation status
 
-After invoking `/codex-delegate`, output:
+After invoking the implementation command, output:
 
 ```
-Delegation summary
+Implementation summary
 ──────────────────────────────────────────
-domain_hooks      → /codex-delegate dispatched
-domain_ontology   → /codex-delegate dispatched
+Engine: codex | claude
+domain_hooks      → /codex-delegate dispatched  (or /claude-implement)
+domain_ontology   → /codex-delegate dispatched  (or /claude-implement)
 scripts/new-util.js → handled inline (not in ontology)
 ──────────────────────────────────────────
 ```
 
 ### Fallback — No ontology / no domain match
 
-If `.claude/ontology/index.json` does not exist or no plan files match any domain, implement directly as Claude without Codex delegation.
+If `.claude/ontology/index.json` does not exist or no plan files match any domain, implement directly as Claude without any delegation (regardless of ENGINE).
