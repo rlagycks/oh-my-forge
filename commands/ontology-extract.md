@@ -25,25 +25,19 @@ MD 문서(기획서, API 명세 등)를 분석하여 도메인별 JSON 온톨로
 
 ---
 
-## Step 0 — 기존 index.json 형식 확인 (마이그레이션 감지)
+## Step 0 — 범위 확인
 
-`.claude/ontology/index.json`이 존재하면 형식을 확인한다.
+이 커맨드는 **외부 문서(기획서, API 명세 등)에서 `domain_*.json` 상세 파일을 생성**한다.
 
-**구 형식 감지 조건**: 최상위 키가 `"domain_*"` 패턴이고 값 객체에 `"files"` 배열이 포함된 경우.
+`.claude/ontology/index.json`이 존재하면 형식을 확인한다:
 
-구 형식이 감지되면:
-```
-⚠️  기존 index.json이 구 형식(파일 포인터 방식)입니다.
-    이 스킬은 이제 MD 내용을 도메인별 JSON으로 변환합니다.
+**정상 형식 (GPS 라우팅 인덱스)**: `$schema` 키 + `domain_*` 키에 `files[]`, `spec`, `codexWorkerHint` 포함.
+→ **index.json을 수정하지 않는다.** `domain_*.json` 상세 파일만 생성/업데이트 후 Step 1로 진행.
 
-    기존 파일 초기화 후 진행하시겠습니까?
-      [Y] index.json을 새 형식으로 교체하고 계속 진행
-      [N] 취소
-```
-- **[Y]**: `index.json`을 `{ "version": "1.0", "domains": {} }` 로 초기화 후 Step 1로 진행
-- **[N]**: 중단
+**존재하지 않는 경우**: 바로 Step 1로 진행. `/ontology-sync`를 먼저 실행하여 index.json을 구성할 것을 안내한다.
 
-구 형식이 아닌 경우(또는 파일이 없는 경우): 바로 Step 1로 진행.
+> ⚠️ **주의**: 이 커맨드는 ECC 내부 `index.json`(GPS 라우팅 인덱스)을 교체하거나 초기화하지 않는다.
+> ECC 내부 온톨로지 구조를 수정하려면 `/ontology-sync`를 사용하라.
 
 ---
 
@@ -166,20 +160,23 @@ MD 문서(기획서, API 명세 등)를 분석하여 도메인별 JSON 온톨로
 
 ---
 
-## Step 4 — index.json 업데이트
+## Step 4 — index.json의 detail 필드 업데이트 (선택)
 
-`.claude/ontology/index.json`은 **도메인 JSON 파일들의 매니페스트**로 유지:
+`.claude/ontology/index.json`이 GPS 라우팅 포맷인 경우, 생성된 `domain_*.json` 파일을 `detail` 필드로 연결할 수 있다.
+
+기존 `domain_*` 엔트리에 `detail` 필드가 없으면 추가 여부를 확인한다:
 
 ```json
-{
-  "version": "1.0",
-  "domains": {
-    "domain_common": ".claude/ontology/domain_common.json",
-    "domain_auth": ".claude/ontology/domain_auth.json",
-    "domain_user": ".claude/ontology/domain_user.json"
-  }
+"domain_auth": {
+  "files": [...],
+  "spec": "docs/features/auth.md",
+  "detail": ".claude/ontology/domain_auth.json",
+  ...
 }
 ```
+
+> 이 단계는 index.json의 다른 필드(`files`, `spec`, `codexWorkerHint` 등)는 변경하지 않는다.
+> `--fix` 모드에서는 확인 없이 `detail` 필드만 추가한다.
 
 ---
 
