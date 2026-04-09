@@ -222,14 +222,46 @@ oh-my-forge/
 
 ---
 
-## 시작하기
+## 빠른 시작
+
+### 방법 1 — Claude Code 플러그인 마켓플레이스 (권장)
+
+Claude Code 세션 안에서 다음 명령 하나만 실행하세요:
+
+```
+/plugin install rlagycks/oh-my-forge
+```
+
+끝입니다. 클론이나 빌드 없이 스킬, 커맨드, 에이전트, 훅이 즉시 사용 가능합니다.
+
+### 방법 2 — 수동 설치 (기여자 또는 로컬 커스터마이징)
 
 ```bash
 git clone https://github.com/rlagycks/oh-my-forge.git
 cd oh-my-forge
-npm install
+yarn install
 node scripts/ecc.js install
 ```
+
+### 설치 확인
+
+설치 후 플러그인이 로드됐는지 확인하세요:
+
+```
+/plugin list
+```
+
+`oh-my-forge`가 목록에 표시되면 모든 커맨드를 바로 사용할 수 있습니다:
+
+```
+/plan
+/tdd
+/error-capture "무엇이 잘못됐는지 설명"
+```
+
+---
+
+## 시작하기
 
 ### 온톨로지에 도메인 추가하기
 

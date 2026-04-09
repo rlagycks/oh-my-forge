@@ -245,14 +245,46 @@ oh-my-forge/
 
 ---
 
-## Getting Started
+## Quick Start
+
+### Option 1 — Claude Code plugin marketplace (recommended)
+
+Inside any Claude Code session:
+
+```
+/plugin install rlagycks/oh-my-forge
+```
+
+That's it. Skills, commands, agents, and hooks are available immediately in the current session. No cloning or build step required.
+
+### Option 2 — Manual install (for contributors or local customization)
 
 ```bash
 git clone https://github.com/rlagycks/oh-my-forge.git
 cd oh-my-forge
-npm install
+yarn install
 node scripts/ecc.js install
 ```
+
+### Verify
+
+After either install method, confirm the plugin is loaded:
+
+```
+/plugin list
+```
+
+`oh-my-forge` should appear in the list. You can then run any command:
+
+```
+/plan
+/tdd
+/error-capture "description of what went wrong"
+```
+
+---
+
+## Getting Started
 
 ### Adding a Domain to the Ontology
 
