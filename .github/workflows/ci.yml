@@ -24,18 +24,16 @@ jobs:
           cache: yarn
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: yarn install --frozen-lockfile
 
-      - name: ESLint
-        run: yarn eslint .
+      - name: Lint (ESLint + Markdownlint)
+        run: yarn lint
 
-      - name: Markdownlint
-        run: yarn markdownlint '**/*.md' --ignore node_modules
-
-  validate:
-    name: Validate (${{ matrix.node-version }})
+  test:
+    name: Test (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         node-version: [18, 20, 22]
     steps:
@@ -48,24 +46,15 @@ jobs:
           cache: yarn
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: yarn install --frozen-lockfile
 
-      - name: CI validations (agents, skills, hooks, rules…)
-        run: |
-          node scripts/ci/check-unicode-safety.js
-          node scripts/ci/validate-agents.js
-          node scripts/ci/validate-commands.js
-          node scripts/ci/validate-rules.js
-          node scripts/ci/validate-skills.js
-          node scripts/ci/validate-hooks.js
-          node scripts/ci/validate-install-manifests.js
-          node scripts/ci/validate-no-personal-paths.js
-          node scripts/ci/validate-ontology.js
-          node scripts/ci/catalog.js --text
+      - name: Run full test suite
+        run: yarn test
 
-  test:
-    name: Test & Coverage
+  coverage:
+    name: Coverage
     runs-on: ubuntu-latest
+    needs: test
     steps:
       - uses: actions/checkout@v4
 
@@ -76,10 +65,7 @@ jobs:
           cache: yarn
 
       - name: Install dependencies
-        run: yarn install --immutable
-
-      - name: Run tests
-        run: node tests/run-all.js
+        run: yarn install --frozen-lockfile
 
       - name: Coverage (80% threshold)
         run: yarn coverage
