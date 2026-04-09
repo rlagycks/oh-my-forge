@@ -1,0 +1,96 @@
+{
+  "domain": "domain_codex",
+  "version": "1.0",
+  "source": [
+    ".codex/config.toml",
+    ".codex/AGENTS.md",
+    ".codex/hooks.json",
+    ".codex/agents/explorer.toml",
+    ".codex/agents/reviewer.toml",
+    ".codex/agents/docs-researcher.toml",
+    ".codex/agents/implementer.toml"
+  ],
+  "summary": "Codex CLI 통합. 4개 멀티에이전트 역할(explorer/reviewer/docs-researcher/implementer), MCP 서버 구성, sandbox 정책. Claude Code hooks 없이 approval_policy + sandbox_mode로 행동 제어.",
+  "models": [
+    {
+      "name": "CodexConfig",
+      "fields": {
+        "approval_policy": "string — 'on-request' | 'never'",
+        "sandbox_mode": "string — 'workspace-write' | 'read-only'",
+        "web_search": "string — 'live' | 'cached'",
+        "persistent_instructions": "string — 매 프롬프트에 추가되는 지침",
+        "features.multi_agent": "boolean — 멀티에이전트 활성화"
+      }
+    },
+    {
+      "name": "CodexAgentRole",
+      "fields": {
+        "name": "string — 역할 식별자",
+        "config_file": "string — .codex/agents/<name>.toml",
+        "sandbox_mode": "string — 역할별 오버라이드",
+        "model": "string — gpt-5.4",
+        "developer_instructions": "string — 역할별 시스템 프롬프트"
+      }
+    },
+    {
+      "name": "HandoffFormat",
+      "description": "implementer 역할의 작업 완료 보고 포맷",
+      "fields": {
+        "RESULT": "string",
+        "files_changed": "string[]",
+        "tests": "string — 'PASS' | 'FAIL'",
+        "summary": "string — 1-2문장"
+      }
+    }
+  ],
+  "components": [
+    {
+      "role": "explorer",
+      "sandbox_mode": "read-only",
+      "purpose": "코드베이스 증거 수집 (읽기 전용)"
+    },
+    {
+      "role": "reviewer",
+      "sandbox_mode": "read-only",
+      "purpose": "정확성, 보안, 누락 테스트 검토"
+    },
+    {
+      "role": "docs-researcher",
+      "sandbox_mode": "read-only",
+      "purpose": "API, 프레임워크 동작, 릴리즈 노트 검증"
+    },
+    {
+      "role": "implementer",
+      "sandbox_mode": "workspace-write",
+      "purpose": "ECC 실행 워커. BRIEF 받아 코드 작성, 테스트 실행, HANDOFF 보고"
+    }
+  ],
+  "mcpServers": [
+    "github (@modelcontextprotocol/server-github)",
+    "context7 (@upstash/context7-mcp)",
+    "exa (https://mcp.exa.ai/mcp)",
+    "memory (@modelcontextprotocol/server-memory)",
+    "playwright (@playwright/mcp@latest)",
+    "sequential-thinking (@modelcontextprotocol/server-sequential-thinking)"
+  ],
+  "profiles": {
+    "strict": { "approval_policy": "on-request", "sandbox_mode": "read-only", "web_search": "cached" },
+    "yolo": { "approval_policy": "never", "sandbox_mode": "workspace-write", "web_search": "live" }
+  },
+  "constraints": [
+    "explorer/reviewer/docs-researcher의 sandbox_mode = read-only 변경 금지 (OS 레벨 격리)",
+    "merge-mcp-config.js(sync-ecc-to-codex.sh)는 기존 사용자 설정 삭제/수정 금지 — add-only",
+    "Codex 훅은 .codex/hooks.json으로 설정 — run-with-flags.js 래퍼 없이 직접 호출",
+    "implementer는 BRIEF의 FILES 섹션에 명시된 파일만 수정 — 범위 외 파일 접근 금지",
+    "implementer 완료 보고 형식: RESULT / FILES CHANGED / TESTS / SUMMARY 고정",
+    "multi_agent 활성화 시 max_threads = 6, max_depth = 1",
+    "신규 파일 생성 시 .claude/ontology/index.json 업데이트 필수 (implementer 규칙)"
+  ],
+  "vsClaudeCode": {
+    "hooks": "Codex는 훅 없음 — approval_policy + sandbox_mode + notify로 대체",
+    "contextFile": "Claude Code: CLAUDE.md + AGENTS.md / Codex: AGENTS.md only",
+    "skills": "Claude Code: plugin 시스템 / Codex: .agents/skills/ 디렉터리",
+    "agents": "Claude Code: Task tool / Codex: /agent + [agents.<name>] 역할"
+  },
+  "dependsOn": ["domain_install"]
+}

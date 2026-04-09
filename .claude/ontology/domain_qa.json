@@ -1,0 +1,42 @@
+{
+  "domain": "domain_qa",
+  "version": "1.0",
+  "source": [
+    "commands/qa-loop.md",
+    "scripts/hooks/qa-context-inject.js"
+  ],
+  "summary": "QA/E2E 루프 시스템. qa-context-inject 훅이 편집 파일에 버그 히스토리를 주입. on-demand 로드 — 전체 세션이 아닌 트리거 조건에서만 활성화.",
+  "models": [
+    {
+      "name": "QaContextPayload",
+      "description": "qa-context-inject 훅이 출력하는 컨텍스트",
+      "fields": {
+        "hookSpecificOutput": "{ additionalContext: string — 버그 히스토리 및 관련 컨텍스트 }"
+      }
+    }
+  ],
+  "components": [
+    {
+      "file": "commands/qa-loop.md",
+      "purpose": "/qa-loop 슬래시 커맨드 — E2E QA 루프 워크플로우"
+    },
+    {
+      "file": "scripts/hooks/qa-context-inject.js",
+      "purpose": "PostToolUse 훅 — 편집 대상 파일에 버그 히스토리 컨텍스트 자동 주입"
+    }
+  ],
+  "loadPolicy": {
+    "type": "on-demand",
+    "triggers": [
+      "/qa-loop 커맨드 실행",
+      "e2e-rca skill 호출",
+      "편집 파일이 bug-topology 항목에 매칭"
+    ],
+    "note": "전체 세션에 로드되지 않음 — 트리거 조건에서만 훅이 컨텍스트 주입"
+  },
+  "constraints": [
+    "qa-context-inject는 항상 exit 0 — 버그 히스토리 조회 실패가 편집을 막으면 안 됨",
+    "훅 출력은 반드시 JSON { hookSpecificOutput: { additionalContext } } 형식"
+  ],
+  "dependsOn": ["domain_hooks"]
+}

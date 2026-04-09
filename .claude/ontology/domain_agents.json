@@ -1,0 +1,67 @@
+{
+  "domain": "domain_agents",
+  "version": "1.0",
+  "source": [
+    "agents/",
+    ".agents/"
+  ],
+  "summary": "전문 서브에이전트 정의 시스템. 29개 에이전트가 code-review, security, testing, build-fix 등 특화 역할을 담당. Agent 툴로 위임하여 병렬 실행 가능.",
+  "models": [
+    {
+      "name": "AgentDefinition",
+      "fields": {
+        "name": "string — 에이전트 식별자 (예: code-reviewer)",
+        "description": "string — 언제 사용할지 포함한 설명 (마켓플레이스/Agent 툴 노출)",
+        "tools": "string[] — 허용 도구 (Read, Grep, Glob, Bash, Write, Edit 등)",
+        "model": "string — sonnet | opus | haiku",
+        "body": "string (Markdown) — 에이전트 시스템 프롬프트"
+      }
+    }
+  ],
+  "components": [
+    { "name": "architect", "purpose": "시스템 설계 및 아키텍처 의사결정", "tools": ["Read", "Grep", "Glob"] },
+    { "name": "build-error-resolver", "purpose": "빌드/타입 오류 최소 diff 수정", "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"] },
+    { "name": "chief-of-staff", "purpose": "이메일/Slack/LINE 메시지 트리아지 및 초안 작성", "tools": ["Read", "Grep", "Glob", "Bash", "Edit", "Write"] },
+    { "name": "code-reviewer", "purpose": "코드 품질·보안·유지보수성 리뷰 (즉시 사용)", "tools": ["Read", "Grep", "Glob", "Bash"] },
+    { "name": "cpp-build-resolver", "purpose": "C++ CMake 빌드 오류 수정", "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"] },
+    { "name": "cpp-reviewer", "purpose": "C++ 메모리 안전성·현대 이디엄 리뷰", "tools": ["Read", "Grep", "Glob", "Bash"] },
+    { "name": "database-reviewer", "purpose": "PostgreSQL 쿼리 최적화·스키마 보안", "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"] },
+    { "name": "doc-updater", "purpose": "CODEMAPS 및 문서 업데이트", "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"] },
+    { "name": "docs-lookup", "purpose": "Context7 MCP로 라이브러리 문서 조회", "tools": ["Read", "Grep", "mcp__context7__*"] },
+    { "name": "e2e-runner", "purpose": "Playwright E2E 테스트 생성·실행", "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"] },
+    { "name": "flutter-reviewer", "purpose": "Flutter/Dart 위젯·상태관리 리뷰", "tools": ["Read", "Grep", "Glob", "Bash"] },
+    { "name": "gan-evaluator", "purpose": "GAN 하네스 — Playwright로 앱 평가", "tools": ["Read", "Write", "Bash", "Grep", "Glob"] },
+    { "name": "gan-generator", "purpose": "GAN 하네스 — 스펙 기반 구현", "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"] },
+    { "name": "gan-planner", "purpose": "GAN 하네스 — 프로덕트 스펙 생성", "tools": ["Read", "Write", "Grep", "Glob"] },
+    { "name": "go-build-resolver", "purpose": "Go 빌드/vet 오류 수정", "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"] },
+    { "name": "go-reviewer", "purpose": "Go 이디엄·동시성·에러 처리 리뷰", "tools": ["Read", "Grep", "Glob", "Bash"] },
+    { "name": "harness-optimizer", "purpose": "에이전트 하네스 설정 분석·개선", "tools": ["Read", "Grep", "Glob", "Bash", "Edit"] },
+    { "name": "healthcare-reviewer", "purpose": "헬스케어 앱 임상 안전·PHI 컴플라이언스 리뷰", "tools": ["Read", "Grep", "Glob"] },
+    { "name": "java-build-resolver", "purpose": "Java/Maven/Gradle 빌드 오류 수정", "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"] },
+    { "name": "java-reviewer", "purpose": "Java/Spring Boot 레이어드 아키텍처 리뷰", "tools": ["Read", "Grep", "Glob", "Bash"] },
+    { "name": "kotlin-build-resolver", "purpose": "Kotlin/Gradle 빌드 오류 수정", "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"] },
+    { "name": "kotlin-reviewer", "purpose": "Kotlin 코루틴·Compose 리뷰", "tools": ["Read", "Grep", "Glob", "Bash"] },
+    { "name": "loop-operator", "purpose": "자율 에이전트 루프 운영·모니터링", "tools": ["Read", "Grep", "Glob", "Bash", "Edit"] },
+    { "name": "opensource-forker", "purpose": "프로젝트 오픈소스 포크 (시크릿 제거)", "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"] },
+    { "name": "opensource-packager", "purpose": "CLAUDE.md, setup.sh, README 생성", "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"] },
+    { "name": "opensource-sanitizer", "purpose": "시크릿·PII 유출 스캔 (PASS/FAIL 리포트)", "tools": ["Read", "Grep", "Glob", "Bash"] },
+    { "name": "performance-optimizer", "purpose": "병목·메모리 누수·번들 최적화", "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"] },
+    { "name": "python-reviewer", "purpose": "Python PEP8·타입힌트·보안 리뷰", "tools": ["Read", "Grep", "Glob", "Bash"] },
+    { "name": "pytorch-build-resolver", "purpose": "PyTorch CUDA·텐서 오류 수정", "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"] },
+    { "name": "refactor-cleaner", "purpose": "데드코드 제거 (knip, depcheck)", "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"] },
+    { "name": "rust-build-resolver", "purpose": "Rust cargo 빌드·borrow checker 오류 수정", "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"] },
+    { "name": "rust-reviewer", "purpose": "Rust 소유권·라이프타임·unsafe 리뷰", "tools": ["Read", "Grep", "Glob", "Bash"] },
+    { "name": "security-reviewer", "purpose": "OWASP Top 10·시크릿 유출·SSRF 탐지", "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"] },
+    { "name": "tdd-guide", "purpose": "TDD Red-Green-Refactor 워크플로우 강제", "tools": ["Read", "Write", "Edit", "Bash", "Grep"] },
+    { "name": "typescript-reviewer", "purpose": "TypeScript 타입 안전성·async 정확성 리뷰", "tools": ["Read", "Grep", "Glob", "Bash"] }
+  ],
+  "constraints": [
+    "에이전트 파일 위치: agents/ (배포용) 또는 .agents/ (내부용)",
+    "YAML frontmatter: name, description, tools, model 모두 필수",
+    "description은 '언제 사용할지' 포함 필수 — Agent 툴의 subagent_type 선택 기준",
+    "model은 sonnet(기본), opus(복잡 추론), haiku(경량·고빈도) 중 선택",
+    "코드 작성 에이전트는 Write/Edit 포함, 리서치 에이전트는 제외",
+    "독립 작업은 병렬 Agent 호출 — 순차 실행 금지"
+  ],
+  "dependsOn": ["domain_common"]
+}

@@ -1,0 +1,36 @@
+{
+  "domain": "domain_state_store",
+  "version": "1.0",
+  "source": [
+    "scripts/lib/state-store/index.js",
+    "scripts/lib/state-store/schema.js",
+    "scripts/lib/state-store/queries.js",
+    "scripts/lib/state-store/migrations.js"
+  ],
+  "summary": "sql.js(WASM) 기반 SQLite 영구 상태 저장소. Node.js 바이너리 의존성 없이 순수 JS로 실행. 세션 데이터, 훅 플래그, 비용 추적 등 런타임 상태 관리.",
+  "models": [
+    {
+      "name": "StateStore",
+      "fields": {
+        "dbPath": "string — ~/.claude/ecc-state.db (기본값)",
+        "driver": "sql.js (WASM SQLite)",
+        "accessPattern": "wrapSqlJsDatabase() → getStateStore() → queries"
+      }
+    }
+  ],
+  "components": [
+    { "file": "index.js", "exports": ["wrapSqlJsDatabase", "getStateStore"] },
+    { "file": "schema.js", "exports": ["createSchema"] },
+    { "file": "queries.js", "exports": ["buildQueries"] },
+    { "file": "migrations.js", "exports": ["runMigrations"] }
+  ],
+  "constraints": [
+    "sql.js(WASM) 유지 — better-sqlite3로 교체 금지 (Node.js 바이너리 의존성 제거 이유)",
+    "트랜잭션 없이 직접 쓰기 금지 — 모든 변경은 트랜잭션으로 감쌀 것",
+    "마이그레이션은 항상 멱등 — 재실행 시 오류 없이 통과",
+    "DB 파일 기본 경로: ~/.claude/ecc-state.db",
+    "쓰기 실패 시 에러 전파 금지 — 훅은 exit 0 유지"
+  ],
+  "riskLevel": "high",
+  "dependsOn": ["domain_common"]
+}

@@ -1,0 +1,36 @@
+{
+  "domain": "domain_package_manager",
+  "version": "1.0",
+  "source": [
+    "scripts/lib/package-manager.js"
+  ],
+  "summary": "프로젝트 패키지 매니저(npm/pnpm/yarn/bun) 자동 감지 라이브러리. 6단계 우선순위 감지 체인. 세션 시작 시 부트스트랩에서 호출.",
+  "models": [
+    {
+      "name": "PackageManager",
+      "fields": {
+        "value": "string — 'npm' | 'pnpm' | 'yarn' | 'bun'",
+        "PACKAGE_MANAGERS": "{ npm, pnpm, yarn, bun } — 유효 키 enum"
+      }
+    },
+    {
+      "name": "DetectionChain",
+      "description": "감지 우선순위 (변경 금지)",
+      "fields": {
+        "step_1": "환경변수 CLAUDE_PACKAGE_MANAGER",
+        "step_2": "프로젝트 설정 파일",
+        "step_3": "package.json의 packageManager 필드",
+        "step_4": "lockfile 존재 여부 (package-lock.json → npm, pnpm-lock.yaml → pnpm 등)",
+        "step_5": "전역 설정",
+        "step_6": "기본값 npm"
+      }
+    }
+  ],
+  "constraints": [
+    "감지 순서 변경 금지: env var → project config → package.json → lockfile → global config → default npm",
+    "getAvailablePackageManagers() 감지 6단계에 재추가 금지 (Windows freeze #162)",
+    "반환값은 반드시 PACKAGE_MANAGERS 키 중 하나 (npm|pnpm|yarn|bun)",
+    "메모이제이션 캐시 초기화 필요 시 clearCache() 사용"
+  ],
+  "dependsOn": ["domain_common"]
+}

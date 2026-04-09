@@ -1,0 +1,53 @@
+{
+  "domain": "domain_common",
+  "version": "1.0",
+  "source": [
+    ".claude-plugin/plugin.json",
+    "CLAUDE.md",
+    "README.md",
+    "package.json"
+  ],
+  "summary": "oh-my-forge 플러그인 프로젝트 개요 및 공통 메타데이터. Claude Code용 배틀테스트된 워크플로우 모음 (agents, skills, commands, hooks).",
+  "models": [
+    {
+      "name": "PluginManifest",
+      "fields": {
+        "name": "string — 플러그인 ID (oh-my-forge)",
+        "description": "string — 마켓플레이스 설명",
+        "author": "{ name: string }",
+        "homepage": "string (URL)",
+        "repository": "string (URL)",
+        "license": "string (MIT)",
+        "keywords": "string[]",
+        "skills": "string — 스킬 디렉터리 경로 (./skills)",
+        "commands": "string — 커맨드 디렉터리 경로 (./commands)"
+      }
+    },
+    {
+      "name": "AgentFrontmatter",
+      "fields": {
+        "name": "string — 에이전트 ID",
+        "description": "string — 마켓플레이스/Agent 툴 설명",
+        "tools": "string[] — 허용된 도구 목록",
+        "model": "string — sonnet | opus | haiku"
+      }
+    },
+    {
+      "name": "SkillFrontmatter",
+      "fields": {
+        "description": "string — 스킬 한 줄 설명 (선택)"
+      }
+    }
+  ],
+  "constraints": [
+    "파일명은 반드시 소문자 하이픈 (lowercase-hyphen) — 예: python-reviewer.md",
+    "에이전트: YAML frontmatter (name, description, tools, model) 필수",
+    "스킬: 'When to Use', 'How It Works', 'Examples' 섹션 필수",
+    "커맨드: description frontmatter 필수",
+    "커밋 메시지에 Co-Authored-By: Claude 추가 금지",
+    "Node.js >=18, CommonJS (require/module.exports), TypeScript 없음",
+    "훅 스크립트 200줄 이하 — 초과 시 scripts/lib/ 추출",
+    "파일 최대 800줄, 함수 최대 50줄"
+  ],
+  "dependsOn": []
+}

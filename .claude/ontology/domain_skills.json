@@ -1,0 +1,73 @@
+{
+  "domain": "domain_skills",
+  "version": "1.0",
+  "source": [
+    "skills/",
+    ".agents/skills/"
+  ],
+  "summary": "144개 스킬 라이브러리. 특정 도메인 지식과 워크플로우를 담은 마크다운 파일. /skill-name 슬래시 커맨드로 호출하거나 Skill 툴로 실행. 두 배치 위치(큐레이션 vs 생성/임포트)를 구분.",
+  "models": [
+    {
+      "name": "SkillFile",
+      "fields": {
+        "path": "string — skills/<name>/SKILL.md 또는 skills/<name>.md",
+        "sections": {
+          "When to Use": "string — 트리거 조건",
+          "How It Works": "string — 단계별 동작",
+          "Examples": "string — 사용 예시"
+        },
+        "frontmatter": "optional { description: string }"
+      }
+    }
+  ],
+  "categories": [
+    {
+      "category": "개발 워크플로우",
+      "skills": ["tdd-workflow", "coding-standards", "api-design", "backend-patterns", "frontend-patterns", "deployment-patterns", "database-migrations", "verification-loop", "continuous-learning", "continuous-learning-v2"]
+    },
+    {
+      "category": "코드 품질 / 리뷰",
+      "skills": ["security-review", "security-scan", "plankton-code-quality", "rust-patterns", "rust-testing", "golang-patterns", "golang-testing", "kotlin-patterns", "kotlin-testing", "kotlin-coroutines-flows", "kotlin-ktor-patterns", "kotlin-exposed-patterns", "java-coding-standards", "jpa-patterns", "springboot-patterns", "springboot-security", "springboot-tdd", "springboot-verification", "cpp-coding-standards", "cpp-testing", "python-patterns", "python-testing", "laravel-patterns", "laravel-security", "laravel-tdd", "laravel-verification", "django-patterns", "django-security", "django-tdd", "django-verification", "swift-concurrency-6-2", "swift-actor-persistence", "swift-protocol-di-testing", "swiftui-patterns", "android-clean-architecture", "compose-multiplatform-patterns", "flutter-dart-code-review", "perl-patterns", "perl-testing", "perl-security"]
+    },
+    {
+      "category": "AI / 에이전트 시스템",
+      "skills": ["agentic-engineering", "ai-first-engineering", "agent-harness-construction", "autonomous-agent-harness", "autonomous-loops", "continuous-agent-loop", "claude-api", "claude-devfleet", "eval-harness", "agent-eval", "ai-regression-testing", "cost-aware-llm-pipeline", "token-budget-advisor", "model-route", "context-budget", "gan-style-harness", "prompt-optimizer", "deep-research", "iterative-retrieval", "foundation-models-on-device", "pytorch-patterns"]
+    },
+    {
+      "category": "인프라 / DevOps",
+      "skills": ["docker-patterns", "mcp-server-patterns", "dmux-workflows", "postgres-patterns", "clickhouse-io", "bun-runtime", "nextjs-turbopack", "nuxt4-patterns", "benchmark", "performance-optimizer"]
+    },
+    {
+      "category": "비즈니스 도메인",
+      "skills": ["healthcare-cdss-patterns", "healthcare-emr-patterns", "healthcare-phi-compliance", "healthcare-eval-harness", "logistics-exception-management", "carrier-relationship-management", "inventory-demand-planning", "production-scheduling", "quality-nonconformance", "returns-reverse-logistics", "energy-procurement", "customs-trade-compliance", "visa-doc-translate"]
+    },
+    {
+      "category": "콘텐츠 / 미디어",
+      "skills": ["article-writing", "content-engine", "content-hash-cache-pattern", "video-editing", "videodb", "fal-ai-media", "remotion-video-creation", "frontend-slides", "crosspost", "x-api"]
+    },
+    {
+      "category": "비즈니스 개발",
+      "skills": ["market-research", "deep-research", "exa-search", "investor-materials", "investor-outreach", "lead-intelligence", "data-scraper-agent", "strategic-compact", "team-builder", "enterprise-agent-ops"]
+    },
+    {
+      "category": "테스트 / QA",
+      "skills": ["e2e-testing", "e2e-rca", "browser-qa", "click-path-audit", "qa-loop", "canary-watch", "tdd-workflow"]
+    },
+    {
+      "category": "오픈소스 / 문서",
+      "skills": ["opensource-pipeline", "architecture-decision-records", "blueprint", "documentation-lookup", "codebase-onboarding", "project-guidelines-example", "rules-distill", "skill-stocktake", "skill-comply", "configure-ecc"]
+    },
+    {
+      "category": "플랫폼 고유",
+      "skills": ["ontology-sync", "repo-scan", "hexagonal-architecture", "design-system", "liquid-glass-design", "nanoclaw-repl", "santa-method", "openclaw-persona-forge", "safety-guard", "nutrient-document-processing"]
+    }
+  ],
+  "constraints": [
+    "큐레이션 스킬: skills/ 디렉터리 — PR 리뷰 후 병합",
+    "생성/임포트 스킬: ~/.claude/skills/ — 자동 생성 허용 (docs/SKILL-PLACEMENT-POLICY.md 참조)",
+    "스킬 파일명: lowercase-hyphen (예: tdd-workflow.md)",
+    "필수 섹션: 'When to Use', 'How It Works', 'Examples'",
+    "스킬은 읽기 전용 지식 — 직접 코드 실행 없음 (에이전트가 실행)"
+  ],
+  "dependsOn": ["domain_common"]
+}

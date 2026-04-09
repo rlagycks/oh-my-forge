@@ -1,0 +1,46 @@
+{
+  "domain": "domain_orchestration",
+  "version": "1.0",
+  "source": [
+    "scripts/orchestrate-worktrees.js",
+    "scripts/orchestration-status.js",
+    "scripts/lib/tmux-worktree-orchestrator.js",
+    "scripts/lib/orchestration-session.js",
+    "commands/orchestrate.md"
+  ],
+  "summary": "git 워크트리 기반 병렬 멀티 에이전트 오케스트레이션. tmux 세션으로 각 워커를 격리 실행하고, 핸드오프 문서로 에이전트 간 인수인계.",
+  "models": [
+    {
+      "name": "OrchestrationPlan",
+      "fields": {
+        "workers": "WorkerSpec[] — 병렬 실행할 워커 목록",
+        "launcherCommand": "string — 워커 시작 커맨드 (플레이스홀더 사용)",
+        "seedPaths": "string[] — 워크트리 초기화 파일 경로"
+      }
+    },
+    {
+      "name": "WorkerSpec",
+      "fields": {
+        "worker_name": "string — 고유 워커 이름 (브랜치명 기반)",
+        "worktree_path": "string — git 워크트리 경로",
+        "task": "string — 워커 담당 태스크"
+      }
+    },
+    {
+      "name": "HandoffDocument",
+      "description": "에이전트 간 인수인계 문서 포맷",
+      "fields": {
+        "header": "string — '## HANDOFF: [from] -> [to]' 필수",
+        "context": "string — 인수인계 내용"
+      }
+    }
+  ],
+  "constraints": [
+    "launcherCommand에는 플레이스홀더({worker_name}, {worktree_path})만 사용",
+    "seedPaths는 존재하는 파일만 — 없는 경로 지정 시 워크트리 생성 실패",
+    "브랜치명 충돌 시 자동 suffix 추가 없음 — 플랜에서 고유 이름 보장 필요",
+    "핸드오프 문서 포맷: ## HANDOFF: [from] -> [to] 헤더 필수",
+    "tmux 세션 이름은 워크트리 경로 기반 디렉터리명 사용"
+  ],
+  "dependsOn": ["domain_hooks", "domain_session"]
+}

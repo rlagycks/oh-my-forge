@@ -1,0 +1,50 @@
+{
+  "domain": "domain_session",
+  "version": "1.0",
+  "source": [
+    "scripts/hooks/session-start.js",
+    "scripts/hooks/session-end.js",
+    "scripts/hooks/session-start-bootstrap.js",
+    "scripts/lib/session-manager.js",
+    "scripts/lib/session-aliases.js",
+    "scripts/lib/session-adapters/"
+  ],
+  "summary": "Claude Code 세션 관리 시스템. 세션 파일 CRUD, 이전 세션 매칭·로드, 세션 데이터 영구 저장. ~/.claude/session-data/ 에 마크다운 파일로 저장.",
+  "models": [
+    {
+      "name": "SessionFile",
+      "fields": {
+        "path": "string — ~/.claude/session-data/YYYY-MM-DD-<short-id>-session.tmp",
+        "legacyPath": "string — ~/.claude/sessions/YYYY-MM-DD-session.tmp (구 형식)",
+        "shortId": "string — 세션 ID (없으면 'no-id')",
+        "date": "string — YYYY-MM-DD",
+        "datetime": "Date — 로컬 타임 Date 객체"
+      }
+    },
+    {
+      "name": "SessionMatch",
+      "description": "이전 세션 매칭 결과",
+      "fields": {
+        "priority_1": "string — worktree exact match (CLAUDE_WORKTREE_PATH)",
+        "priority_2": "string — project name match",
+        "priority_3": "string — recency (최신 세션)"
+      }
+    },
+    {
+      "name": "SessionHookOutput",
+      "description": "세션 훅의 stdout JSON 형식",
+      "fields": {
+        "hookSpecificOutput": "{ additionalContext: string }"
+      }
+    }
+  ],
+  "constraints": [
+    "세션 매칭 우선순위 변경 금지: worktree exact match > project name > recency",
+    "stdout 출력은 반드시 JSON { hookSpecificOutput: { additionalContext } }",
+    "state-store 쓰기 실패 시 exit 0 유지",
+    "CLAUDE_SESSION_ID 없으면 cwd SHA1로 폴백",
+    "SESSION_FILENAME_REGEX: /^(\\d{4}-\\d{2}-\\d{2})(?:-([a-zA-Z0-9_][a-zA-Z0-9_-]*))?-session\\.tmp$/",
+    "날력 검증 필수 — Date 롤오버 (예: Feb 31) 허용 금지"
+  ],
+  "dependsOn": ["domain_state_store", "domain_hooks"]
+}

@@ -1,0 +1,37 @@
+{
+  "domain": "domain_commands",
+  "version": "1.0",
+  "source": [
+    "commands/",
+    "COMMANDS-QUICK-REF.md"
+  ],
+  "summary": "73개 슬래시 커맨드 라이브러리. /command-name 형식으로 사용자가 호출. Skill 툴 또는 Claude Code CLI의 슬래시 커맨드로 실행. 각 커맨드는 스킬을 풀어 프롬프트로 확장함.",
+  "models": [
+    {
+      "name": "CommandFile",
+      "fields": {
+        "path": "string — commands/<name>.md",
+        "frontmatter": "{ description: string }",
+        "body": "string (Markdown) — 커맨드 확장 프롬프트"
+      }
+    }
+  ],
+  "components": [
+    { "group": "개발 워크플로우", "commands": ["tdd", "plan", "code-review", "build-fix", "refactor-clean", "verify", "test-coverage", "feature-development"] },
+    { "group": "언어별 빌드/리뷰/테스트", "commands": ["go-build", "go-review", "go-test", "kotlin-build", "kotlin-review", "kotlin-test", "gradle-build", "rust-build", "rust-test", "rust-review", "cpp-build", "cpp-review", "cpp-test", "python-review", "java-build"] },
+    { "group": "E2E / QA", "commands": ["e2e", "qa-loop", "browser-qa"] },
+    { "group": "세션 / 메모리", "commands": ["save-session", "resume-session", "sessions", "checkpoint", "learn", "learn-eval", "instinct-import", "instinct-export", "instinct-status"] },
+    { "group": "오케스트레이션", "commands": ["orchestrate", "devfleet", "multi-plan", "multi-workflow", "multi-execute", "multi-frontend", "multi-backend", "loop-start", "loop-status", "aside"] },
+    { "group": "GAN 하네스", "commands": ["gan-design", "gan-build"] },
+    { "group": "문서 / 분석", "commands": ["docs", "update-docs", "update-codemaps", "prp-prd", "prp-plan", "prp-implement", "prp-pr", "prp-commit", "projects"] },
+    { "group": "비용 / 모델", "commands": ["context-budget", "model-route", "pm2"] },
+    { "group": "기타 유틸리티", "commands": ["claw", "eval", "evolve", "aside", "error-capture", "promote", "codex-delegate", "skill-create", "skill-health", "rules-distill", "security-scan", "database-migration", "add-language-rules"] }
+  ],
+  "constraints": [
+    "커맨드 파일 위치: commands/<name>.md",
+    "description frontmatter 필수 — Skill 툴의 args 파라미터로 노출",
+    "커맨드는 스킬 프롬프트를 확장하는 래퍼 — 직접 코드 실행 금지",
+    "oh-my-forge: 네임스페이스 접두사로 마켓플레이스 등록 (예: oh-my-forge:tdd)"
+  ],
+  "dependsOn": ["domain_common", "domain_skills"]
+}

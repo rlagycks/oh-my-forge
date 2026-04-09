@@ -1,0 +1,88 @@
+{
+  "domain": "domain_hooks",
+  "version": "1.0",
+  "source": [
+    "hooks/hooks.json",
+    ".codex/hooks.json",
+    "scripts/hooks/run-with-flags.js",
+    "scripts/hooks/domain-context-inject.js",
+    "scripts/hooks/qa-context-inject.js",
+    "scripts/lib/hook-flags.js"
+  ],
+  "summary": "Claude Code 훅 시스템. PreToolUse/PostToolUse/Stop/SessionStart 이벤트에 반응하여 품질 게이트, 보안 검사, 세션 관리, 포맷/타입체크 자동화 실행.",
+  "models": [
+    {
+      "name": "HookEntry",
+      "fields": {
+        "matcher": "string — 도구 이름 패턴 (예: 'Bash', 'Edit|Write', '*')",
+        "hooks": "HookItem[]",
+        "description": "string — 훅 목적 설명"
+      }
+    },
+    {
+      "name": "HookItem",
+      "fields": {
+        "type": "string — 'command' | 'http' | 'prompt' | 'agent'",
+        "command": "string — 실행할 Node.js/Shell 명령 (type=command 시)",
+        "async": "boolean? — 백그라운드 비동기 실행 여부",
+        "timeout": "number? — 초 단위 타임아웃"
+      }
+    },
+    {
+      "name": "HookFlags",
+      "description": "run-with-flags.js 래퍼로 런타임 프로파일 게이팅",
+      "fields": {
+        "ECC_HOOK_PROFILE": "string — 'minimal' | 'standard' | 'strict'",
+        "ECC_DISABLED_HOOKS": "string — 비활성화할 훅 ID (쉼표 구분)",
+        "allowedProfiles": "string[] — 이 훅이 실행될 프로파일 목록"
+      }
+    }
+  ],
+  "components": [
+    { "event": "PreToolUse", "hook": "block-no-verify", "description": "--no-verify git 플래그 차단" },
+    { "event": "PreToolUse", "hook": "auto-tmux-dev", "description": "dev 서버 tmux 자동 시작" },
+    { "event": "PreToolUse", "hook": "pre-bash-tmux-reminder", "description": "장시간 커맨드 tmux 사용 권고" },
+    { "event": "PreToolUse", "hook": "pre-bash-git-push-reminder", "description": "git push 전 변경사항 리뷰 알림" },
+    { "event": "PreToolUse", "hook": "pre-bash-commit-quality", "description": "커밋 전 lint·메시지 포맷·시크릿 검사" },
+    { "event": "PreToolUse", "hook": "doc-file-warning", "description": "비표준 문서 파일 경고" },
+    { "event": "PreToolUse", "hook": "suggest-compact", "description": "논리적 인터벌에서 수동 컴팩션 권고" },
+    { "event": "PreToolUse", "hook": "observe (pre)", "description": "연속 학습용 도구 사용 관찰 (async)", "async": true },
+    { "event": "PreToolUse", "hook": "insaits-security", "description": "InsAIts AI 보안 모니터 (ECC_ENABLE_INSAITS=1 필요)" },
+    { "event": "PreToolUse", "hook": "governance-capture (pre)", "description": "시크릿·정책 위반 이벤트 캡처 (ECC_GOVERNANCE_CAPTURE=1 필요)" },
+    { "event": "PreToolUse", "hook": "config-protection", "description": "linter/formatter 설정 파일 수정 차단" },
+    { "event": "PreToolUse", "hook": "qa-context-inject", "description": "버그 히스토리가 있는 파일 편집 시 QA 컨텍스트 주입" },
+    { "event": "PreToolUse", "hook": "domain-context-inject", "description": "온톨로지 추적 파일 접근 시 도메인 컨텍스트 주입" },
+    { "event": "PreToolUse", "hook": "constraint-guard", "description": "도메인 제약 위반 경고 (실행 차단 없음)" },
+    { "event": "PreToolUse", "hook": "mcp-health-check", "description": "MCP 서버 헬스 체크 — 비정상 MCP 호출 차단" },
+    { "event": "PreCompact", "hook": "pre-compact", "description": "컨텍스트 컴팩션 전 상태 저장" },
+    { "event": "SessionStart", "hook": "session-start-bootstrap", "description": "이전 컨텍스트 로드, 패키지 매니저 감지" },
+    { "event": "PostToolUse", "hook": "bash-audit-log", "description": "모든 Bash 커맨드 ~/.claude/bash-commands.log 기록 (시크릿 리댁션)" },
+    { "event": "PostToolUse", "hook": "cost-tracker (post bash)", "description": "Bash 도구 사용 타임스탬프 기록" },
+    { "event": "PostToolUse", "hook": "post-bash-pr-created", "description": "PR 생성 후 URL 로그 및 리뷰 커맨드 출력" },
+    { "event": "PostToolUse", "hook": "post-bash-build-complete", "description": "빌드 완료 후 분석 (async)", "async": true },
+    { "event": "PostToolUse", "hook": "quality-gate", "description": "파일 편집 후 품질 게이트 실행 (async)", "async": true },
+    { "event": "PostToolUse", "hook": "post-edit-accumulator", "description": "편집된 JS/TS 파일 경로 누적 (Stop 시 일괄 포맷)" },
+    { "event": "PostToolUse", "hook": "post-edit-console-warn", "description": "편집 후 console.log 경고" },
+    { "event": "PostToolUse", "hook": "governance-capture (post)", "description": "도구 출력의 거버넌스 이벤트 캡처" },
+    { "event": "PostToolUse", "hook": "observe (post)", "description": "연속 학습용 도구 결과 관찰 (async)", "async": true },
+    { "event": "PostToolUseFailure", "hook": "mcp-health-check (failure)", "description": "MCP 실패 추적, 비정상 서버 마킹, 재연결 시도" },
+    { "event": "Stop", "hook": "stop-format-typecheck", "description": "세션 응답 완료 시 JS/TS 파일 일괄 포맷(Biome/Prettier) + 타입체크(tsc)", "timeout": 300 },
+    { "event": "Stop", "hook": "check-console-log", "description": "수정 파일의 console.log 최종 검사" },
+    { "event": "Stop", "hook": "session-end", "description": "세션 상태 영구 저장 (async)", "async": true },
+    { "event": "Stop", "hook": "evaluate-session", "description": "세션에서 패턴 추출 평가 (async)", "async": true },
+    { "event": "Stop", "hook": "cost-tracker (stop)", "description": "세션 토큰·비용 메트릭 추적 (async)", "async": true },
+    { "event": "Stop", "hook": "desktop-notify", "description": "macOS/WSL 데스크톱 알림 (async)", "async": true },
+    { "event": "SessionEnd", "hook": "session-end-marker", "description": "세션 종료 라이프사이클 마커 (비차단, async)" }
+  ],
+  "constraints": [
+    "모든 훅은 비치명적 오류 시 반드시 exit 0",
+    "블로킹 훅(PreToolUse, Stop): 200ms 이하 — 네트워크 호출 금지",
+    "신규 훅은 반드시 run-with-flags.js 래퍼를 통해 등록",
+    "ECC_HOOK_PROFILE이 allowedProfiles에 포함될 때만 실행",
+    "async 훅: 'async: true' + timeout ≤30초",
+    "stdin은 raw JSON — 파싱 실패 시 원본 그대로 stdout 출력",
+    "훅 스크립트 200줄 이하 — 초과 시 scripts/lib/ 추출"
+  ],
+  "riskLevel": "high",
+  "dependsOn": ["domain_common", "domain_state_store"]
+}

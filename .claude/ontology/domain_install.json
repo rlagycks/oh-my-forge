@@ -1,0 +1,66 @@
+{
+  "domain": "domain_install",
+  "version": "1.0",
+  "source": [
+    "scripts/install-apply.js",
+    "scripts/install-plan.js",
+    "scripts/lib/install/apply.js",
+    "scripts/lib/install/config.js",
+    "scripts/lib/install/request.js",
+    "scripts/lib/install/runtime.js",
+    "scripts/lib/install-manifests.js",
+    "scripts/lib/install-executor.js",
+    "manifests/install-profiles.json",
+    "manifests/install-modules.json",
+    "manifests/install-components.json"
+  ],
+  "summary": "oh-my-forge 설치 시스템. 프로파일(core/developer/security/research/full) 선택 → 모듈 조합 → 대상(Claude/Cursor/Codex 등) 별 파일 복사. --dry-run 플래그로 미리보기 지원.",
+  "models": [
+    {
+      "name": "InstallProfile",
+      "fields": {
+        "id": "string — core | developer | security | research | full",
+        "description": "string",
+        "modules": "string[] — 포함할 모듈 ID 목록"
+      }
+    },
+    {
+      "name": "InstallModule",
+      "fields": {
+        "id": "string — rules-core | agents-core | commands-core | hooks-runtime | ...",
+        "kind": "string — rules | agents | commands | hooks | skills | platform",
+        "description": "string",
+        "paths": "string[] — 소스 경로 목록",
+        "targets": "string[] — claude | cursor | antigravity | codex | opencode | codebuddy",
+        "dependencies": "string[] — 선행 모듈 ID",
+        "defaultInstall": "boolean",
+        "cost": "string — light | medium | heavy",
+        "stability": "string — stable | beta | experimental"
+      }
+    },
+    {
+      "name": "InstallTarget",
+      "fields": {
+        "id": "string — claude-home | cursor-project | codex-home | ...",
+        "basePath": "string — 설치 대상 디렉터리",
+        "adapter": "string — 어댑터 파일명 (scripts/lib/install-targets/)"
+      }
+    }
+  ],
+  "components": [
+    { "profile": "core", "modules": ["rules-core", "agents-core", "commands-core", "hooks-runtime", "platform-configs", "workflow-quality"] },
+    { "profile": "developer", "modules": ["core 모듈 + framework-language, database, orchestration"] },
+    { "profile": "security", "modules": ["core 모듈 + security"] },
+    { "profile": "research", "modules": ["core 모듈 + research-apis, business-content, social-distribution"] },
+    { "profile": "full", "modules": ["모든 분류된 모듈"] }
+  ],
+  "constraints": [
+    "설치 대상 경로는 manifests/ 에만 정의 — 코드 하드코딩 금지",
+    "기존 파일 덮어쓰기 전 백업 생성",
+    "설치 실패는 전체 중단 — 부분 롤백 없음 (일관성 보장)",
+    "--dry-run 플래그는 파일 시스템 변경 없이 계획만 출력",
+    "언어명 패턴: /^[a-zA-Z0-9_-]+$/ (LANGUAGE_NAME_PATTERN)",
+    "생성 소스 파일 제외 접미사: /ecc-install-state.json, /ecc/install-state.json"
+  ],
+  "dependsOn": ["domain_common"]
+}

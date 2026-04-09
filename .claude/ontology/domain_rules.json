@@ -1,0 +1,82 @@
+{
+  "domain": "domain_rules",
+  "version": "1.0",
+  "source": [
+    "rules/README.md",
+    "rules/common/",
+    "rules/typescript/",
+    "rules/python/",
+    "rules/golang/",
+    "rules/swift/",
+    "rules/php/",
+    "rules/kotlin/",
+    "rules/java/",
+    "rules/cpp/",
+    "rules/rust/",
+    "rules/perl/",
+    "rules/csharp/",
+    "rules/zh/"
+  ],
+  "summary": "레이어드 규칙 시스템. common(언어 무관) + 언어별 디렉터리(10종) + zh(중문 번역). 언어별 규칙이 common보다 우선.",
+  "models": [
+    {
+      "name": "RuleFile",
+      "fields": {
+        "path": "string — rules/<layer>/<topic>.md",
+        "layer": "string — 'common' | 'typescript' | 'python' | 'golang' | 'swift' | 'php' | 'kotlin' | 'java' | 'cpp' | 'rust' | 'perl' | 'csharp' | 'zh'",
+        "topic": "string — 'coding-style' | 'testing' | 'hooks' | 'patterns' | 'security' | 'git-workflow' | 'agents' | 'performance' | 'code-review' | 'development-workflow'",
+        "overridesCommon": "boolean — 언어별 파일이 common 동명 파일을 오버라이드"
+      }
+    },
+    {
+      "name": "RulePriority",
+      "description": "충돌 시 적용 우선순위",
+      "fields": {
+        "level_1": "language-specific (highest) — typescript/, python/ 등",
+        "level_2": "common/ — 언어 무관 기본값",
+        "level_3": "zh/ — common의 중문 번역, 내용 동일"
+      }
+    }
+  ],
+  "components": [
+    {
+      "layer": "common",
+      "files": [
+        "coding-style.md",
+        "testing.md",
+        "hooks.md",
+        "patterns.md",
+        "security.md",
+        "git-workflow.md",
+        "agents.md",
+        "performance.md",
+        "code-review.md",
+        "development-workflow.md"
+      ],
+      "description": "모든 프로젝트에 적용되는 언어 무관 원칙"
+    },
+    {
+      "layer": "language-specific",
+      "languages": ["typescript", "python", "golang", "swift", "php", "kotlin", "java", "cpp", "rust", "perl", "csharp"],
+      "filesPerLanguage": ["coding-style.md", "testing.md", "hooks.md", "patterns.md", "security.md"],
+      "description": "언어별 프레임워크 패턴, 도구, 코드 예시"
+    },
+    {
+      "layer": "zh",
+      "description": "common 규칙의 중문 번역 — 내용 동일, common과 별개 파일로 유지"
+    }
+  ],
+  "constraints": [
+    "언어별 규칙이 common 규칙과 충돌 시 언어별 우선 (CSS specificity 방식)",
+    "common/ 디렉터리는 언어 특정 코드 예시 포함 금지",
+    "install.sh 로 설치 시 반드시 디렉터리 단위 복사 — /* 확장자 플래팅 금지 (동명 파일 덮어쓰기 위험)",
+    "zh/ 는 common/ 의 번역본 — 별도 규칙 추가 금지",
+    "신규 언어 추가 시 5개 파일 필수: coding-style, testing, hooks, patterns, security"
+  ],
+  "installFlow": {
+    "script": "install.sh",
+    "example": "./install.sh typescript python",
+    "target": "~/.claude/rules/"
+  },
+  "dependsOn": ["domain_common"]
+}
