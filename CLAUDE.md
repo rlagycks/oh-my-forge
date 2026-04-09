@@ -70,3 +70,8 @@ Use the following skills when working on related files:
 | `.github/workflows/*.yml` | `/ci-workflow` |
 
 When spawning subagents, always pass conventions from the respective skill into the agent's prompt.
+
+## Git Commit Policy
+
+- Do NOT add `Co-Authored-By: Claude` or any Claude/Anthropic attribution to commit messages.
+- Keep commit messages concise and use conventional commit prefixes (feat, fix, docs, chore, etc.).
