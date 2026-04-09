@@ -39,9 +39,12 @@ function resolveEccRoot(options = {}) {
     return claudeDir;
   }
 
-  // Exact legacy plugin install locations. These preserve backwards
-  // compatibility without scanning arbitrary plugin trees.
+  // Exact plugin install locations — oh-my-forge first, then legacy ECC paths
+  // for backwards compatibility.
   const legacyPluginRoots = [
+    path.join(claudeDir, 'plugins', 'oh-my-forge'),
+    path.join(claudeDir, 'plugins', 'oh-my-forge@rlagycks'),
+    path.join(claudeDir, 'plugins', 'marketplace', 'oh-my-forge'),
     path.join(claudeDir, 'plugins', 'everything-claude-code'),
     path.join(claudeDir, 'plugins', 'everything-claude-code@everything-claude-code'),
     path.join(claudeDir, 'plugins', 'marketplace', 'everything-claude-code')
@@ -55,8 +58,10 @@ function resolveEccRoot(options = {}) {
 
   // Plugin cache — Claude Code stores marketplace plugins under
   // ~/.claude/plugins/cache/<plugin-name>/<org>/<version>/
+  // Scan oh-my-forge cache first, then fall back to everything-claude-code.
+  for (const cachePluginName of ['oh-my-forge', 'everything-claude-code']) {
   try {
-    const cacheBase = path.join(claudeDir, 'plugins', 'cache', 'everything-claude-code');
+    const cacheBase = path.join(claudeDir, 'plugins', 'cache', cachePluginName);
     const orgDirs = fs.readdirSync(cacheBase, { withFileTypes: true });
 
     for (const orgEntry of orgDirs) {
@@ -79,8 +84,9 @@ function resolveEccRoot(options = {}) {
       }
     }
   } catch {
-    // Plugin cache doesn't exist or isn't readable — continue to fallback
+    // Plugin cache doesn't exist or isn't readable — continue to next name
   }
+  } // end for cachePluginName
 
   return claudeDir;
 }

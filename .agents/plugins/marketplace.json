@@ -1,11 +1,11 @@
 {
-  "name": "everything-claude-code",
+  "name": "oh-my-forge",
   "interface": {
-    "displayName": "Everything Claude Code"
+    "displayName": "oh-my-forge"
   },
   "plugins": [
     {
-      "name": "everything-claude-code",
+      "name": "oh-my-forge",
       "source": {
         "source": "local",
         "path": "../.."

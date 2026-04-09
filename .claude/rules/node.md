@@ -1,6 +1,6 @@
-# Node.js Rules for everything-claude-code
+# Node.js Rules for oh-my-forge
 
-> Project-specific rules for the ECC codebase. Extends common rules.
+> Project-specific rules for the oh-my-forge codebase. Extends common rules.
 
 ## Stack
 

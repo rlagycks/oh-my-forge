@@ -72,6 +72,9 @@ function resolvePluginRoot() {
   }
 
   const knownPaths = [
+    path.join(claudeDir, 'plugins', 'oh-my-forge'),
+    path.join(claudeDir, 'plugins', 'oh-my-forge@rlagycks'),
+    path.join(claudeDir, 'plugins', 'marketplace', 'oh-my-forge'),
     path.join(claudeDir, 'plugins', 'everything-claude-code'),
     path.join(claudeDir, 'plugins', 'everything-claude-code@everything-claude-code'),
     path.join(claudeDir, 'plugins', 'marketplace', 'everything-claude-code'),
@@ -83,9 +86,10 @@ function resolvePluginRoot() {
     }
   }
 
-  // Walk versioned cache: ~/.claude/plugins/cache/everything-claude-code/<org>/<version>/
+  // Walk versioned cache: ~/.claude/plugins/cache/<plugin-name>/<org>/<version>/
+  for (const cachePluginName of ['oh-my-forge', 'everything-claude-code']) {
   try {
-    const cacheBase = path.join(claudeDir, 'plugins', 'cache', 'everything-claude-code');
+    const cacheBase = path.join(claudeDir, 'plugins', 'cache', cachePluginName);
     for (const org of fs.readdirSync(cacheBase, { withFileTypes: true })) {
       if (!org.isDirectory()) continue;
       for (const version of fs.readdirSync(path.join(cacheBase, org.name), { withFileTypes: true })) {
@@ -99,6 +103,7 @@ function resolvePluginRoot() {
   } catch {
     // cache directory may not exist; that's fine
   }
+  } // end for cachePluginName
 
   return claudeDir;
 }

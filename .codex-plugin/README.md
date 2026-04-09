@@ -1,6 +1,6 @@
-# .codex-plugin — Codex Native Plugin for ECC
+# .codex-plugin — Codex Native Plugin for oh-my-forge
 
-This directory contains the **Codex plugin manifest** for Everything Claude Code.
+This directory contains the **Codex plugin manifest** for oh-my-forge.
 
 ## Structure
 
@@ -22,7 +22,7 @@ Codex plugin support is currently in preview. Once generally available:
 
 ```bash
 # Install from Codex CLI
-codex plugin install affaan-m/everything-claude-code
+codex plugin install rlagycks/oh-my-forge
 
 # Or reference locally during development
 codex plugin install ./
