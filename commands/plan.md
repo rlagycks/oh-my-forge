@@ -121,7 +121,17 @@ For manual installs, the source file lives at:
 
 When the user responds with "yes", "proceed", "승인", or similar affirmative:
 
-### Step 1 — Detect implementation engine
+### Step 1 — Save plan to file
+
+Extract the feature name from the plan title (e.g. "Implementation Plan: Real-Time Notifications" → "real-time-notifications") and save the full plan content to `~/.claude/plans/`:
+
+```bash
+node scripts/lib/save-plan.js "<feature-name>" --content "<full plan markdown>"
+```
+
+Store the returned absolute path as `PLAN_FILE`.
+
+### Step 2 — Detect implementation engine
 
 ```bash
 node -e "const {detectImplementationEngine} = require('./scripts/lib/utils'); console.log(detectImplementationEngine())"
@@ -129,22 +139,22 @@ node -e "const {detectImplementationEngine} = require('./scripts/lib/utils'); co
 
 Store result as `ENGINE` ("codex" or "claude").
 
-### Step 2 — Check for ontology index
+### Step 3 — Check for ontology index
 
 Read `.claude/ontology/index.json`. If it does not exist → skip to **Fallback**.
 
-### Step 3 — Map plan phases to ontology domains
+### Step 4 — Map plan phases to ontology domains
 
 Look up `files[]` in each domain entry to match the files mentioned in the confirmed plan. If no phase maps to any domain → skip to **Fallback**.
 
-### Step 4 — Delegate per domain
+### Step 5 — Delegate per domain
 
 **If ENGINE = "codex"**: Use the `Agent` tool to invoke `codex-delegate` for each matched domain. Respecting `dependsOn` order from the ontology. Parallel agents for independent domains.
 
 ```
 Agent({
   description: "Implement domain_X",
-  prompt: "Run /codex-delegate domain_X with this plan context:\n<paste the relevant phase steps, risks, file paths from the confirmed plan>"
+  prompt: "Run /codex-delegate domain_X with this plan context:\nplan_file: <PLAN_FILE>\n\n<paste only the relevant phase steps for this domain>"
 })
 ```
 
@@ -152,12 +162,13 @@ Agent({
 
 Files outside any domain: implement inline.
 
-### Step 5 — Report delegation status
+### Step 6 — Report delegation status
 
 ```
 Implementation summary
 ──────────────────────────────────────────
 Engine: codex | claude
+Plan saved: ~/.claude/plans/<feature>-<timestamp>.md
 domain_hooks    → /codex-delegate dispatched
 domain_session  → /codex-delegate dispatched
 scripts/utils.js → handled inline (not in ontology)
