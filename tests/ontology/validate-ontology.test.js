@@ -63,6 +63,11 @@ for (const [key, entry] of domains) {
       `files must be a non-empty array`);
   });
 
+  run(`${key}: has summary`, () => {
+    assert.ok(typeof entry.summary === 'string' && entry.summary.length > 0,
+      `summary must be a non-empty string`);
+  });
+
   run(`${key}: has spec field`, () => {
     assert.ok(typeof entry.spec === 'string' && entry.spec.length > 0,
       `spec must be a non-empty string`);

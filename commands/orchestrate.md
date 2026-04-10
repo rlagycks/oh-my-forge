@@ -41,7 +41,7 @@ security-reviewer -> code-reviewer -> architect
 워크플로우 실행 전 온톨로지 인덱스를 확인한다.
 
 ```bash
-cat .claude/ontology/index.json 2>/dev/null
+node '${CLAUDE_PLUGIN_ROOT:-.}/scripts/lib/ontology.js' summary 2>/dev/null
 ```
 
 인덱스가 존재하는 경우 아래 라우팅 규칙을 적용한다:

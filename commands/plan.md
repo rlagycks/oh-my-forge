@@ -163,7 +163,7 @@ Store result as `ENGINE` ("codex" or "claude").
 
 ### Step 3 — Check for ontology index
 
-Read `.claude/ontology/index.json`. If it does not exist → skip to **Step 5 (Fallback delegation)**.
+Run `node '${CLAUDE_PLUGIN_ROOT:-.}/scripts/lib/ontology.js' query --domain <domain_id>`. If it fails → skip to **Step 5 (Fallback delegation)**.
 
 ### Step 4 — Map plan phases to ontology domains
 
