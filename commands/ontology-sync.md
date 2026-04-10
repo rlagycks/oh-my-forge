@@ -123,6 +123,46 @@ Blast Radius 분석 결과:
 
 ---
 
+## Step 4b — Changelog 기록
+
+`--check` 모드가 아닐 경우, Step 4에서 실제로 변경된 각 도메인을 `.claude/ontology/CHANGELOG.md`에 기록한다.
+
+`scripts/lib/ontology-changelog.js`의 `appendEntry(projectRoot, opts)` 함수를 호출한다:
+
+```js
+const { appendEntry } = require('./scripts/lib/ontology-changelog');
+
+// 추가된 도메인
+appendEntry(projectRoot, {
+  domain: 'domain_my_feature',
+  action: 'added',
+  changedFields: ['files', 'spec', 'codexWorkerHint'],
+  trigger: 'ontology-sync',
+  reason: 'spec 파일 발견, index.json 엔트리 없음',
+});
+
+// 갱신된 도메인 (files[] 경로 불일치 수정 등)
+appendEntry(projectRoot, {
+  domain: 'domain_hooks',
+  action: 'updated',
+  changedFields: ['files'],
+  trigger: 'ontology-sync',
+  reason: '존재하지 않는 파일 경로 제거',
+});
+
+// 제거된 도메인 (--fix 모드)
+appendEntry(projectRoot, {
+  domain: 'domain_old',
+  action: 'removed',
+  trigger: 'ontology-sync --fix',
+  reason: 'spec 파일 없는 고아 엔트리 — 사용자 확인 후 제거',
+});
+```
+
+변경 사항이 없으면 changelog에 기록하지 않는다.
+
+---
+
 ## Step 5 — docs/features/index.md 재생성
 
 `docs/features/index.md`를 읽고 도메인 테이블 부분만 재작성한다.
