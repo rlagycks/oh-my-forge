@@ -181,7 +181,10 @@
       ".codex/AGENTS.md",
       ".codex/hooks.json",
       ".codex/agents/explorer.toml",
-      ".codex/agents/reviewer.toml"
+      ".codex/agents/reviewer.toml",
+      "commands/codex-delegate.md",
+      "agents/codex-rescue.md",
+      "scripts/hooks/pre-bash-codex-guard.js"
     ],
     "spec": "docs/features/codex.md",
     "detail": ".claude/ontology/domain_codex.json",
@@ -189,7 +192,10 @@
     "codexWorkerHint": "read-only",
     "constraints": [
       "explorer/reviewer/docs-researcher의 sandbox_mode = read-only 변경 금지 (OS 레벨 격리)",
-      "merge-mcp-config.js(sync-ecc-to-codex.sh)는 기존 사용자 설정 삭제/수정 금지 — add-only"
+      "merge-mcp-config.js(sync-ecc-to-codex.sh)는 기존 사용자 설정 삭제/수정 금지 — add-only",
+      "codex-companion.mjs 호출 시 --approval-mode 플래그 사용 금지 — pre-bash-codex-guard가 차단하지만 소스에도 작성 불가|pattern:--approval-mode",
+      "codex-companion.mjs task 호출은 인라인 positional 프롬프트 금지 — --prompt-file 사용 필수|pattern:companion.mjs task \"",
+      "codex-rescue 에이전트 수정 시 반드시 fail-fast 보장 — 재시도 루프 추가 금지|pattern:retry"
     ]
   },
   "domain_qa": {
