@@ -307,4 +307,15 @@ scripts/new-util.js → handled inline (not in ontology)
 
 ### Fallback — No ontology / no domain match
 
-If `.claude/ontology/index.json` does not exist or no plan files match any domain, implement directly as Claude without any delegation (regardless of ENGINE).
+If `.claude/ontology/index.json` does not exist or no plan files match any domain:
+
+**If ENGINE = "codex"**: Still delegate to Codex. Extract all file paths from the plan and invoke as a single agent:
+
+```
+Agent({
+  description: "Implement <feature-name>",
+  prompt: "Run /codex-delegate with this plan context:\nplan_file: <PLAN_FILE>\n\nFILES:\n<all file paths from the plan, one per line>\n\nTASK: Implement all phases in the plan file."
+})
+```
+
+**If ENGINE = "claude"**: Implement directly inline as Claude.
