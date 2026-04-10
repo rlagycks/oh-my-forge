@@ -1,7 +1,8 @@
 {
   "$schema": "./.claude/ontology/_schema.json",
   "domain_common": {
-    "files": [".claude-plugin/plugin.json", "CLAUDE.md", "README.md", "package.json"],
+    "summary": "공통 설정 — plugin.json, CLAUDE.md, README, package.json",
+    "files": [".claude-plugin/plugin.json", "CLAUDE.md", "README.md", "package.json", "scripts/lib/ontology.js"],
     "spec": "docs/features/common.md",
     "detail": ".claude/ontology/domain_common.json",
     "owner": "oh-my-forge",
@@ -12,6 +13,7 @@
     ]
   },
   "domain_agents": {
+    "summary": "에이전트 파일 라이브러리 — agents/ 및 .agents/ 배포 대상",
     "files": ["agents/", ".agents/"],
     "spec": "docs/features/agents.md",
     "detail": ".claude/ontology/domain_agents.json",
@@ -23,6 +25,7 @@
     ]
   },
   "domain_skills": {
+    "summary": "스킬 워크플로우 라이브러리 — skills/ 큐레이션 및 생성 스킬",
     "files": ["skills/", ".agents/skills/"],
     "spec": "docs/features/skills.md",
     "detail": ".claude/ontology/domain_skills.json",
@@ -34,6 +37,7 @@
     ]
   },
   "domain_commands": {
+    "summary": "슬래시 커맨드 73종 — /command-name 형식으로 Skill 툴 호출",
     "files": ["commands/", "COMMANDS-QUICK-REF.md"],
     "spec": "docs/features/commands.md",
     "detail": ".claude/ontology/domain_commands.json",
@@ -45,6 +49,7 @@
     ]
   },
   "domain_hooks": {
+    "summary": "훅 트리거 자동화 — PreToolUse/PostToolUse/Stop 이벤트 처리",
     "files": [
       "hooks/hooks.json",
       ".codex/hooks.json",
@@ -65,6 +70,7 @@
     ]
   },
   "domain_rules": {
+    "summary": "코딩 규칙 레이어 — common/ + 언어별 규칙 디렉터리",
     "files": [
       "rules/README.md",
       "rules/common/",
@@ -84,6 +90,7 @@
     ]
   },
   "domain_session": {
+    "summary": "세션 영속성 — 시작/종료 훅, 세션 매칭, 별칭 관리",
     "files": [
       "scripts/hooks/session-start.js",
       "scripts/hooks/session-end.js",
@@ -102,6 +109,7 @@
     ]
   },
   "domain_install": {
+    "summary": "설치 파이프라인 — 프로파일/모듈/컴포넌트 매니페스트 기반 설치",
     "files": [
       "scripts/install-apply.js",
       "scripts/install-plan.js",
@@ -119,6 +127,7 @@
     ]
   },
   "domain_state_store": {
+    "summary": "sql.js WASM 기반 로컬 상태 저장소 — 세션/오케스트레이션 상태",
     "files": [
       "scripts/lib/state-store/index.js",
       "scripts/lib/state-store/schema.js",
@@ -135,6 +144,7 @@
     ]
   },
   "domain_orchestration": {
+    "summary": "tmux 워크트리 오케스트레이터 — 병렬 Claude 워커 관리",
     "files": [
       "scripts/orchestrate-worktrees.js",
       "scripts/orchestration-status.js",
@@ -153,6 +163,7 @@
     ]
   },
   "domain_package_manager": {
+    "summary": "패키지 매니저 감지 — env var→config→lockfile 6단계 순서",
     "files": ["scripts/lib/package-manager.js"],
     "spec": "docs/features/package-manager.md",
     "detail": ".claude/ontology/domain_package_manager.json",
@@ -164,6 +175,7 @@
     ]
   },
   "domain_codex": {
+    "summary": "Codex CLI 연동 설정 — config.toml, AGENTS.md, 훅, 에이전트 토믈",
     "files": [
       ".codex/config.toml",
       ".codex/AGENTS.md",
@@ -181,6 +193,7 @@
     ]
   },
   "domain_qa": {
+    "summary": "QA 지식 레이어 — qa-loop 커맨드 및 버그 히스토리 컨텍스트 주입",
     "files": ["commands/qa-loop.md", "scripts/hooks/qa-context-inject.js"],
     "spec": "docs/features/qa-knowledge-layer.md",
     "detail": ".claude/ontology/domain_qa.json",

@@ -71,7 +71,7 @@ Run /prp-plan <feature-description> to create a plan first.
 계획 파일에 `## Domain Context` 섹션이 있거나 `.claude/ontology/index.json`이 존재하면:
 
 1. 영향 받는 `domain_*` 키를 수집한다
-2. 각 도메인의 `constraints[]`를 읽어 구현 전 체크리스트로 보관한다
+2. `node '${CLAUDE_PLUGIN_ROOT:-.}/scripts/lib/ontology.js' query --domain <domain_id>`로 각 도메인의 `constraints[]`를 읽어 구현 전 체크리스트로 보관한다
 3. Phase 3 EXECUTE의 각 태스크 완료 후 해당 제약을 위반하지 않았는지 확인한다
 
 도메인 제약 위반은 즉시 수정 — 다음 태스크로 넘어가기 전에 해결한다.

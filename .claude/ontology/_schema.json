@@ -31,6 +31,10 @@
           "pattern": "^\\.claude/ontology/domain_.+\\.json$",
           "description": "Path to the rich machine-readable domain JSON under .claude/ontology/. Loaded on-demand for Codex BRIEF generation."
         },
+        "summary": {
+          "type": "string",
+          "description": "One-line description of this domain. Used by ontology.js summary command to avoid reading spec files."
+        },
         "owner": {
           "type": "string",
           "description": "Team or area that owns this domain (informational)."

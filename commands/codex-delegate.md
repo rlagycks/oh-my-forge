@@ -19,7 +19,7 @@ Delegate an implementation task to Codex using the ontology GPS. Claude reads on
 
 ### Step 1 — Ontology Query
 
-Read `.claude/ontology/index.json`.
+Run `node '${CLAUDE_PLUGIN_ROOT:-.}/scripts/lib/ontology.js' query --domain <domain_id>` (fallback to `keys` if the domain is missing).
 
 **Detect format:**
 - **Flat format**: `{ "domain_X": { files: [...], ... } }` — domain entry is inline
