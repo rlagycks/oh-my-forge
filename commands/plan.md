@@ -126,7 +126,20 @@ When the user responds with "yes", "proceed", "승인", or similar affirmative:
 Extract the feature name from the plan title (e.g. "Implementation Plan: Real-Time Notifications" → "real-time-notifications") and save the full plan content to `~/.claude/plans/`:
 
 ```bash
-node scripts/lib/save-plan.js "<feature-name>" --content "<full plan markdown>"
+node -e "
+const fs=require('fs'),os=require('os'),path=require('path');
+const name=process.argv[1]||'plan';
+const content=process.argv[2]||'';
+if(!content.trim()){process.stderr.write('No content\n');process.exit(1);}
+const slug=name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+\$/g,'').slice(0,60)||'plan';
+const d=new Date(),p=(n)=>String(n).padStart(2,'0');
+const ts=d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes());
+const dir=path.join(os.homedir(),'.claude','plans');
+fs.mkdirSync(dir,{recursive:true});
+const file=path.join(dir,slug+'-'+ts+'.md');
+fs.writeFileSync(file,content,'utf8');
+process.stdout.write(file+'\n');
+" "<feature-name>" "<full plan markdown>"
 ```
 
 Store the returned absolute path as `PLAN_FILE`.
@@ -134,7 +147,16 @@ Store the returned absolute path as `PLAN_FILE`.
 ### Step 2 — Detect implementation engine
 
 ```bash
-node -e "const {detectImplementationEngine} = require('./scripts/lib/utils'); console.log(detectImplementationEngine())"
+node -e "
+const fs = require('fs'), os = require('os'), path = require('path');
+const env = process.env.CLAUDE_IMPL_ENGINE;
+if (env === 'claude' || env === 'codex') { console.log(env); process.exit(0); }
+for (const f of [path.join(process.cwd(), '.claude/settings.json'), path.join(os.homedir(), '.claude/settings.json')]) {
+  try { const s = JSON.parse(fs.readFileSync(f,'utf8')); if (s.implementationEngine === 'claude' || s.implementationEngine === 'codex') { console.log(s.implementationEngine); process.exit(0); } } catch {}
+}
+const {execFileSync} = require('child_process');
+try { execFileSync('which', ['codex'], {stdio:'ignore'}); console.log('codex'); } catch { console.log('claude'); }
+"
 ```
 
 Store result as `ENGINE` ("codex" or "claude").
