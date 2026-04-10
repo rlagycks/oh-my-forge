@@ -193,7 +193,7 @@ function run(rawInput) {
   enforced.add(enforcerKey);
   saveEnforced(enforced);
 
-  // Output hookSpecificOutput to force /decide
+  // Output hookSpecificOutput to force /decide and /error-capture
   const filename = path.basename(filePath);
   const shortCommand = matchingError.command.slice(0, 120).replace(/\n/g, ' ');
   const exitCode = matchingError.exitCode;
@@ -208,8 +208,9 @@ function run(rawInput) {
     ``,
     `Failed command: \`${shortCommand}${matchingError.command.length > 120 ? '...' : ''}\``,
     ``,
-    `Before continuing, you MUST record the root cause using /decide:`,
+    `Before continuing, complete BOTH steps:`,
     ``,
+    `**Step 1 — Record the decision with /decide:**`,
     `\`\`\`bash`,
     `${decisionsScript} add \\`,
     `  --domain <domain> \\`,
@@ -220,8 +221,11 @@ function run(rawInput) {
     `  --prevention "<pattern that would have caught this>"`,
     `\`\`\``,
     ``,
-    `If a \`--prevention\` pattern is provided, it will be automatically added to the domain's`,
-    `\`constraints[]\` so constraint-guard.js will block the same mistake in future sessions.`,
+    `**Step 2 — Capture as ontology constraint with /error-capture:**`,
+    `Run \`/error-capture\` to classify whether this failure represents an ontology gap`,
+    `(missing \`constraints[]\` entry) or a harness gap (needs a new enforcement hook/instinct).`,
+    `This ensures constraint-guard.js or a future hook will STRUCTURALLY PREVENT the same`,
+    `failure from recurring — not just document it.`,
     ``,
     `If this edit is unrelated to the error, you may skip by recording the decision with type=design.`,
   ].join('\n');

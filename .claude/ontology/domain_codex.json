@@ -8,7 +8,10 @@
     ".codex/agents/explorer.toml",
     ".codex/agents/reviewer.toml",
     ".codex/agents/docs-researcher.toml",
-    ".codex/agents/implementer.toml"
+    ".codex/agents/implementer.toml",
+    "commands/codex-delegate.md",
+    "agents/codex-rescue.md",
+    "scripts/hooks/pre-bash-codex-guard.js"
   ],
   "summary": "Codex CLI 통합. 4개 멀티에이전트 역할(explorer/reviewer/docs-researcher/implementer), MCP 서버 구성, sandbox 정책. Claude Code hooks 없이 approval_policy + sandbox_mode로 행동 제어.",
   "models": [
@@ -84,7 +87,10 @@
     "implementer는 BRIEF의 FILES 섹션에 명시된 파일만 수정 — 범위 외 파일 접근 금지",
     "implementer 완료 보고 형식: RESULT / FILES CHANGED / TESTS / SUMMARY 고정",
     "multi_agent 활성화 시 max_threads = 6, max_depth = 1",
-    "신규 파일 생성 시 .claude/ontology/index.json 업데이트 필수 (implementer 규칙)"
+    "신규 파일 생성 시 .claude/ontology/index.json 업데이트 필수 (implementer 규칙)",
+    "codex-companion.mjs 호출 시 --approval-mode 플래그 사용 금지 — pre-bash-codex-guard가 차단하지만 소스에도 작성 불가|pattern:--approval-mode",
+    "codex-companion.mjs task 호출은 인라인 positional 프롬프트 금지 — --prompt-file 사용 필수|pattern:companion.mjs task \"",
+    "codex-rescue 에이전트 수정 시 반드시 fail-fast 보장 — 재시도 루프 추가 금지|pattern:retry"
   ],
   "vsClaudeCode": {
     "hooks": "Codex는 훅 없음 — approval_policy + sandbox_mode + notify로 대체",
@@ -113,6 +119,21 @@
       "why": "기존 로직은 ontology match 실패 시 ENGINE=claude로 폴백하여 Claude가 직접 구현. 사용자 의도는 Codex가 설치돼 있으면 항상 Codex에 위임. Step 5를 'fallback delegation'으로 재정의하여 ENGINE=codex면 무조건 Agent 위임.",
       "files": ["commands/plan.md"],
       "ref": "PR #6, commit 297a8e4"
+    },
+    {
+      "id": "dec-20260411-001",
+      "date": "2026-04-11",
+      "type": "bug-fix",
+      "domain": "domain_codex",
+      "summary": "codex-companion.mjs 5-layer 실패 체인 차단 — pre-bash-codex-guard.js PreToolUse 훅 추가",
+      "why": "codex-rescue 에이전트가 (1) --approval-mode 같은 hallucinated 플래그 사용, (2) 인라인 Korean/멀티라인 BRIEF가 POSIX shell 파싱 실패, (3) 실패 시 retry 루프 무한 반복. 이 세 문제가 연쇄하여 Codex 작업이 완전히 실패하고 Claude가 직접 구현에 fallback함. pre-bash-codex-guard.js PreToolUse 훅이 codex-companion.mjs 호출을 인터셉트해 Fix2(invalid flags 제거)+Fix3(inline prompt→--prompt-file)+Fix4(retry loop 차단) 적용.",
+      "files": [
+        "scripts/hooks/pre-bash-codex-guard.js",
+        "hooks/hooks.json",
+        "agents/codex-rescue.md",
+        "commands/codex-delegate.md"
+      ],
+      "ref": "PR #9, feat/codex-bash-guard-hook"
     }
   ]
 }
