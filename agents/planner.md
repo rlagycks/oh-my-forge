@@ -255,25 +255,35 @@ For each matched domain, load its JSON file to read `constraints`, `endpoints`, 
 
 If **no phase maps to any domain**, skip to **Fallback**.
 
+### Step 2b — Save plan to file
+
+Before delegating, save the full plan to `~/.claude/plans/` using the feature name as slug:
+
+```bash
+node scripts/lib/save-plan.js "<feature-name>" --content "<full plan markdown>"
+```
+
+Store the returned absolute path as `PLAN_FILE`. Pass this path to each delegate — Codex reads the file directly when it needs full context, avoiding inline pasting into BRIEF.
+
 ### Step 3 — Route to implementation engine per domain
 
-**If ENGINE = "codex"**: Use the `Agent` tool to invoke `codex-delegate` for each domain. Pass the relevant portion of the confirmed plan directly into the prompt so Codex has full context — not just the task description but also the specific steps, risks, and dependencies from the plan.
+**If ENGINE = "codex"**: Use the `Agent` tool to invoke `codex-delegate` for each domain. Reference the saved plan file instead of pasting plan content inline.
 
 **Single domain (Codex)** — one Agent call:
 ```
 Agent({
   description: "Implement domain_inventory",
-  prompt: "Run /codex-delegate domain_inventory with this plan context: <paste Phase 1 steps, risks, migration details from the confirmed plan>"
+  prompt: "Run /codex-delegate domain_inventory with this plan context:\nplan_file: <PLAN_FILE>\n\n<paste only the relevant phase steps for this domain>"
 })
 ```
 
-**If ENGINE = "claude"**: Use the `Agent` tool to invoke `claude-implement` for each domain. Pass the same BRIEF structure so Claude has full context.
+**If ENGINE = "claude"**: Use the `Agent` tool to invoke `claude-implement` for each domain. Pass the same BRIEF structure.
 
 **Single domain (Claude)** — one Agent call:
 ```
 Agent({
   description: "Implement domain_inventory",
-  prompt: "Run /claude-implement domain_inventory with this plan context: <paste Phase 1 steps, risks, migration details from the confirmed plan>"
+  prompt: "Run /claude-implement domain_inventory with this plan context:\nplan_file: <PLAN_FILE>\n\n<paste only the relevant phase steps for this domain>"
 })
 ```
 
@@ -297,4 +307,15 @@ scripts/new-util.js → handled inline (not in ontology)
 
 ### Fallback — No ontology / no domain match
 
-If `.claude/ontology/index.json` does not exist or no plan files match any domain, implement directly as Claude without any delegation (regardless of ENGINE).
+If `.claude/ontology/index.json` does not exist or no plan files match any domain:
+
+**If ENGINE = "codex"**: Still delegate to Codex. Extract all file paths from the plan and invoke as a single agent:
+
+```
+Agent({
+  description: "Implement <feature-name>",
+  prompt: "Run /codex-delegate with this plan context:\nplan_file: <PLAN_FILE>\n\nFILES:\n<all file paths from the plan, one per line>\n\nTASK: Implement all phases in the plan file."
+})
+```
+
+**If ENGINE = "claude"**: Implement directly inline as Claude.

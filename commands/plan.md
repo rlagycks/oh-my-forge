@@ -121,7 +121,17 @@ For manual installs, the source file lives at:
 
 When the user responds with "yes", "proceed", "승인", or similar affirmative:
 
-### Step 1 — Detect implementation engine
+### Step 1 — Save plan to file
+
+Extract the feature name from the plan title (e.g. "Implementation Plan: Real-Time Notifications" → "real-time-notifications") and save the full plan content to `~/.claude/plans/`:
+
+```bash
+node scripts/lib/save-plan.js "<feature-name>" --content "<full plan markdown>"
+```
+
+Store the returned absolute path as `PLAN_FILE`.
+
+### Step 2 — Detect implementation engine
 
 ```bash
 node -e "const {detectImplementationEngine} = require('./scripts/lib/utils'); console.log(detectImplementationEngine())"
@@ -129,22 +139,22 @@ node -e "const {detectImplementationEngine} = require('./scripts/lib/utils'); co
 
 Store result as `ENGINE` ("codex" or "claude").
 
-### Step 2 — Check for ontology index
+### Step 3 — Check for ontology index
 
-Read `.claude/ontology/index.json`. If it does not exist → skip to **Fallback**.
+Read `.claude/ontology/index.json`. If it does not exist → skip to **Step 5 (Fallback delegation)**.
 
-### Step 3 — Map plan phases to ontology domains
+### Step 4 — Map plan phases to ontology domains
 
-Look up `files[]` in each domain entry to match the files mentioned in the confirmed plan. If no phase maps to any domain → skip to **Fallback**.
+Look up `files[]` in each domain entry to match the files mentioned in the confirmed plan. If no phase maps to any domain → skip to **Step 5 (Fallback delegation)**.
 
-### Step 4 — Delegate per domain
+For matched domains: delegate per domain respecting `dependsOn` order. Parallel agents for independent domains.
 
-**If ENGINE = "codex"**: Use the `Agent` tool to invoke `codex-delegate` for each matched domain. Respecting `dependsOn` order from the ontology. Parallel agents for independent domains.
+**If ENGINE = "codex"**:
 
 ```
 Agent({
   description: "Implement domain_X",
-  prompt: "Run /codex-delegate domain_X with this plan context:\n<paste the relevant phase steps, risks, file paths from the confirmed plan>"
+  prompt: "Run /codex-delegate domain_X with this plan context:\nplan_file: <PLAN_FILE>\n\n<paste only the relevant phase steps for this domain>"
 })
 ```
 
@@ -152,18 +162,31 @@ Agent({
 
 Files outside any domain: implement inline.
 
-### Step 5 — Report delegation status
+Skip to **Step 6**.
+
+### Step 5 — Fallback delegation (no ontology or no domain match)
+
+Even without an ontology match, still delegate to the implementation engine.
+
+**If ENGINE = "codex"**: Extract all file paths mentioned in the plan and delegate as a single agent:
+
+```
+Agent({
+  description: "Implement <feature-name>",
+  prompt: "Run /codex-delegate with this plan context:\nplan_file: <PLAN_FILE>\n\nFILES:\n<all file paths from the plan, one per line>\n\nTASK: Implement all phases in the plan file."
+})
+```
+
+**If ENGINE = "claude"**: Implement directly inline as Claude.
+
+### Step 6 — Report delegation status
 
 ```
 Implementation summary
 ──────────────────────────────────────────
 Engine: codex | claude
-domain_hooks    → /codex-delegate dispatched
-domain_session  → /codex-delegate dispatched
-scripts/utils.js → handled inline (not in ontology)
+Plan saved: ~/.claude/plans/<feature>-<timestamp>.md
+domain_hooks    → /codex-delegate dispatched (ontology match)
+mobile/src/...  → /codex-delegate dispatched (fallback)
 ──────────────────────────────────────────
 ```
-
-### Fallback — No ontology or no domain match
-
-Implement directly as Claude without any delegation.
