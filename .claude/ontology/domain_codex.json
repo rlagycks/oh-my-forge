@@ -92,5 +92,27 @@
     "skills": "Claude Code: plugin 시스템 / Codex: .agents/skills/ 디렉터리",
     "agents": "Claude Code: Task tool / Codex: /agent + [agents.<name>] 역할"
   },
-  "dependsOn": ["domain_install"]
+  "dependsOn": ["domain_install"],
+  "decisions": [
+    {
+      "id": "dec-20260410-003",
+      "date": "2026-04-10",
+      "type": "bug-fix",
+      "domain": "domain_codex",
+      "summary": "codex-delegate silent failure: CLAUDE_PLUGIN_ROOT 미설정 시 codex-companion.mjs 실행 불가 → Claude가 직접 구현에 진입",
+      "why": "codex-rescue.md 에이전트가 'node \"${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs\"' 실행. CLAUDE_PLUGIN_ROOT는 ECC 설치 시 shell env로 주입되지 않아 undefined. 스크립트 실패 → Agent 종료 → 위임 없이 메인 Claude가 plan 내용을 직접 구현. 미수정 — 별도 수정 필요.",
+      "files": ["agents/codex-rescue.md", "commands/codex-delegate.md"],
+      "ref": "미수정 이슈"
+    },
+    {
+      "id": "dec-20260410-004",
+      "date": "2026-04-10",
+      "type": "design",
+      "domain": "domain_codex",
+      "summary": "plan.md Step 5 fallback: ENGINE=codex이면 ontology 미매칭 시에도 항상 codex로 위임",
+      "why": "기존 로직은 ontology match 실패 시 ENGINE=claude로 폴백하여 Claude가 직접 구현. 사용자 의도는 Codex가 설치돼 있으면 항상 Codex에 위임. Step 5를 'fallback delegation'으로 재정의하여 ENGINE=codex면 무조건 Agent 위임.",
+      "files": ["commands/plan.md"],
+      "ref": "PR #6, commit 297a8e4"
+    }
+  ]
 }
