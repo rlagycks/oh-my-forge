@@ -261,6 +261,18 @@
         "description": "Warn about console.log statements after edits"
       },
       {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-with-flags.js\" \"post:edit:ontology-check\" \"scripts/hooks/post-edit-ontology-check.js\" \"standard,strict\"",
+            "async": true,
+            "timeout": 20
+          }
+        ],
+        "description": "Run validate-ontology.js when index.json or docs/features/*.md is edited"
+      },
+      {
         "matcher": "Bash|Write|Edit|MultiEdit",
         "hooks": [
           {
