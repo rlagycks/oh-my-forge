@@ -11,6 +11,9 @@ const path = require('path');
 const fs = require('fs');
 
 const testsDir = __dirname;
+const CI_TESTS = [
+  path.join(testsDir, 'ci', 'validate-no-relative-scripts.test.js'),
+];
 
 function findTestFiles(dir) {
   const results = [];
@@ -25,7 +28,9 @@ function findTestFiles(dir) {
   return results;
 }
 
-const testFiles = findTestFiles(testsDir);
+const discovered = findTestFiles(testsDir);
+const prioritized = CI_TESTS.filter(fs.existsSync);
+const testFiles = [...new Set([...prioritized, ...discovered])];
 
 if (testFiles.length === 0) {
   console.log('No test files found.');

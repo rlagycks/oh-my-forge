@@ -185,7 +185,8 @@ appendEntry(projectRoot, {
 ## Step 6 — CI 검증
 
 ```bash
-node scripts/ci/validate-ontology.js
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+node "$PLUGIN_ROOT/scripts/ci/validate-ontology.js"
 ```
 
 실행 결과를 출력한다. 실패 시 오류 메시지를 분석하여 원인을 설명하고 수정한다.

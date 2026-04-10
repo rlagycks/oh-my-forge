@@ -173,7 +173,7 @@ Run simultaneously:
 Combine outputs into single report
 ```
 
-For external tmux-pane workers with separate git worktrees, use `node scripts/orchestrate-worktrees.js plan.json --execute`. The built-in orchestration pattern stays in-process; the helper is for long-running or cross-harness sessions.
+For external tmux-pane workers with separate git worktrees, use `PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}; node "$PLUGIN_ROOT/scripts/orchestrate-worktrees.js" plan.json --execute`. The built-in orchestration pattern stays in-process; the helper is for long-running or cross-harness sessions.
 
 When workers need to see dirty or untracked local files from the main checkout, add `seedPaths` to the plan file. ECC overlays only those selected paths into each worker worktree after `git worktree add`, which keeps the branch isolated while still exposing in-flight local scripts, plans, or docs.
 
@@ -194,7 +194,8 @@ When workers need to see dirty or untracked local files from the main checkout, 
 To export a control-plane snapshot for a live tmux/worktree session, run:
 
 ```bash
-node scripts/orchestration-status.js .claude/plan/workflow-visual-proof.json
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+node "$PLUGIN_ROOT/scripts/orchestration-status.js" .claude/plan/workflow-visual-proof.json
 ```
 
 The snapshot includes session activity, tmux pane metadata, worker states, objectives, seeded overlays, and recent handoff summaries in JSON form.

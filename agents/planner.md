@@ -260,7 +260,8 @@ If **no phase maps to any domain**, skip to **Fallback**.
 Before delegating, save the full plan to `~/.claude/plans/` using the feature name as slug:
 
 ```bash
-node scripts/lib/save-plan.js "<feature-name>" --content "<full plan markdown>"
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+node "$PLUGIN_ROOT/scripts/lib/save-plan.js" "<feature-name>" --content "<full plan markdown>"
 ```
 
 Store the returned absolute path as `PLAN_FILE`. Pass this path to each delegate — Codex reads the file directly when it needs full context, avoiding inline pasting into BRIEF.
