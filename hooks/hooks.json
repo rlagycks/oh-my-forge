@@ -191,6 +191,26 @@
         "hooks": [
           {
             "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-with-flags.js\" \"post:bash:error-tracker\" \"scripts/hooks/error-tracker.js\" \"standard,strict\""
+          }
+        ],
+        "description": "Track Bash failures to session temp file for bug-fix-enforcer to consume"
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-with-flags.js\" \"post:edit:bug-fix-enforcer\" \"scripts/hooks/bug-fix-enforcer.js\" \"standard,strict\""
+          }
+        ],
+        "description": "After file edit following a Bash error, output hookSpecificOutput requiring /decide to record root cause and prevention pattern"
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
             "command": "node -e \"const fs=require('fs'),path=require('path'),os=require('os');const raw=fs.readFileSync(0,'utf8');try{const d=JSON.parse(raw);let cmd=((d.tool_input&&d.tool_input.command)||'?');cmd=cmd.split(String.fromCharCode(10)).join(' ');cmd=cmd.replace(/--token[= ][^ ]*/g,'--token=<REDACTED>');cmd=cmd.replace(/Authorization:[: ]*[^ ]*[: ]*[^ ]*/g,'Authorization:<REDACTED>');cmd=cmd.replace(/AKIA[A-Z0-9]{16}/g,'<REDACTED>');cmd=cmd.replace(/ASIA[A-Z0-9]{16}/g,'<REDACTED>');cmd=cmd.replace(/password[= ][^ ]*/g,'password=<REDACTED>');cmd=cmd.replace(/ghp_[A-Za-z0-9_]+/g,'<REDACTED>');cmd=cmd.replace(/gho_[A-Za-z0-9_]+/g,'<REDACTED>');cmd=cmd.replace(/ghs_[A-Za-z0-9_]+/g,'<REDACTED>');cmd=cmd.replace(/github_pat_[A-Za-z0-9_]+/g,'<REDACTED>');const logDir=path.join(os.homedir(),'.claude');try{fs.mkdirSync(logDir,{recursive:true});}catch{}const line='['+new Date().toISOString()+'] '+cmd;try{fs.appendFileSync(path.join(logDir,'bash-commands.log'),line+String.fromCharCode(10));}catch{}}catch{}process.stdout.write(raw);\""
           }
         ],

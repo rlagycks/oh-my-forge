@@ -9,7 +9,8 @@ Start an interactive AI agent session with persistent markdown history and opera
 ## Usage
 
 ```bash
-node scripts/claw.js
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+node "$PLUGIN_ROOT/scripts/claw.js"
 ```
 
 Or via npm:

@@ -148,5 +148,59 @@ run('listDomains: returns domains with decisions', () => {
   assert.ok(domains.includes('domain_commands'));
 });
 
+run('addDecision: prevention auto-injects constraint for bug-fix', () => {
+  const { addDecision } = require('../../scripts/lib/decisions');
+  addDecision({
+    domain: 'domain_commands',
+    type: 'bug-fix',
+    summary: 'inline scripts instead of require paths',
+    why: 'plugin does not install scripts/ dir',
+    prevention: 'require("./scripts/'
+  });
+
+  const domainFile = path.join(tmpRoot, '.claude', 'ontology', 'domain_commands.json');
+  const domainData = JSON.parse(fs.readFileSync(domainFile, 'utf8'));
+
+  assert.ok(Array.isArray(domainData.constraints));
+  const injected = domainData.constraints.find(c => c.includes('|pattern:'));
+  assert.ok(injected, 'constraint with |pattern: should be injected');
+  assert.ok(injected.includes('require("./scripts/'), 'pattern should contain the prevention keyword');
+});
+
+run('addDecision: prevention not injected for design type', () => {
+  const { addDecision } = require('../../scripts/lib/decisions');
+  addDecision({
+    domain: 'domain_commands',
+    type: 'design',
+    summary: 'architectural choice',
+    why: 'cleaner api',
+    prevention: 'some-pattern'
+  });
+
+  const domainFile = path.join(tmpRoot, '.claude', 'ontology', 'domain_commands.json');
+  const domainData = JSON.parse(fs.readFileSync(domainFile, 'utf8'));
+  // design type should NOT inject constraint
+  const injected = (domainData.constraints || []).find(c => c.includes('|pattern:'));
+  assert.ok(!injected, 'design type should not inject prevention constraint');
+});
+
+run('addDecision: prevention not duplicated on re-add', () => {
+  const { addDecision } = require('../../scripts/lib/decisions');
+  const opts = {
+    domain: 'domain_commands',
+    type: 'constraint',
+    summary: 'no hardcoded paths',
+    why: 'portability',
+    prevention: 'hardcoded-path'
+  };
+  addDecision(opts);
+  addDecision(opts); // add again
+
+  const domainFile = path.join(tmpRoot, '.claude', 'ontology', 'domain_commands.json');
+  const domainData = JSON.parse(fs.readFileSync(domainFile, 'utf8'));
+  const injected = (domainData.constraints || []).filter(c => c.includes('|pattern:hardcoded-path'));
+  assert.strictEqual(injected.length, 1, 'duplicate prevention constraint should not be added');
+});
+
 console.log(`\n${passed + failed} tests: ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

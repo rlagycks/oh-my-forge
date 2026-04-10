@@ -37,7 +37,8 @@ When called without arguments, prompt the user for:
 Then run:
 
 ```bash
-node scripts/lib/decisions.js add \
+DECISIONS_JS=$(node -e "var e=process.env.CLAUDE_PLUGIN_ROOT,p=require('path');console.log(e?p.join(e,'scripts/lib/decisions.js'):'scripts/lib/decisions.js')")
+node "$DECISIONS_JS" add \
   --domain <domain> \
   --type <type> \
   --summary "<summary>" \
@@ -54,22 +55,38 @@ This writes to:
 
 ```bash
 # All decisions in a domain
-node scripts/lib/decisions.js query --domain domain_commands
+DECISIONS_JS=$(node -e "var e=process.env.CLAUDE_PLUGIN_ROOT,p=require('path');console.log(e?p.join(e,'scripts/lib/decisions.js'):'scripts/lib/decisions.js')")
+node "$DECISIONS_JS" query --domain domain_commands
+```
 
+```bash
 # All bug-fixes
-node scripts/lib/decisions.js query --type bug-fix
+DECISIONS_JS=$(node -e "var e=process.env.CLAUDE_PLUGIN_ROOT,p=require('path');console.log(e?p.join(e,'scripts/lib/decisions.js'):'scripts/lib/decisions.js')")
+node "$DECISIONS_JS" query --type bug-fix
+```
 
+```bash
 # Decisions touching a specific file
-node scripts/lib/decisions.js query --file commands/plan.md
+DECISIONS_JS=$(node -e "var e=process.env.CLAUDE_PLUGIN_ROOT,p=require('path');console.log(e?p.join(e,'scripts/lib/decisions.js'):'scripts/lib/decisions.js')")
+node "$DECISIONS_JS" query --file commands/plan.md
+```
 
+```bash
 # Decisions since a date
-node scripts/lib/decisions.js query --since 2026-04-01
+DECISIONS_JS=$(node -e "var e=process.env.CLAUDE_PLUGIN_ROOT,p=require('path');console.log(e?p.join(e,'scripts/lib/decisions.js'):'scripts/lib/decisions.js')")
+node "$DECISIONS_JS" query --since 2026-04-01
+```
 
+```bash
 # Free-text search
-node scripts/lib/decisions.js query --q "silent failure"
+DECISIONS_JS=$(node -e "var e=process.env.CLAUDE_PLUGIN_ROOT,p=require('path');console.log(e?p.join(e,'scripts/lib/decisions.js'):'scripts/lib/decisions.js')")
+node "$DECISIONS_JS" query --q "silent failure"
+```
 
+```bash
 # List domains that have decisions
-node scripts/lib/decisions.js list-domains
+DECISIONS_JS=$(node -e "var e=process.env.CLAUDE_PLUGIN_ROOT,p=require('path');console.log(e?p.join(e,'scripts/lib/decisions.js'):'scripts/lib/decisions.js')")
+node "$DECISIONS_JS" list-domains
 ```
 
 ## Auto-Recording Convention

@@ -22,7 +22,19 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const ONTOLOGY_DIR = path.join(process.cwd(), '.claude', 'ontology');
+// In plugin installs the CWD is the host project, which has no .claude/ontology/.
+// Fall back to the plugin root's ontology when the local one is absent.
+function resolveOntologyDir() {
+  const local = path.join(process.cwd(), '.claude', 'ontology');
+  if (fs.existsSync(local)) return local;
+  if (process.env.CLAUDE_PLUGIN_ROOT) {
+    const pluginLocal = path.join(process.env.CLAUDE_PLUGIN_ROOT, '.claude', 'ontology');
+    if (fs.existsSync(pluginLocal)) return pluginLocal;
+  }
+  return local; // return local even if missing — errors reported at use-site
+}
+
+const ONTOLOGY_DIR = resolveOntologyDir();
 const GLOBAL_LOG_DIR = path.join(os.homedir(), '.claude', 'decisions');
 const GLOBAL_LOG_FILE = path.join(GLOBAL_LOG_DIR, 'index.jsonl');
 
@@ -89,9 +101,12 @@ function listDomainFiles() {
  * @param {string} opts.why - root cause / motivation
  * @param {string[]} [opts.files] - affected file paths
  * @param {string} [opts.ref] - PR/commit/issue reference
+ * @param {string} [opts.prevention] - keyword/pattern to auto-inject into domain constraints[]
+ *   When provided for bug-fix or constraint types, appends a constraint entry:
+ *   "[prevention] <summary>|pattern:<prevention>" — picked up by constraint-guard.js
  * @returns {object} the created decision entry
  */
-function addDecision({ domain, type, summary, why, files = [], ref = '' }) {
+function addDecision({ domain, type, summary, why, files = [], ref = '', prevention = '' }) {
   const VALID_TYPES = ['design', 'bug-fix', 'refactor', 'tool-pattern', 'constraint'];
   if (!domain) throw new Error('--domain is required');
   if (!VALID_TYPES.includes(type)) throw new Error(`--type must be one of: ${VALID_TYPES.join(', ')}`);
@@ -106,14 +121,29 @@ function addDecision({ domain, type, summary, why, files = [], ref = '' }) {
     summary,
     why,
     ...(files.length ? { files } : {}),
-    ...(ref ? { ref } : {})
+    ...(ref ? { ref } : {}),
+    ...(prevention ? { prevention } : {})
   };
 
-  // Write into domain_*.json decisions array
-  const domainData = loadDomain(domain);
-  if (!Array.isArray(domainData.decisions)) domainData.decisions = [];
-  domainData.decisions.push(entry);
-  saveDomain(domain, domainData);
+  // Write into domain_*.json decisions array (best-effort; falls back to global log only)
+  const domainFile = domainFilePath(domain);
+  if (fs.existsSync(domainFile)) {
+    const domainData = loadDomain(domain);
+    if (!Array.isArray(domainData.decisions)) domainData.decisions = [];
+    domainData.decisions.push(entry);
+
+    // Auto-inject prevention pattern into domain constraints[] for constraint-guard.js
+    if (prevention && (type === 'bug-fix' || type === 'constraint')) {
+      if (!Array.isArray(domainData.constraints)) domainData.constraints = [];
+      const constraintEntry = `[prevention] ${summary}|pattern:${prevention}`;
+      // Only add if not already present (avoid duplicates on re-run)
+      if (!domainData.constraints.includes(constraintEntry)) {
+        domainData.constraints.push(constraintEntry);
+      }
+    }
+
+    saveDomain(domain, domainData);
+  }
 
   // Append to global log
   appendGlobalLog(entry);
@@ -189,7 +219,8 @@ function cli(argv) {
       summary: opts.summary,
       why: opts.why,
       files,
-      ref: opts.ref || ''
+      ref: opts.ref || '',
+      prevention: opts.prevention || ''
     });
     console.log('Decision recorded:', JSON.stringify(entry, null, 2));
     return;

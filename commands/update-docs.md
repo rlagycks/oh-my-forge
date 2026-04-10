@@ -69,7 +69,8 @@ Generate or update `docs/RUNBOOK.md` with:
 `docs/features/` 하위 파일이 변경되었거나 신규 도메인 관련 문서가 추가된 경우:
 
 ```bash
-node scripts/ci/validate-ontology.js 2>/dev/null && echo "ontology OK" || echo "⚠ ontology 불일치 — /ontology-sync 실행 권장"
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+node "$PLUGIN_ROOT/scripts/ci/validate-ontology.js" 2>/dev/null && echo "ontology OK" || echo "⚠ ontology 불일치 — /ontology-sync 실행 권장"
 ```
 
 불일치가 있으면 Summary에 경고를 포함하고 `/ontology-sync` 실행을 안내한다.

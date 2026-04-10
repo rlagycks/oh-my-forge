@@ -84,7 +84,12 @@
                 "items": { "type": "string" },
                 "description": "Files affected by this decision"
               },
-              "ref": { "type": "string", "description": "PR, commit, or issue reference" }
+              "ref": { "type": "string", "description": "PR, commit, or issue reference" },
+              "prevention": {
+                "type": "string",
+                "description": "Keyword/pattern to auto-inject into domain constraints[] for constraint-guard.js enforcement. When provided with type=bug-fix or type=constraint, decisions.js appends '[prevention] <summary>|pattern:<prevention>' to the domain's constraints[] so the same mistake is blocked in future sessions."
+              },
+              "domain": { "type": "string", "description": "Domain key — populated automatically by addDecision()" }
             }
           },
           "description": "Append-only decision log for this domain. Records design decisions, bug root causes, tool patterns, and change reasons. Query via: node scripts/lib/decisions.js query --domain <domain>"
