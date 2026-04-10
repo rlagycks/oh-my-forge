@@ -213,6 +213,8 @@ Each phase should be mergeable independently. Avoid plans that require all phase
 
 ## Post-Confirmation: Ontology-Guided Implementation Delegation
 
+> **NOTE**: This section is the reference spec. In practice, the planner sub-agent terminates after presenting the plan, so delegation is executed by the main Claude following `commands/plan.md`. Do not attempt delegation from within this agent.
+
 After the user confirms the plan, before writing any code:
 
 ### Step 0 — Detect implementation engine
