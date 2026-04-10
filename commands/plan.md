@@ -102,9 +102,6 @@ If you want changes, respond with:
 
 ## Integration with Other Commands
 
-After planning and user confirmation:
-- **Ontology-aware projects**: Automatically delegates implementation to `/codex-delegate` per domain. No manual step needed.
-- **Non-ontology projects**: Claude implements directly.
 - Use `/tdd` to implement with test-driven development (when not delegating)
 - Use `/build-fix` if build errors occur
 - Use `/code-review` to review completed implementation
@@ -117,3 +114,56 @@ This command invokes the `planner` agent provided by ECC.
 
 For manual installs, the source file lives at:
 `agents/planner.md`
+
+## Post-Confirmation: Claude Delegation Protocol
+
+**IMPORTANT**: The planner sub-agent terminates after presenting the plan. When the user confirms, YOU (the main Claude reading this command) must execute delegation — not the planner agent.
+
+When the user responds with "yes", "proceed", "승인", or similar affirmative:
+
+### Step 1 — Detect implementation engine
+
+```bash
+node -e "const {detectImplementationEngine} = require('./scripts/lib/utils'); console.log(detectImplementationEngine())"
+```
+
+Store result as `ENGINE` ("codex" or "claude").
+
+### Step 2 — Check for ontology index
+
+Read `.claude/ontology/index.json`. If it does not exist → skip to **Fallback**.
+
+### Step 3 — Map plan phases to ontology domains
+
+Look up `files[]` in each domain entry to match the files mentioned in the confirmed plan. If no phase maps to any domain → skip to **Fallback**.
+
+### Step 4 — Delegate per domain
+
+**If ENGINE = "codex"**: Use the `Agent` tool to invoke `codex-delegate` for each matched domain. Respecting `dependsOn` order from the ontology. Parallel agents for independent domains.
+
+```
+Agent({
+  description: "Implement domain_X",
+  prompt: "Run /codex-delegate domain_X with this plan context:\n<paste the relevant phase steps, risks, file paths from the confirmed plan>"
+})
+```
+
+**If ENGINE = "claude"**: Use the `Agent` tool to invoke `claude-implement` for each matched domain with the same BRIEF.
+
+Files outside any domain: implement inline.
+
+### Step 5 — Report delegation status
+
+```
+Implementation summary
+──────────────────────────────────────────
+Engine: codex | claude
+domain_hooks    → /codex-delegate dispatched
+domain_session  → /codex-delegate dispatched
+scripts/utils.js → handled inline (not in ontology)
+──────────────────────────────────────────
+```
+
+### Fallback — No ontology or no domain match
+
+Implement directly as Claude without any delegation.
