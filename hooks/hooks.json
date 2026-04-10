@@ -37,6 +37,16 @@
         "hooks": [
           {
             "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-with-flags.js\" \"pre:bash:codex-guard\" \"scripts/hooks/pre-bash-codex-guard.js\" \"standard,strict\""
+          }
+        ],
+        "description": "Intercept codex-companion.mjs task calls: strip invalid flags, rewrite inline prompt to --prompt-file, block session-scoped retry loops"
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-with-flags.js\" \"pre:bash:git-push-reminder\" \"scripts/hooks/pre-bash-git-push-reminder.js\" \"strict\""
           }
         ],
