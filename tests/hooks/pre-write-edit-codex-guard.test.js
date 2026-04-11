@@ -124,6 +124,50 @@ function testClaudeEnginePassThrough() {
   console.log('  PASS testClaudeEnginePassThrough');
 }
 
+function testSelfRepoMetaPathNotBypassed() {
+  // When editing oh-my-forge itself (pluginRoot === cwd), meta paths should NOT be
+  // exempt from the guard — otherwise the guard is completely ineffective on the
+  // plugin's own ontology-tracked files.
+  //
+  // We use CLAUDE_PLUGIN_ROOT pointing to the real repo so resolvePluginRoot resolves,
+  // and ENGINE=codex so the guard would activate if the file is tracked.
+  // skills/plan.md IS in the ontology (domain_skills), so with ENGINE=codex the guard
+  // should attempt to block (exit 2), proving the meta-path bypass was skipped.
+  const repoRoot = path.resolve(__dirname, '../..');
+  process.env.CLAUDE_PLUGIN_ROOT = repoRoot;
+  process.env.CLAUDE_IMPL_ENGINE = 'codex';
+
+  const trackedMetaFile = path.join(repoRoot, 'skills', 'plan.md');
+  const input = makeInput('Edit', trackedMetaFile);
+
+  let exitCode = null;
+  const origExit = process.exit;
+  const origStdoutWrite = process.stdout.write.bind(process.stdout);
+  process.stdout.write = () => true;
+  process.exit = (code) => { exitCode = code; throw new Error(`__EXIT_${code}__`); };
+
+  try {
+    run(input);
+  } catch (e) {
+    if (!e.message.startsWith('__EXIT_')) {
+      process.exit = origExit;
+      process.stdout.write = origStdoutWrite;
+      delete process.env.CLAUDE_PLUGIN_ROOT;
+      delete process.env.CLAUDE_IMPL_ENGINE;
+      throw e;
+    }
+  }
+
+  process.exit = origExit;
+  process.stdout.write = origStdoutWrite;
+  delete process.env.CLAUDE_PLUGIN_ROOT;
+  delete process.env.CLAUDE_IMPL_ENGINE;
+
+  assert.strictEqual(exitCode, 2,
+    'self-repo meta path (skills/plan.md) should be blocked by guard when ENGINE=codex');
+  console.log('  PASS testSelfRepoMetaPathNotBypassed');
+}
+
 // ---------------------------------------------------------------------------
 // Run all tests
 // ---------------------------------------------------------------------------
@@ -135,6 +179,7 @@ const tests = [
   testMetaPathsPassThrough,
   testNotTrackedFilePassThrough,
   testClaudeEnginePassThrough,
+  testSelfRepoMetaPathNotBypassed,
 ];
 
 let passed = 0;

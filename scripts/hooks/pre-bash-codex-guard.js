@@ -15,10 +15,12 @@
  *            substitutes --prompt-file <path>, making Fix 1 (plan-file creation
  *            in codex-delegate.md) redundant — the hook writes it correctly.
  *
- *   Fix 4 — Block a second codex-companion invocation within the same session.
- *            codex-rescue enters a retry loop when the first call fails; the
- *            hook detects session-scoped state and exits with code 2 to block
- *            the duplicate call and surface a clear error message.
+ *   Fix 4 — Block a second codex-companion invocation for the same domain within
+ *            the same session. codex-rescue enters a retry loop when the first
+ *            call fails; the hook detects per-domain session-scoped state and
+ *            exits with code 2 to block the duplicate call and surface a clear
+ *            error message. Different domains may each be invoked once (required
+ *            for parallel multi-domain plans).
  *
  * Trigger: PreToolUse on Bash
  * Profile: standard,strict
@@ -52,7 +54,7 @@ function loadState() {
   try {
     return JSON.parse(fs.readFileSync(getStatePath(), 'utf8'));
   } catch {
-    return { invocations: 0 };
+    return { domains: {} };
   }
 }
 
@@ -73,6 +75,14 @@ const BOOLEAN_FLAGS = new Set([
 ]);
 const VALUE_FLAGS = new Set([
   'model', 'effort', 'cwd', 'prompt-file', 'output-format',
+]);
+
+/**
+ * Flags that take a value and should be parsed correctly but stripped
+ * from the rebuilt command (they are guard-internal, not codex-companion flags).
+ */
+const INTERNAL_VALUE_FLAGS = new Set([
+  'domain-id',
 ]);
 
 /**
@@ -146,7 +156,7 @@ function parseCompanionCall(command) {
         i++;
       } else {
         const key = tok.slice(2);
-        if (VALUE_FLAGS.has(key) && i + 1 < rest.length && !rest[i + 1].startsWith('--')) {
+        if ((VALUE_FLAGS.has(key) || INTERNAL_VALUE_FLAGS.has(key)) && i + 1 < rest.length && !rest[i + 1].startsWith('--')) {
           flags.push({ key, value: rest[i + 1], raw: `${tok} ${rest[i + 1]}` });
           i += 2;
         } else {
@@ -242,19 +252,22 @@ function run(rawInput) {
 
   if (!isCodexCompanionTaskCall(command)) return rawInput;
 
-  // ---- Fix 4: block duplicate invocations within the same session ----
+  // ---- Fix 4: block duplicate invocations per domain within the same session ----
+  const parsed = parseCompanionCall(command);
+  if (!parsed) return rawInput;
+
+  const domainFlag = parsed.flags.find(f => f.key === 'domain-id');
+  const domainKey = (domainFlag && domainFlag.value) ? domainFlag.value : '_default';
+
   const state = loadState();
-  if (state.invocations >= 1) {
+  if ((state.domains[domainKey] || 0) >= 1) {
     process.stderr.write(
-      '\n[CodexGuard] BLOCKED: codex-companion.mjs task was already invoked this session.\n' +
+      `\n[CodexGuard] BLOCKED: codex-companion.mjs task for domain "${domainKey}" already invoked this session.\n` +
       '  A second call indicates the first failed and codex-rescue entered a retry loop.\n' +
       '  Fix the BRIEF or prompt content before retrying.\n\n'
     );
     return { exitCode: 2 };
   }
-
-  const parsed = parseCompanionCall(command);
-  if (!parsed) return rawInput;
 
   const { command: newCommand, promptFilePath, strippedFlags } = rebuildCommand(parsed);
   const changed = newCommand !== command || strippedFlags.length > 0;
@@ -271,8 +284,9 @@ function run(rawInput) {
     );
   }
 
-  // Record this invocation
-  state.invocations = (state.invocations || 0) + 1;
+  // Record this invocation (per domain)
+  state.domains = state.domains || {};
+  state.domains[domainKey] = (state.domains[domainKey] || 0) + 1;
   saveState(state);
 
   if (!changed) return rawInput;
