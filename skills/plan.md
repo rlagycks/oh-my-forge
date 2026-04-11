@@ -80,24 +80,37 @@ try{execFileSync('which',['codex'],{stdio:'ignore'});console.log('codex');}catch
 
 ### Step 4 — Delegate to Codex (ENGINE = codex)
 
-For each ontology domain touched by the plan, in `dependsOn` order:
+For each ontology domain touched by the plan, in `dependsOn` order, invoke via the Skill tool directly (do NOT use Agent with a text "Run /codex-delegate" instruction — subagents cannot invoke Skill):
 
 ```
-Agent({
-  description: "Implement <domain_key>",
-  prompt: "Run /codex-delegate <domain_key> with this plan context:\nplan_file: <PLAN_FILE>\n\n<relevant phase steps for this domain>"
-})
+Skill({ skill: "codex-delegate", args: "<domain_key> <task description>" })
 ```
 
-For independent domains, run agents **in parallel**.
+Pass the plan context by including the PLAN_FILE path and relevant phase steps in the BRIEF per the BRIEF format in `codex-delegate.md`.
 
-For files not matched to any domain, use a fallback delegation:
+For independent domains, call multiple Skill invocations **in parallel**.
+
+For files not matched to any domain, construct the BRIEF directly and invoke via Skill:
 
 ```
-Agent({
-  description: "Implement <feature-name> (fallback)",
-  prompt: "Run /codex-delegate with this plan context:\nplan_file: <PLAN_FILE>\n\nFILES:\n<all file paths>\n\nTASK: Implement all phases."
-})
+BRIEF
+=====
+DOMAIN    : _default
+TASK      : <one-sentence description of what needs to be implemented>
+FILES     : <comma-separated list of all unmatched file paths>
+PLAN FILE : <PLAN_FILE absolute path>
+ENDPOINTS : N/A
+MODELS    : N/A
+SYMBOLS   : N/A
+CONSTRAINTS: Follow plan phases in order. Do not skip tests.
+DEPENDS ON: none
+HANDOFF   : Return: RESULT / FILES CHANGED / TESTS / SUMMARY
+```
+
+Then invoke via the Skill tool (do NOT use Agent with a text "Run /codex-delegate" instruction):
+
+```
+Skill({ skill: "codex-delegate", args: "<BRIEF above>" })
 ```
 
 ### Step 5 — Fallback (ENGINE = claude)

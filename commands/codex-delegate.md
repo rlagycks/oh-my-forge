@@ -87,13 +87,21 @@ Return your result in the following structure:
 
 **If codex-plugin-cc is installed** (async delegation):
 ```
-/codex:rescue <BRIEF> --background
+/codex:rescue <BRIEF> --background --fresh
 ```
 
 **Fallback** (sync, requires Codex CLI in PATH):
 ```bash
 codex "<BRIEF>"
 ```
+
+### Step 4 — Validate Codex Result
+
+After `/codex:rescue` or `codex` completes, inspect the output:
+
+- If the output is empty, or contains no `RESULT:` line → output `CODEX_DELEGATION_FAILED: rescue returned no result` and return `RESULT: BLOCKED` immediately.
+- Do NOT proceed to code review or commit if Codex did not confirm execution.
+- Surface the failure clearly so the caller (plan.md Step 4 or the user) can re-delegate with a clearer BRIEF.
 
 ## When to Use
 
