@@ -207,6 +207,16 @@
         "description": "Track Bash failures to session temp file for bug-fix-enforcer to consume"
       },
       {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-with-flags.js\" \"post:bash:commit-rca\" \"scripts/hooks/post-bash-commit-rca.js\" \"standard,strict\""
+          }
+        ],
+        "description": "After fix:/hotfix:/fix(gap):/fix(design): commit or PR, build RCA bundle and instruct Claude to run /commit-rca in an isolated Agent"
+      },
+      {
         "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           {
