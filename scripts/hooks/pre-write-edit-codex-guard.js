@@ -13,6 +13,8 @@
  *   - ENGINE = claude (Codex unavailable) → pass-through
  *   - ECC_BYPASS_CODEX_GUARD=1 → pass-through (escape hatch)
  *   - Meta paths (.claude/, scripts/, agents/, commands/, skills/, hooks/) → pass-through
+ *     EXCEPTION: when pluginRoot === cwd (editing oh-my-forge itself), meta-path bypass
+ *     is disabled so the guard remains effective for the plugin's own ontology-tracked files.
  *
  * Trigger: PreToolUse on Write|Edit|MultiEdit
  * Profile: standard,strict
@@ -178,8 +180,12 @@ function run(rawInput) {
   const resolvedFile = path.resolve(filePath);
   const relPath = path.relative(pluginRoot, resolvedFile);
 
-  // Skip meta paths
-  if (isMetaPath(relPath)) return rawInput;
+  // Skip meta paths — UNLESS we are editing the plugin repo itself (pluginRoot === cwd).
+  // When editing oh-my-forge directly, every file is a "meta path" which would make
+  // the guard completely ineffective. In self-repo mode, meta-path bypass is disabled
+  // so ontology-tracked files remain protected.
+  const isSelfRepo = path.resolve(pluginRoot) === path.resolve(process.cwd());
+  if (!isSelfRepo && isMetaPath(relPath)) return rawInput;
 
   // Check ontology
   const fileMap = loadIndex(pluginRoot);
