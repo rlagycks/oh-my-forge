@@ -15,9 +15,7 @@
 <!-- List the key files added or modified. -->
 
 -
--
-
-## Testing
+- ## Testing
 
 - [ ] `node tests/run-all.js` — all tests pass
 - [ ] New scripts in `scripts/lib/` have a matching test in `tests/lib/`

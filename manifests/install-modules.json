@@ -87,9 +87,6 @@
       "paths": [
         ".claude-plugin",
         ".codex",
-        ".cursor",
-        ".gemini",
-        ".opencode",
         "mcp-configs",
         "scripts/setup-package-manager.js"
       ],
@@ -234,8 +231,7 @@
         "skills/perl-security",
         "skills/security-review",
         "skills/security-scan",
-        "skills/springboot-security",
-        "the-security-guide.md"
+        "skills/springboot-security"
       ],
       "targets": [
         "claude",

@@ -13,7 +13,7 @@ Run real E2E tests, collect every failure, trace each failure back to its root c
 **Workflow boundary:**
 ```
 [e2e-rca scope]                    [developer decides]
-Auto-detect → Run → Analyze ────▶  Review report → Fix → Verify
+Auto-detect → Run → Analyze ────  Review report → Fix → Verify
                           STOP HERE ↑
 ```
 
@@ -128,7 +128,7 @@ Legend:
 ✗  = should be blocked — test that block works correctly
 ✗→ = should redirect — test redirect destination
 empty✓ = empty state — this is a high-risk cell, often buggy
--  = not applicable
+- = not applicable
 ```
 
 ### Step 4: Select scenarios to generate
@@ -458,7 +458,7 @@ print(f'Total API calls: {len(logs)}')
 print()
 for call in logs:
     status = call['status']
-    icon = '✓' if status < 400 else ('⚠' if status < 500 else '✗')
+    icon = '✓' if status < 400 else ('WARNING:' if status < 500 else '✗')
     print(f'{icon} {call[\"method\"]} {call[\"url\"]} → {status} ({call[\"duration\"]}ms)')
     if status >= 400:
         print(f'  Request body: {json.dumps(call[\"requestBody\"])[:200]}')

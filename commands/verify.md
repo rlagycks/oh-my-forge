@@ -25,7 +25,7 @@ Execute verification in this exact order:
 
 5. **Ontology Validation** (`.claude/ontology/index.json`이 있는 경우)
    - `PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}; node "$PLUGIN_ROOT/scripts/ci/validate-ontology.js"` 실행
-   - `index.json` ↔ `docs/features/*.md` ↔ 실제 파일 정합성 확인
+   - `index.json`  `docs/features/*.md`  실제 파일 정합성 확인
    - 실패 시 `/ontology-sync --check`로 원인 파악 안내
 
 6. **Console.log Audit**

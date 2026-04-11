@@ -120,7 +120,7 @@ hookId: "pre:qa-context-inject"
 
 | 파일 | 역할 |
 |------|------|
-| `.claude/ontology/index.json` | 도메인 GPS (domain_qa 항목 포함) |ㅛ쇼     
+| `.claude/ontology/index.json` | 도메인 GPS (domain_qa 항목 포함) |ㅛ쇼
 | `docs/features/qa-knowledge-layer.md` | domain_qa 스펙 |
 | `scripts/hooks/qa-context-inject.js` | PreToolUse:Edit 훅 |
 | `hooks/hooks.json` | 훅 등록 |

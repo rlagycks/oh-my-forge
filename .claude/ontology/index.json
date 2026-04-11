@@ -1,8 +1,13 @@
 {
   "$schema": "./.claude/ontology/_schema.json",
   "domain_common": {
-    "summary": "공통 설정 — plugin.json, CLAUDE.md, README, package.json",
-    "files": [".claude-plugin/plugin.json", "CLAUDE.md", "README.md", "package.json", "scripts/lib/ontology.js"],
+    "summary": "공통 설정 — plugin.json, CLAUDE.md, package.json",
+    "files": [
+      ".claude-plugin/plugin.json",
+      "CLAUDE.md",
+      "package.json",
+      "scripts/lib/ontology.js"
+    ],
     "spec": "docs/features/common.md",
     "detail": ".claude/ontology/domain_common.json",
     "owner": "oh-my-forge",
@@ -14,7 +19,10 @@
   },
   "domain_agents": {
     "summary": "에이전트 파일 라이브러리 — agents/ 및 .agents/ 배포 대상",
-    "files": ["agents/", ".agents/"],
+    "files": [
+      "agents/",
+      ".agents/"
+    ],
     "spec": "docs/features/agents.md",
     "detail": ".claude/ontology/domain_agents.json",
     "owner": "oh-my-forge",
@@ -26,7 +34,10 @@
   },
   "domain_skills": {
     "summary": "스킬 워크플로우 라이브러리 — skills/ 큐레이션 및 생성 스킬",
-    "files": ["skills/", ".agents/skills/"],
+    "files": [
+      "skills/",
+      ".agents/skills/"
+    ],
     "spec": "docs/features/skills.md",
     "detail": ".claude/ontology/domain_skills.json",
     "owner": "oh-my-forge",
@@ -38,7 +49,10 @@
   },
   "domain_commands": {
     "summary": "슬래시 커맨드 73종 — /command-name 형식으로 Skill 툴 호출",
-    "files": ["commands/", "COMMANDS-QUICK-REF.md"],
+    "files": [
+      "commands/",
+      "COMMANDS-QUICK-REF.md"
+    ],
     "spec": "docs/features/commands.md",
     "detail": ".claude/ontology/domain_commands.json",
     "owner": "oh-my-forge",
@@ -63,7 +77,10 @@
     "owner": "oh-my-forge",
     "codexWorkerHint": "workspace-write",
     "riskLevel": "high",
-    "dependsOn": ["domain_common", "domain_state_store"],
+    "dependsOn": [
+      "domain_common",
+      "domain_state_store"
+    ],
     "constraints": [
       "모든 훅은 비치명적 오류 시 반드시 exit 0",
       "블로킹 훅(PreToolUse, Stop): 200ms 이하 — 네트워크 호출 금지|pattern:require(\"node-fetch\")|pattern:require(\"axios\")"
@@ -102,7 +119,9 @@
     "detail": ".claude/ontology/domain_session.json",
     "owner": "oh-my-forge",
     "codexWorkerHint": "workspace-write",
-    "dependsOn": ["domain_state_store"],
+    "dependsOn": [
+      "domain_state_store"
+    ],
     "constraints": [
       "세션 매칭 우선순위 변경 금지: worktree exact match > project name > recency",
       "stdout 출력은 반드시 JSON { hookSpecificOutput: { additionalContext } }"
@@ -156,7 +175,10 @@
     "detail": ".claude/ontology/domain_orchestration.json",
     "owner": "oh-my-forge",
     "codexWorkerHint": "workspace-write",
-    "dependsOn": ["domain_session", "domain_state_store"],
+    "dependsOn": [
+      "domain_session",
+      "domain_state_store"
+    ],
     "constraints": [
       "launcherCommand에는 플레이스홀더({worker_name}, {worktree_path})만 사용",
       "seedPaths는 존재하는 파일만 — 없는 경로 지정 시 워크트리 생성 실패"
@@ -164,7 +186,9 @@
   },
   "domain_package_manager": {
     "summary": "패키지 매니저 감지 — env var→config→lockfile 6단계 순서",
-    "files": ["scripts/lib/package-manager.js"],
+    "files": [
+      "scripts/lib/package-manager.js"
+    ],
     "spec": "docs/features/package-manager.md",
     "detail": ".claude/ontology/domain_package_manager.json",
     "owner": "oh-my-forge",
@@ -183,7 +207,6 @@
       ".codex/agents/explorer.toml",
       ".codex/agents/reviewer.toml",
       "commands/codex-delegate.md",
-      "agents/codex-rescue.md",
       "scripts/hooks/pre-bash-codex-guard.js"
     ],
     "spec": "docs/features/codex.md",
@@ -200,12 +223,17 @@
   },
   "domain_qa": {
     "summary": "QA 지식 레이어 — qa-loop 커맨드 및 버그 히스토리 컨텍스트 주입",
-    "files": ["commands/qa-loop.md", "scripts/hooks/qa-context-inject.js"],
+    "files": [
+      "commands/qa-loop.md",
+      "scripts/hooks/qa-context-inject.js"
+    ],
     "spec": "docs/features/qa-knowledge-layer.md",
     "detail": ".claude/ontology/domain_qa.json",
     "owner": "oh-my-forge",
     "codexWorkerHint": "workspace-write",
-    "dependsOn": ["domain_hooks"],
+    "dependsOn": [
+      "domain_hooks"
+    ],
     "constraints": [
       "qa-context-inject는 항상 exit 0 — 버그 히스토리 조회 실패가 편집을 막으면 안 됨",
       "훅 출력은 반드시 JSON { hookSpecificOutput: { additionalContext } } 형식"

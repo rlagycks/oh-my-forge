@@ -252,7 +252,7 @@ function run(rawInput) {
   // Output warnings to stderr
   const isHighRisk = entry.riskLevel === 'high';
   const header = isHighRisk
-    ? `[CONSTRAINT GUARD] ⚠ HIGH RISK — ${entry.domainKey}`
+    ? `[CONSTRAINT GUARD] WARNING: HIGH RISK — ${entry.domainKey}`
     : `[CONSTRAINT GUARD] ${entry.domainKey}`;
 
   const lines = ['', header, ''];
