@@ -75,3 +75,20 @@ When spawning subagents, always pass conventions from the respective skill into 
 
 - Do NOT add `Co-Authored-By: Claude` or any Claude/Anthropic attribution to commit messages.
 - Keep commit messages concise and use conventional commit prefixes (feat, fix, docs, chore, etc.).
+
+### RCA-Triggering Commit Conventions
+
+The following prefixes trigger automatic root-cause analysis via `post-bash-commit-rca.js`.
+Use them precisely — this distinction is what drives the ontology constraint automation.
+
+| Prefix | Meaning | RCA triggered? |
+|--------|---------|---------------|
+| `fix:` | Bug fix | Yes |
+| `fix(gap):` | A required behaviour was missing from the original design | Yes |
+| `fix(design):` | A design decision was wrong and has been corrected | Yes |
+| `hotfix:` | Urgent production patch | Yes |
+| `feat:` | New capability (not previously required) | No |
+| `refactor:` | Code restructuring without behaviour change | No |
+| `docs:`, `chore:`, `test:`, `perf:`, `ci:` | Housekeeping | No |
+
+**When in doubt between `feat:` and `fix(gap):`**: if the code *should have been there from the start* and its absence caused a bug or an incorrect behaviour, use `fix(gap):`. If it is genuinely new scope, use `feat:`.
