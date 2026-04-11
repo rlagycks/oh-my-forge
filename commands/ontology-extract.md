@@ -36,7 +36,7 @@ MD 문서(기획서, API 명세 등)를 분석하여 도메인별 JSON 온톨로
 
 **존재하지 않는 경우**: 바로 Step 1로 진행. `/ontology-sync`를 먼저 실행하여 index.json을 구성할 것을 안내한다.
 
-> ⚠️ **주의**: 이 커맨드는 ECC 내부 `index.json`(GPS 라우팅 인덱스)을 교체하거나 초기화하지 않는다.
+> WARNING: **주의**: 이 커맨드는 ECC 내부 `index.json`(GPS 라우팅 인덱스)을 교체하거나 초기화하지 않는다.
 > ECC 내부 온톨로지 구조를 수정하려면 `/ontology-sync`를 사용하라.
 
 ---

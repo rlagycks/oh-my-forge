@@ -12,9 +12,7 @@ labels: bug
 
 1.
 2.
-3.
-
-## Expected behavior
+3. ## Expected behavior
 
 <!-- What should have happened. -->
 

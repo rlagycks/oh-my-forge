@@ -70,7 +70,7 @@ Generate or update `docs/RUNBOOK.md` with:
 
 ```bash
 PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
-node "$PLUGIN_ROOT/scripts/ci/validate-ontology.js" 2>/dev/null && echo "ontology OK" || echo "⚠ ontology 불일치 — /ontology-sync 실행 권장"
+node "$PLUGIN_ROOT/scripts/ci/validate-ontology.js" 2>/dev/null && echo "ontology OK" || echo "WARNING: ontology 불일치 — /ontology-sync 실행 권장"
 ```
 
 불일치가 있으면 Summary에 경고를 포함하고 `/ontology-sync` 실행을 안내한다.
@@ -84,7 +84,7 @@ Updated:  docs/CONTRIBUTING.md (scripts table)
 Updated:  docs/ENV.md (3 new variables)
 Flagged:  docs/DEPLOY.md (142 days stale)
 Skipped:  docs/API.md (no changes detected)
-Ontology: OK (또는 ⚠ /ontology-sync 필요)
+Ontology: OK (또는 WARNING: /ontology-sync 필요)
 ──────────────────────────────
 ```
 
