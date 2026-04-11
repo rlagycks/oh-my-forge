@@ -277,7 +277,7 @@ function run(rawInput) {
   // Correct: alert if per-domain known-issues file exists
   const issuesPath = path.join(pluginRoot, 'docs', 'domain-issues', `${entry.domainKey}.md`);
   if (fs.existsSync(issuesPath)) {
-    lines.push(`⚠ Known issues tracked: docs/domain-issues/${entry.domainKey}.md`);
+    lines.push(`WARNING: Known issues tracked: docs/domain-issues/${entry.domainKey}.md`);
   }
 
   lines.push('');

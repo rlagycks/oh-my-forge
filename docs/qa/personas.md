@@ -61,7 +61,7 @@ Legend:
 ✗  = should be blocked
 ✗→ = should redirect
 empty✓ = empty state (high-risk)
--  = not applicable
+- = not applicable
 ```
 
 > Regenerate this matrix by running /qa-loop

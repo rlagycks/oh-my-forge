@@ -60,7 +60,7 @@
         "riskLevel": {
           "type": "string",
           "enum": ["high"],
-          "description": "Optional. 'high' triggers stronger constraint-guard.js warnings with a ⚠ HIGH RISK header when violations are detected."
+          "description": "Optional. 'high' triggers stronger constraint-guard.js warnings with a WARNING: HIGH RISK header when violations are detected."
         },
         "constraints": {
           "type": "array",

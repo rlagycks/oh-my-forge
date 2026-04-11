@@ -10,7 +10,7 @@
 
 > Every time an agent makes a mistake, change the system so that mistake cannot structurally happen again.
 
-A customized Claude Code harness built on [everything-claude-code](https://github.com/affaan-m/everything-claude-code).  
+A customized Claude Code harness built on [everything-claude-code](https://github.com/affaan-m/everything-claude-code).
 The core addition: an **ontology-driven structural error prevention system** that makes agent failures self-correcting at the harness level.
 
 ---
@@ -81,7 +81,7 @@ The ontology index doubles as a **GPS for implementation**. Instead of giving th
                                 →  /claude-implement  (no Codex, Claude-only)
 ```
 
-Both commands use the same BRIEF format and produce the same HANDOFF output — the engine is interchangeable.
+Both commands use the same BRIEF format and produce the same HANDOFF output — the engine is interchangeable. The `/plan` skill enforces Codex-first delegation and guards against silent fallback loops (fixed in v1.10.x).
 
 **Engine detection (first match wins):**
 1. `CLAUDE_IMPL_ENGINE` env var (`claude` or `codex`)
@@ -143,7 +143,7 @@ When an agent edits a file in a tracked domain, this hook:
 
 - Always exits `0` — never blocks tool execution
 - Session-scoped: each warning fires at most once per session
-- `riskLevel: "high"` domains get a stronger `⚠ HIGH RISK` header
+- `riskLevel: "high"` domains get a stronger `WARNING: HIGH RISK` header
 
 ---
 
@@ -258,20 +258,23 @@ oh-my-forge/
 
 ## Quick Start
 
-### Option 1 — Claude Code plugin marketplace (recommended)
+### Option 1 — Install via plugin (recommended)
 
-Once listed in the official marketplace, install with one command inside any Claude Code session:
+Inside any Claude Code session, run:
 
 ```
-/plugin install oh-my-forge@claude-plugins-official
+/plugin install rlagycks/oh-my-forge
 ```
 
 Skills, commands, agents, and hooks are available immediately. No cloning or build step required.
 
-> **Not listed yet?** While marketplace approval is pending, install directly from GitHub:
-> ```
-> /plugin install rlagycks/oh-my-forge
-> ```
+Installs access to 36 agents, 144 skills, and 75 commands.
+
+| Category | Count |
+|----------|-------|
+| Agents | 36 agents |
+| Skills | 144 skills |
+| Commands | 75 commands |
 
 ### Option 2 — Manual install (for contributors or local customization)
 
