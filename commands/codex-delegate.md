@@ -85,15 +85,17 @@ Return your result in the following structure:
   SUMMARY: <one paragraph>
 ```
 
-**If codex-plugin-cc is installed** (async delegation):
+**If codex-plugin-cc is installed** (foreground delegation expected by the caller):
 ```
-/codex:rescue <BRIEF> --background --fresh
+/codex:rescue <BRIEF> --wait --fresh
 ```
 
 **Fallback** (sync, requires Codex CLI in PATH):
 ```bash
 codex "<BRIEF>"
 ```
+
+If you explicitly want queued background work, call `/codex:rescue --background` directly instead of `/codex-delegate`. Automatic callers such as `/plan` expect a foreground Codex result in the same control flow.
 
 ### Step 4 — Validate Codex Result
 

@@ -126,20 +126,8 @@ When the user responds with "yes", "proceed", "승인", or similar affirmative:
 Extract the feature name from the plan title (e.g. "Implementation Plan: Real-Time Notifications" → "real-time-notifications") and save the full plan content to `~/.claude/plans/`:
 
 ```bash
-node -e "
-const fs=require('fs'),os=require('os'),path=require('path');
-const name=process.argv[1]||'plan';
-const content=process.argv[2]||'';
-if(!content.trim()){process.stderr.write('No content\n');process.exit(1);}
-const slug=name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+\$/g,'').slice(0,60)||'plan';
-const d=new Date(),p=(n)=>String(n).padStart(2,'0');
-const ts=d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes());
-const dir=path.join(os.homedir(),'.claude','plans');
-fs.mkdirSync(dir,{recursive:true});
-const file=path.join(dir,slug+'-'+ts+'.md');
-fs.writeFileSync(file,content,'utf8');
-process.stdout.write(file+'\n');
-" "<feature-name>" "<full plan markdown>"
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+node "$PLUGIN_ROOT/scripts/lib/save-plan.js" "<feature-name>" --content "<full plan markdown>"
 ```
 
 Store the returned absolute path as `PLAN_FILE`.
@@ -147,27 +135,28 @@ Store the returned absolute path as `PLAN_FILE`.
 ### Step 2 — Detect implementation engine
 
 ```bash
-node -e "
-const fs = require('fs'), os = require('os'), path = require('path');
-const env = process.env.CLAUDE_IMPL_ENGINE;
-if (env === 'claude' || env === 'codex') { console.log(env); process.exit(0); }
-for (const f of [path.join(process.cwd(), '.claude/settings.json'), path.join(os.homedir(), '.claude/settings.json')]) {
-  try { const s = JSON.parse(fs.readFileSync(f,'utf8')); if (s.implementationEngine === 'claude' || s.implementationEngine === 'codex') { console.log(s.implementationEngine); process.exit(0); } } catch {}
-}
-const {execFileSync} = require('child_process');
-try { execFileSync('which', ['codex'], {stdio:'ignore'}); console.log('codex'); } catch { console.log('claude'); }
-"
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+node -e "const { detectImplementationEngine } = require(process.argv[1]); console.log(detectImplementationEngine())" "$PLUGIN_ROOT/scripts/lib/utils.js"
 ```
 
 Store result as `ENGINE` ("codex" or "claude").
 
-### Step 3 — Check for ontology index
+### Step 3 — Resolve routing root and project ontology
 
-Run `node '${CLAUDE_PLUGIN_ROOT:-.}/scripts/lib/ontology.js' query --domain <domain_id>`. If it fails → skip to **Step 5 (Fallback delegation)**.
+For implementation routing, treat `process.cwd()` as the active project root.
 
-### Step 4 — Map plan phases to ontology domains
+- Check `process.cwd()/.claude/ontology/index.json` to decide whether the current project has an ontology.
+- Do NOT use `CLAUDE_PLUGIN_ROOT` to decide whether the current project has an ontology. `CLAUDE_PLUGIN_ROOT` points at the installed ECC plugin copy and can create false matches.
+- If the project ontology file is missing, skip domain routing and go to **Step 5 (Codex fallback)**.
 
-Look up `files[]` in each domain entry to match the files mentioned in the confirmed plan. If no phase maps to any domain → skip to **Step 5 (Fallback delegation)**.
+### Step 4 — Build project fileMap and map plan phases to domains
+
+Load the project-local ontology index from `process.cwd()/.claude/ontology/index.json` and build a `fileMap` from each domain's `files[]`.
+
+- Match the file paths mentioned in the confirmed plan against that project-local `fileMap`.
+- If no mentioned file maps to any domain, treat this as a routing miss and skip to **Step 5 (Codex fallback)**.
+- This check prevents the failure chain `resolver mismatch → wrong root → fileMap miss → guard miss → Claude direct implementation`.
+- If `ENGINE = "codex"` and you do not have a project-local ontology match, do NOT silently switch to Claude implementation.
 
 For matched domains: delegate per domain respecting `dependsOn` order. Parallel agents for independent domains.
 
@@ -176,39 +165,48 @@ For matched domains: delegate per domain respecting `dependsOn` order. Parallel 
 ```
 Agent({
   description: "Implement domain_X",
-  prompt: "Run /codex-delegate domain_X with this plan context:\nplan_file: <PLAN_FILE>\n\n<paste only the relevant phase steps for this domain>"
+  prompt: "Run /codex-delegate domain_X with this plan context:\nplan_file: <PLAN_FILE>\n\n<paste only the relevant phase steps for this domain>\n\nThis automatic /plan flow expects a foreground Codex result in the same control flow. Do not switch this handoff to background rescue."
 })
 ```
 
 **If ENGINE = "claude"**: Use the `Agent` tool to invoke `claude-implement` for each matched domain with the same BRIEF.
 
-Files outside any domain: implement inline.
+Files outside any matched domain:
+- `ENGINE = "claude"` → implement inline
+- `ENGINE = "codex"` → send them through **Step 5 (Codex fallback)** instead of implementing them inline
 
 Skip to **Step 6**.
 
-### Step 5 — Fallback delegation (no ontology or no domain match)
+### Step 5 — Codex fallback (no ontology or no fileMap match)
 
 Even without an ontology match, still delegate to the implementation engine.
 
-**If ENGINE = "codex"**: Extract all file paths mentioned in the plan and delegate as a single agent:
+**If ENGINE = "codex"**: Extract all file paths mentioned in the plan and delegate directly to Codex as a single rescue task. Do not route this case through `/codex-delegate`, because `/codex-delegate` requires a concrete domain id.
 
 ```
 Agent({
   description: "Implement <feature-name>",
-  prompt: "Run /codex-delegate with this plan context:\nplan_file: <PLAN_FILE>\n\nFILES:\n<all file paths from the plan, one per line>\n\nTASK: Implement all phases in the plan file."
+  prompt: "Run /codex:rescue --wait --fresh with this plan context:\nplan_file: <PLAN_FILE>\n\nFILES:\n<all file paths from the plan, one per line>\n\nTASK: Implement all phases in the plan file.\n\nThis is a fallback because the current project has no domain/fileMap route for the files above. Return the final Codex result in the same thread."
 })
 ```
 
 **If ENGINE = "claude"**: Implement directly inline as Claude.
 
+If `ENGINE = "codex"` but rescue cannot be started, report `BLOCKED` clearly. Do NOT silently switch to Claude implementation after Codex routing fails.
+
 ### Step 6 — Report delegation status
+
+Automatic `/plan` implementation must use a foreground Codex handoff. If you intentionally use `/codex:rescue --background` outside this flow, report it as `DISPATCHED` only; do not claim the implementation completed until `/codex:result` confirms it.
 
 ```
 Implementation summary
 ──────────────────────────────────────────
+State: COMPLETED | DISPATCHED | BLOCKED
 Engine: codex | claude
+Routing root: <process.cwd()>
 Plan saved: ~/.claude/plans/<feature>-<timestamp>.md
-domain_hooks    → /codex-delegate dispatched (ontology match)
-mobile/src/...  → /codex-delegate dispatched (fallback)
+Ontology: project-local match | none
+domain_hooks    → /codex-delegate completed (ontology match)
+mobile/src/...  → /codex:rescue --wait completed (fallback)
 ──────────────────────────────────────────
 ```
