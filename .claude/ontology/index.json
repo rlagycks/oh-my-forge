@@ -69,7 +69,10 @@
       ".codex/hooks.json",
       "scripts/hooks/run-with-flags.js",
       "scripts/hooks/domain-context-inject.js",
+      "scripts/hooks/constraint-guard.js",
+      "scripts/hooks/pre-write-edit-codex-guard.js",
       "scripts/hooks/qa-context-inject.js",
+      "scripts/lib/ontology-routing.js",
       "scripts/lib/hook-flags.js"
     ],
     "spec": "docs/features/hooks.md",
@@ -83,7 +86,8 @@
     ],
     "constraints": [
       "모든 훅은 비치명적 오류 시 반드시 exit 0",
-      "블로킹 훅(PreToolUse, Stop): 200ms 이하 — 네트워크 호출 금지|pattern:require(\"node-fetch\")|pattern:require(\"axios\")"
+      "블로킹 훅(PreToolUse, Stop): 200ms 이하 — 네트워크 호출 금지|pattern:require(\"node-fetch\")|pattern:require(\"axios\")",
+      "routing 계열 훅(domain-context-inject, constraint-guard, qa-context-inject, pre-write-edit-codex-guard)은 file_path→cwd 순서의 project ontology root만 사용 — CLAUDE_PLUGIN_ROOT 직접 fallback 금지"
     ]
   },
   "domain_rules": {
