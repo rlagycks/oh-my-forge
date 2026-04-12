@@ -9,6 +9,13 @@ and the global log at `~/.claude/decisions/index.jsonl`.
 
 ---
 
+## 2026-04-13 — domain_hooks [updated]
+**Fields**: files, constraints, decisions
+**Trigger**: hook-routing-unification
+**Reason**: Added shared project-ontology routing helper and recorded the project-root-first rule for routing hooks.
+
+---
+
 ## 2026-04-10 — _schema.json, decisions system [new]
 **Files**: `_schema.json`, `domain_commands.json`, `domain_codex.json`, `scripts/lib/decisions.js`, `commands/decide.md`
 **Trigger**: architectural gap — ontology had no mechanism for decision records

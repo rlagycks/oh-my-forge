@@ -6,7 +6,10 @@
     ".codex/hooks.json",
     "scripts/hooks/run-with-flags.js",
     "scripts/hooks/domain-context-inject.js",
+    "scripts/hooks/constraint-guard.js",
+    "scripts/hooks/pre-write-edit-codex-guard.js",
     "scripts/hooks/qa-context-inject.js",
+    "scripts/lib/ontology-routing.js",
     "scripts/lib/hook-flags.js"
   ],
   "summary": "Claude Code 훅 시스템. PreToolUse/PostToolUse/Stop/SessionStart 이벤트에 반응하여 품질 게이트, 보안 검사, 세션 관리, 포맷/타입체크 자동화 실행.",
@@ -81,8 +84,28 @@
     "ECC_HOOK_PROFILE이 allowedProfiles에 포함될 때만 실행",
     "async 훅: 'async: true' + timeout ≤30초",
     "stdin은 raw JSON — 파싱 실패 시 원본 그대로 stdout 출력",
-    "훅 스크립트 200줄 이하 — 초과 시 scripts/lib/ 추출"
+    "훅 스크립트 200줄 이하 — 초과 시 scripts/lib/ 추출",
+    "routing 계열 훅(domain-context-inject, constraint-guard, qa-context-inject, pre-write-edit-codex-guard)은 scripts/lib/ontology-routing.js를 통해 project ontology root/fileMap/domain matching을 공용화한다",
+    "routing 계열 훅은 CLAUDE_PLUGIN_ROOT를 현재 프로젝트 ontology fallback으로 직접 사용하지 않는다 — fileMap miss로 guard가 우회될 수 있음"
   ],
   "riskLevel": "high",
-  "dependsOn": ["domain_common", "domain_state_store"]
+  "dependsOn": ["domain_common", "domain_state_store"],
+  "decisions": [
+    {
+      "id": "dec-20260413-001",
+      "date": "2026-04-13",
+      "type": "bug-fix",
+      "domain": "domain_hooks",
+      "summary": "프로젝트 온톨로지 routing 공용화 — plugin-root fallback으로 인한 fileMap 미등록과 guard 미발동 차단",
+      "why": "플러그인 설치 환경에서 일부 훅이 CLAUDE_PLUGIN_ROOT를 현재 프로젝트 ontology fallback으로 사용하면서 resolver 불일치가 발생했다. 그 결과 잘못된 루트를 기준으로 fileMap을 만들거나, project file이 ontology-tracked로 인식되지 않아 constraint-guard/qa-context/pre-write-edit-codex-guard가 우회될 수 있었다. scripts/lib/ontology-routing.js를 도입해 file_path→cwd 순서의 project ontology root 해석, fileMap 로딩, domain matching을 공용화했다.",
+      "files": [
+        "scripts/lib/ontology-routing.js",
+        "scripts/hooks/domain-context-inject.js",
+        "scripts/hooks/constraint-guard.js",
+        "scripts/hooks/qa-context-inject.js",
+        "scripts/hooks/pre-write-edit-codex-guard.js"
+      ],
+      "ref": "PR #19, commit 77ae345"
+    }
+  ]
 }
