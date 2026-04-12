@@ -29,6 +29,11 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
+const {
+  resolveProjectOntologyRoot,
+  loadOntologyMaps,
+  matchFileToDomain,
+} = require('../lib/ontology-routing');
 
 // ---- Meta path exclusions ----
 
@@ -88,76 +93,6 @@ function detectEngine(pluginRoot) {
   }
 }
 
-// ---- Ontology loading (mirrors constraint-guard.js) ----
-
-function loadDomainFile(domainFilePath) {
-  try {
-    return JSON.parse(fs.readFileSync(domainFilePath, 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
-function loadIndex(pluginRoot) {
-  const indexPath = path.join(pluginRoot, '.claude', 'ontology', 'index.json');
-  if (!fs.existsSync(indexPath)) return {};
-
-  try {
-    const content = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
-    const fileMap = {};
-
-    const isSplit = content.domains && typeof content.domains === 'object';
-    const entries = isSplit
-      ? Object.entries(content.domains).map(([domainKey, refPath]) => {
-          const absPath = path.isAbsolute(refPath)
-            ? refPath
-            : path.join(pluginRoot, refPath);
-          const domainData = loadDomainFile(absPath) || {};
-          return [domainKey, domainData];
-        })
-      : Object.entries(content).filter(([k]) => !k.startsWith('$'));
-
-    for (const [domainKey, entry] of entries) {
-      if (!entry || typeof entry !== 'object') continue;
-      for (const fileList of [entry.files, entry.source]) {
-        if (Array.isArray(fileList)) {
-          for (const file of fileList) {
-            fileMap[file] = domainKey;
-          }
-        }
-      }
-    }
-
-    return fileMap;
-  } catch {
-    return {};
-  }
-}
-
-function resolvePluginRoot(filePath) {
-  const envRoot = process.env.CLAUDE_PLUGIN_ROOT || '';
-  if (envRoot) {
-    const marker = path.join(envRoot, '.claude', 'ontology', 'index.json');
-    if (fs.existsSync(marker)) return envRoot;
-  }
-
-  const fsRoot = path.parse(path.resolve(filePath)).root;
-
-  for (let dir = path.resolve(path.dirname(filePath)), depth = 0;
-       dir !== fsRoot && depth < 10;
-       dir = path.dirname(dir), depth++) {
-    if (fs.existsSync(path.join(dir, '.claude', 'ontology', 'index.json'))) return dir;
-  }
-
-  for (let dir = process.cwd(), depth = 0;
-       dir !== fsRoot && depth < 10;
-       dir = path.dirname(dir), depth++) {
-    if (fs.existsSync(path.join(dir, '.claude', 'ontology', 'index.json'))) return dir;
-  }
-
-  return null;
-}
-
 // ---- Main ----
 
 function run(rawInput) {
@@ -174,28 +109,27 @@ function run(rawInput) {
   const filePath = input.tool_input?.file_path || input.tool_input?.path || '';
   if (!filePath) return rawInput;
 
-  const pluginRoot = resolvePluginRoot(filePath);
-  if (!pluginRoot) return rawInput;
+  const ontologyRoot = resolveProjectOntologyRoot({ filePath });
+  if (!ontologyRoot) return rawInput;
 
   const resolvedFile = path.resolve(filePath);
-  const relPath = path.relative(pluginRoot, resolvedFile);
+  const relPath = path.relative(ontologyRoot, resolvedFile);
 
   // Skip meta paths — UNLESS we are editing the plugin repo itself (pluginRoot === cwd).
   // When editing oh-my-forge directly, every file is a "meta path" which would make
   // the guard completely ineffective. In self-repo mode, meta-path bypass is disabled
   // so ontology-tracked files remain protected.
-  const isSelfRepo = path.resolve(pluginRoot) === path.resolve(process.cwd());
+  const isSelfRepo = path.resolve(ontologyRoot) === path.resolve(process.cwd());
   if (!isSelfRepo && isMetaPath(relPath)) return rawInput;
 
   // Check ontology
-  const fileMap = loadIndex(pluginRoot);
-  const domainKey = fileMap[relPath] || fileMap[filePath] ||
-    Object.keys(fileMap).find(k => k.endsWith('/') && relPath.replace(/\\/g, '/').startsWith(k)) || null;
+  const { fileMap } = loadOntologyMaps(ontologyRoot);
+  const domainKey = matchFileToDomain({ filePath, ontologyRoot, fileMap })?.domainKey || null;
 
   if (!domainKey) return rawInput; // not tracked → no restriction
 
   // Detect engine
-  const engine = detectEngine(pluginRoot);
+  const engine = detectEngine(ontologyRoot);
   if (engine !== 'codex') return rawInput;
 
   // BLOCK: redirect to /codex-delegate

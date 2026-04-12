@@ -31,6 +31,11 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const {
+  resolveProjectOntologyRoot,
+  loadOntologyMaps,
+  matchFileToDomain,
+} = require('../lib/ontology-routing');
 
 // --- Session-scoped deduplication (same pattern as domain-context-inject) ---
 
@@ -74,93 +79,6 @@ function parseConstraint(constraintStr) {
   };
 }
 
-// --- Ontology loading (mirrors domain-context-inject.js) ---
-
-function domainSlug(domainKey) {
-  return domainKey.replace(/^domain_/, '');
-}
-
-function loadDomainFile(domainFilePath) {
-  try {
-    return JSON.parse(fs.readFileSync(domainFilePath, 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
-function loadIndex(pluginRoot) {
-  const indexPath = path.join(pluginRoot, '.claude', 'ontology', 'index.json');
-  if (!fs.existsSync(indexPath)) return { fileMap: {}, domainMap: {} };
-
-  try {
-    const content = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
-    const fileMap = {};
-    const domainMap = {};
-
-    const isSplit = content.domains && typeof content.domains === 'object';
-    const entries = isSplit
-      ? Object.entries(content.domains).map(([domainKey, refPath]) => {
-          const absPath = path.isAbsolute(refPath)
-            ? refPath
-            : path.join(pluginRoot, refPath);
-          const domainData = loadDomainFile(absPath) || {};
-          return [domainKey, domainData];
-        })
-      : Object.entries(content).filter(([k]) => !k.startsWith('$'));
-
-    for (const [domainKey, entry] of entries) {
-      if (!entry || typeof entry !== 'object') continue;
-      domainMap[domainKey] = { domainKey, ...entry };
-
-      if (Array.isArray(entry.files)) {
-        for (const file of entry.files) {
-          fileMap[file] = { domainKey, ...entry };
-        }
-      }
-      if (Array.isArray(entry.source)) {
-        for (const file of entry.source) {
-          fileMap[file] = { domainKey, ...entry };
-        }
-      }
-
-      const slug = domainSlug(domainKey);
-      if (slug) fileMap[`__slug__${slug}`] = { domainKey, ...entry };
-    }
-
-    return { fileMap, domainMap };
-  } catch {
-    return { fileMap: {}, domainMap: {} };
-  }
-}
-
-function resolvePluginRoot(filePath) {
-  const envRoot = process.env.CLAUDE_PLUGIN_ROOT || '';
-  if (envRoot) {
-    const marker = path.join(envRoot, '.claude', 'ontology', 'index.json');
-    if (fs.existsSync(marker)) return envRoot;
-  }
-
-  const fsRoot = path.parse(path.resolve(filePath)).root;
-
-  let dir = path.resolve(path.dirname(filePath));
-  let depth = 0;
-  while (dir !== fsRoot && depth < 10) {
-    if (fs.existsSync(path.join(dir, '.claude', 'ontology', 'index.json'))) return dir;
-    dir = path.dirname(dir);
-    depth++;
-  }
-
-  dir = process.cwd();
-  depth = 0;
-  while (dir !== fsRoot && depth < 10) {
-    if (fs.existsSync(path.join(dir, '.claude', 'ontology', 'index.json'))) return dir;
-    dir = path.dirname(dir);
-    depth++;
-  }
-
-  return null;
-}
-
 // --- Extract proposed content from tool input ---
 
 /**
@@ -195,32 +113,13 @@ function run(rawInput) {
   const filePath = input.tool_input?.file_path || input.tool_input?.path || '';
   if (!filePath) return rawInput;
 
-  const pluginRoot = resolvePluginRoot(filePath);
-  if (!pluginRoot) return rawInput;
+  const ontologyRoot = resolveProjectOntologyRoot({ filePath });
+  if (!ontologyRoot) return rawInput;
 
-  const { fileMap } = loadIndex(pluginRoot);
+  const { fileMap } = loadOntologyMaps(ontologyRoot);
   if (Object.keys(fileMap).length === 0) return rawInput;
 
-  const resolvedFile = path.resolve(filePath);
-  const relativeToPlugin = path.relative(pluginRoot, resolvedFile);
-
-  const slugMatch = Object.entries(fileMap)
-    .find(([key]) => {
-      if (!key.startsWith('__slug__')) return false;
-      const slug = key.slice('__slug__'.length);
-      const norm = relativeToPlugin.replace(/\\/g, '/');
-      return norm.split('/').includes(slug);
-    })?.[1] || null;
-
-  const entry =
-    fileMap[relativeToPlugin] ||
-    fileMap[filePath] ||
-    Object.entries(fileMap).find(([key]) =>
-      key.endsWith('/') && relativeToPlugin.startsWith(key)
-    )?.[1] ||
-    slugMatch ||
-    null;
-
+  const entry = matchFileToDomain({ filePath, ontologyRoot, fileMap });
   if (!entry) return rawInput;
   if (!Array.isArray(entry.constraints) || entry.constraints.length === 0) return rawInput;
 
