@@ -121,7 +121,9 @@ function testInvalidDispatchRequestBlocked() {
     kind: 'domain',
     state: 'ROUTED',
     engine: 'codex',
+    source: 'manual-delegate',
     mode: 'foreground',
+    write: true,
     routingRoot: '/repo',
     planFile: '/repo/.claude/plans/retry.md',
     task: 'Broken request',
@@ -133,6 +135,36 @@ function testInvalidDispatchRequestBlocked() {
     assert.deepStrictEqual(result, { exitCode: 2 },
       'Invalid dispatch request should be blocked');
     console.log('  PASS testInvalidDispatchRequestBlocked');
+  } finally {
+    try { fs.unlinkSync(requestFile); } catch {}
+    cleanState(sessionId);
+  }
+}
+
+function testReadOnlyDispatchRequestBlocked() {
+  const sessionId = 'test-read-only-request-' + Date.now();
+  cleanState(sessionId);
+
+  const requestFile = makeRequestFile({
+    schemaVersion: 'ecc.codex.handoff.request.v1',
+    kind: 'domain',
+    state: 'ROUTED',
+    engine: 'codex',
+    source: 'manual-delegate',
+    mode: 'foreground',
+    write: false,
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    domainId: 'domain_hooks',
+    task: 'Read-only request',
+    files: ['scripts/hooks/pre-bash-codex-guard.js'],
+  });
+
+  try {
+    const result = runWithSession(sessionId, fakeDispatchCmd(requestFile));
+    assert.deepStrictEqual(result, { exitCode: 2 },
+      'Read-only Codex dispatch request should be blocked by schema validation');
+    console.log('  PASS testReadOnlyDispatchRequestBlocked');
   } finally {
     try { fs.unlinkSync(requestFile); } catch {}
     cleanState(sessionId);
@@ -238,6 +270,7 @@ function testPlanAutoBackgroundDispatchBlocked() {
     engine: 'codex',
     source: 'plan-auto',
     mode: 'background',
+    write: true,
     routingRoot: '/repo',
     planFile: '/repo/.claude/plans/retry.md',
     domainId: 'domain_hooks',
@@ -291,6 +324,7 @@ const tests = [
   testPromptFileDomainCallAllowed,
   testRawCompanionCallsBlocked,
   testInvalidDispatchRequestBlocked,
+  testReadOnlyDispatchRequestBlocked,
   testSecondCallSameDomainBlocked,
   testSecondCallDifferentDomainAllowed,
   testManualBackgroundDispatchAllowed,

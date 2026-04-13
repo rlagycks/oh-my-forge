@@ -8,6 +8,7 @@ const path = require('path');
 const {
   buildBrief,
   buildCompanionCommand,
+  createPlanRoute,
   createDomainDelegation,
   createFallbackRescue,
   dispatchHandoff,
@@ -50,6 +51,7 @@ if (test('createDomainDelegation returns a schema-valid domain handoff', () => {
   assert.strictEqual(request.domainId, 'domain_hooks');
   assert.strictEqual(request.source, 'manual-delegate');
   assert.strictEqual(request.state, 'ROUTED');
+  assert.strictEqual(request.write, true);
   assert.deepStrictEqual(request.dependsOn, ['domain_utils']);
 })) passed++; else failed++;
 
@@ -67,6 +69,7 @@ if (test('createFallbackRescue returns a schema-valid fallback handoff without d
   assert.strictEqual(validation.valid, true, validation.error);
   assert.strictEqual(request.kind, 'fallback');
   assert.strictEqual(request.source, 'manual-rescue');
+  assert.strictEqual(request.write, true);
   assert.ok(!Object.prototype.hasOwnProperty.call(request, 'domainId'));
 })) passed++; else failed++;
 
@@ -78,6 +81,7 @@ if (test('validateHandoff rejects domain handoffs without domainId', () => {
     engine: 'codex',
     source: 'manual-delegate',
     mode: 'foreground',
+    write: true,
     routingRoot: '/repo',
     planFile: '/repo/.claude/plans/retry.md',
     task: 'Broken handoff',
@@ -96,6 +100,7 @@ if (test('validateHandoff rejects background mode for automatic plan handoffs', 
     engine: 'codex',
     source: 'plan-auto',
     mode: 'background',
+    write: true,
     routingRoot: '/repo',
     planFile: '/repo/.claude/plans/retry.md',
     domainId: 'domain_hooks',
@@ -105,6 +110,26 @@ if (test('validateHandoff rejects background mode for automatic plan handoffs', 
 
   assert.strictEqual(validation.valid, false);
   assert.ok(validation.error.includes('/mode') || validation.error.includes('constant'), validation.error);
+})) passed++; else failed++;
+
+if (test('validateHandoff rejects Codex requests that do not opt into write mode', () => {
+  const validation = validateHandoff({
+    schemaVersion: 'ecc.codex.handoff.request.v1',
+    kind: 'domain',
+    state: 'ROUTED',
+    engine: 'codex',
+    source: 'manual-delegate',
+    mode: 'foreground',
+    write: false,
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    domainId: 'domain_hooks',
+    task: 'Read-only handoff',
+    files: ['scripts/hooks/pre-bash-codex-guard.js'],
+  });
+
+  assert.strictEqual(validation.valid, false);
+  assert.ok(validation.error.includes('/write') || validation.error.includes('constant'), validation.error);
 })) passed++; else failed++;
 
 if (test('buildBrief emits the shared handoff format', () => {
@@ -121,6 +146,7 @@ if (test('buildBrief emits the shared handoff format', () => {
     const brief = buildBrief(request);
     assert.ok(brief.includes('DOMAIN    : domain_hooks'), brief);
     assert.ok(brief.includes('SOURCE    : manual-delegate'), brief);
+    assert.ok(brief.includes('WRITE     : true'), brief);
     assert.ok(brief.includes('PLAN FILE : /repo/.claude/plans/retry.md'), brief);
     assert.ok(brief.includes('HANDOFF   : Return: RESULT / FILES CHANGED / TESTS / SUMMARY'), brief);
 })) passed++; else failed++;
@@ -148,11 +174,26 @@ if (test('buildCompanionCommand emits prompt-file based command without inline p
 
     assert.ok(command.includes('node "/tmp/codex-companion.mjs" task'), command);
     assert.ok(command.includes('--domain-id domain_hooks'), command);
+    assert.ok(command.includes('--write'), command);
     assert.ok(command.includes('--prompt-file'), command);
     assert.ok(!command.includes('Add retry guard coverage'), command);
   } finally {
     fs.unlinkSync(promptFile);
   }
+})) passed++; else failed++;
+
+if (test('createPlanRoute marks generated Codex handoffs as write-enabled', () => {
+  const route = createPlanRoute({
+    engine: 'codex',
+    routingRoot: path.resolve(__dirname, '../..'),
+    planFile: '/repo/.claude/plans/retry.md',
+    task: 'Guard tracked files',
+    files: ['scripts/hooks/pre-bash-codex-guard.js', 'scripts/hooks/pre-write-edit-codex-guard.js'],
+  });
+
+  assert.strictEqual(route.state, 'ROUTED');
+  assert.ok(route.handoffs.length > 0, 'Expected at least one handoff');
+  assert.ok(route.handoffs.every(handoff => handoff.write === true), JSON.stringify(route.handoffs, null, 2));
 })) passed++; else failed++;
 
 if (test('dispatchHandoff runs the companion with a generated prompt file and parses the result', () => {
@@ -170,6 +211,7 @@ if (test('dispatchHandoff runs the companion with a generated prompt file and pa
   fs.writeFileSync(companionPath, [
     'import fs from "node:fs";',
     'const promptIdx = process.argv.indexOf("--prompt-file");',
+    'const hasWrite = process.argv.includes("--write");',
     'if (promptIdx === -1) {',
     '  console.log("RESULT: BLOCKED");',
     '  console.log("FILES CHANGED: none");',
@@ -181,7 +223,7 @@ if (test('dispatchHandoff runs the companion with a generated prompt file and pa
     'console.log("RESULT: DONE");',
     'console.log("FILES CHANGED: scripts/hooks/pre-bash-codex-guard.js");',
     'console.log("TESTS: PASS");',
-    'console.log(`SUMMARY: ${prompt.includes("BRIEF") && prompt.includes("SOURCE") ? "dispatch ok" : "prompt malformed"}`);',
+    'console.log(`SUMMARY: ${prompt.includes("BRIEF") && prompt.includes("SOURCE") && hasWrite ? "dispatch ok" : "prompt malformed"}`);',
   ].join('\n'), 'utf8');
 
   try {

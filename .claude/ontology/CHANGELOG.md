@@ -9,6 +9,20 @@ and the global log at `~/.claude/decisions/index.jsonl`.
 
 ---
 
+## 2026-04-14 — domain_hooks [updated]
+**Fields**: files, constraints, decisions
+**Trigger**: codex-engine-pin-guard
+**Reason**: Added the shared implementation-engine helper, recorded session-pinned engine enforcement, and documented the direct `.claude/settings.json` engine-flip block.
+
+---
+
+## 2026-04-14 — domain_codex [updated]
+**Fields**: files, constraints, decisions
+**Trigger**: codex-handoff-write-contract
+**Reason**: Registered the `write=true` handoff contract, added the shared request schema/runtime files, and recorded that dispatch must promote the request artifact to companion `--write`.
+
+---
+
 ## 2026-04-13 — domain_codex [updated]
 **Fields**: decisions
 **Trigger**: dispatch-companion-hybrid-resolution

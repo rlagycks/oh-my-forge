@@ -149,6 +149,7 @@ function baseRequest(options = {}) {
     engine: options.engine || 'codex',
     source: options.source || defaultSource,
     mode: options.mode || 'foreground',
+    write: options.write === false ? false : true,
     routingRoot: path.resolve(options.routingRoot || process.cwd()),
     planFile: options.planFile,
     task: options.task,
@@ -190,6 +191,7 @@ function buildBrief(request) {
     '=====',
     `DOMAIN    : ${request.kind === 'domain' ? request.domainId : '_default'}`,
     `SOURCE    : ${request.source}`,
+    `WRITE     : ${request.write ? 'true' : 'false'}`,
     `TASK      : ${request.task}`,
     `FILES     : ${request.files.join(', ')}`,
     `ENDPOINTS : ${(request.endpoints || []).join(', ') || 'N/A'}`,
@@ -231,6 +233,10 @@ function buildCompanionArgs(options = {}) {
     args.push('--fresh');
   }
 
+  if (request.write) {
+    args.push('--write');
+  }
+
   args.push('--prompt-file', promptFile);
   return args;
 }
@@ -252,6 +258,7 @@ function buildCompanionCommand(options = {}) {
     ...(request.kind === 'domain' ? ['--domain-id', request.domainId] : []),
     ...(request.mode === 'background' ? ['--background'] : []),
     ...(options.fresh !== false ? ['--fresh'] : []),
+    ...(request.write ? ['--write'] : []),
     '--prompt-file',
     quoteShell(promptFile),
   ].join(' ');

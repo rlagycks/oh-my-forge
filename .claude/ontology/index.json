@@ -72,6 +72,7 @@
       "scripts/hooks/constraint-guard.js",
       "scripts/hooks/pre-write-edit-codex-guard.js",
       "scripts/hooks/qa-context-inject.js",
+      "scripts/lib/implementation-engine.js",
       "scripts/lib/ontology-routing.js",
       "scripts/lib/hook-flags.js"
     ],
@@ -87,7 +88,8 @@
     "constraints": [
       "모든 훅은 비치명적 오류 시 반드시 exit 0",
       "블로킹 훅(PreToolUse, Stop): 200ms 이하 — 네트워크 호출 금지|pattern:require(\"node-fetch\")|pattern:require(\"axios\")",
-      "routing 계열 훅(domain-context-inject, constraint-guard, qa-context-inject, pre-write-edit-codex-guard)은 file_path→cwd 순서의 project ontology root만 사용 — CLAUDE_PLUGIN_ROOT 직접 fallback 금지"
+      "routing 계열 훅(domain-context-inject, constraint-guard, qa-context-inject, pre-write-edit-codex-guard)은 file_path→cwd 순서의 project ontology root만 사용 — CLAUDE_PLUGIN_ROOT 직접 fallback 금지",
+      "pre-write-edit-codex-guard는 implementationEngine를 세션 단위로 고정하고, .claude/settings.json의 implementationEngine 변경은 explicit bypass 없이 차단"
     ]
   },
   "domain_rules": {
@@ -211,7 +213,9 @@
       ".codex/agents/explorer.toml",
       ".codex/agents/reviewer.toml",
       "commands/codex-delegate.md",
-      "scripts/hooks/pre-bash-codex-guard.js"
+      "scripts/hooks/pre-bash-codex-guard.js",
+      "scripts/lib/codex-handoff.js",
+      "schemas/codex-handoff-request.schema.json"
     ],
     "spec": "docs/features/codex.md",
     "detail": ".claude/ontology/domain_codex.json",
@@ -220,6 +224,7 @@
     "constraints": [
       "explorer/reviewer/docs-researcher의 sandbox_mode = read-only 변경 금지 (OS 레벨 격리)",
       "merge-mcp-config.js(sync-ecc-to-codex.sh)는 기존 사용자 설정 삭제/수정 금지 — add-only",
+      "codex-handoff request artifact는 implementation source에서 write=true 필수 — dispatch는 이 값을 companion --write로 승격",
       "codex-companion.mjs 호출 시 --approval-mode 플래그 사용 금지 — pre-bash-codex-guard가 차단하지만 소스에도 작성 불가|pattern:--approval-mode",
       "codex-companion.mjs task 호출은 인라인 positional 프롬프트 금지 — --prompt-file 사용 필수|pattern:companion.mjs task \"",
       "codex-rescue 에이전트 수정 시 반드시 fail-fast 보장 — 재시도 루프 추가 금지|pattern:retry"

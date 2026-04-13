@@ -52,6 +52,7 @@ Use `scripts/lib/codex-handoff.js` as the source of truth for request constructi
 
 - `buildBrief` generates the BRIEF text.
 - `dispatch --request-file` generates the prompt file, invokes Codex, and validates that Codex returned `RESULT:` before the caller proceeds.
+- Codex implementation requests must carry `write: true`; the runtime converts that contract into the companion `--write` flag.
 
 Construct the BRIEF in the shared runtime format:
 

@@ -10,6 +10,7 @@
     "engine",
     "source",
     "mode",
+    "write",
     "routingRoot",
     "planFile",
     "task",
@@ -33,6 +34,9 @@
     },
     "mode": {
       "enum": ["foreground", "background"]
+    },
+    "write": {
+      "type": "boolean"
     },
     "routingRoot": {
       "type": "string",
@@ -104,6 +108,22 @@
     }
   },
   "allOf": [
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "enum": ["plan-auto", "manual-delegate", "manual-rescue"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "write": {
+            "const": true
+          }
+        }
+      }
+    },
     {
       "if": {
         "properties": {
