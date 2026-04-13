@@ -13,6 +13,10 @@ const fs = require('fs');
 const crypto = require('crypto');
 
 const hookPath = path.resolve(__dirname, '../../scripts/hooks/pre-bash-codex-guard.js');
+const {
+  createDomainDelegation,
+  createFallbackRescue,
+} = require('../../scripts/lib/codex-handoff');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -23,6 +27,16 @@ function makeInput(command) {
     tool_name: 'Bash',
     tool_input: { command },
   });
+}
+
+function makeRequestFile(request) {
+  const file = path.join(os.tmpdir(), `codex-request-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+  fs.writeFileSync(file, JSON.stringify(request, null, 2), 'utf8');
+  return file;
+}
+
+function fakeDispatchCmd(requestFile, extraFlags = '') {
+  return `node "/repo/scripts/lib/codex-handoff.js" dispatch --request-file ${requestFile} ${extraFlags}`.trim();
 }
 
 function fakeCompanionCmd(domainId, extraFlags = '') {
@@ -64,108 +78,199 @@ function testNonCodexCommandPassThrough() {
 }
 
 function testPromptFileDomainCallAllowed() {
-  const sessionId = 'test-first-domain-' + Date.now();
+  const sessionId = 'test-dispatch-plan-auto-' + Date.now();
   cleanState(sessionId);
 
-  const cmd = fakeCompanionCmd('domain_hooks');
-  const result = runWithSession(sessionId, cmd);
-  // Should not return exitCode:2 (i.e. result is a string, not an object with exitCode)
-  assert.ok(typeof result === 'string', 'Prompt-file domain call should be allowed (string result)');
-  console.log('  PASS testPromptFileDomainCallAllowed');
+  const requestFile = makeRequestFile(createDomainDelegation({
+    source: 'plan-auto',
+    domainId: 'domain_hooks',
+    engine: 'codex',
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    task: 'Add retry guard coverage',
+    files: ['scripts/hooks/pre-bash-codex-guard.js'],
+  }));
+
+  try {
+    const result = runWithSession(sessionId, fakeDispatchCmd(requestFile));
+    assert.ok(typeof result === 'string', 'Dispatch with valid request file should be allowed');
+    console.log('  PASS testPromptFileDomainCallAllowed');
+  } finally {
+    try { fs.unlinkSync(requestFile); } catch {}
+    cleanState(sessionId);
+  }
+}
+
+function testRawCompanionCallsBlocked() {
+  const sessionId = 'test-raw-companion-' + Date.now();
+  cleanState(sessionId);
+
+  const result = runWithSession(sessionId, fakeCompanionCmd('domain_hooks'));
+  assert.deepStrictEqual(result, { exitCode: 2 },
+    'Raw codex-companion calls should be blocked in favor of dispatch');
+  console.log('  PASS testRawCompanionCallsBlocked');
   cleanState(sessionId);
 }
 
-function testInvalidFlagsBlocked() {
-  const sessionId = 'test-invalid-flags-' + Date.now();
+function testInvalidDispatchRequestBlocked() {
+  const sessionId = 'test-invalid-request-' + Date.now();
   cleanState(sessionId);
 
-  const result = runWithSession(sessionId, fakeCompanionCmd('domain_hooks', '--approval-mode workspace-write'));
-  assert.deepStrictEqual(result, { exitCode: 2 },
-    'Unknown flags should be blocked instead of stripped');
-  console.log('  PASS testInvalidFlagsBlocked');
-  cleanState(sessionId);
-}
+  const requestFile = makeRequestFile({
+    schemaVersion: 'ecc.codex.handoff.request.v1',
+    kind: 'domain',
+    state: 'ROUTED',
+    engine: 'codex',
+    mode: 'foreground',
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    task: 'Broken request',
+    files: ['scripts/hooks/pre-bash-codex-guard.js'],
+  });
 
-function testInlinePromptBlocked() {
-  const sessionId = 'test-inline-prompt-' + Date.now();
-  cleanState(sessionId);
-
-  const cmd = 'node "/some/path/codex-companion.mjs" task --domain-id domain_hooks "inline prompt"';
-  const result = runWithSession(sessionId, cmd);
-  assert.deepStrictEqual(result, { exitCode: 2 },
-    'Inline prompt should be blocked instead of being rewritten');
-  console.log('  PASS testInlinePromptBlocked');
-  cleanState(sessionId);
+  try {
+    const result = runWithSession(sessionId, fakeDispatchCmd(requestFile));
+    assert.deepStrictEqual(result, { exitCode: 2 },
+      'Invalid dispatch request should be blocked');
+    console.log('  PASS testInvalidDispatchRequestBlocked');
+  } finally {
+    try { fs.unlinkSync(requestFile); } catch {}
+    cleanState(sessionId);
+  }
 }
 
 function testSecondCallSameDomainBlocked() {
   const sessionId = 'test-second-same-domain-' + Date.now();
   cleanState(sessionId);
 
-  const cmd = fakeCompanionCmd('domain_codex');
+  const requestFile = makeRequestFile(createDomainDelegation({
+    source: 'plan-auto',
+    domainId: 'domain_codex',
+    engine: 'codex',
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    task: 'Plan auto domain',
+    files: ['scripts/lib/codex-handoff.js'],
+  }));
 
-  // First call — should pass
-  runWithSession(sessionId, cmd);
+  try {
+    runWithSession(sessionId, fakeDispatchCmd(requestFile));
 
-  // Second call for same domain — should be blocked
-  const result = runWithSession(sessionId, cmd);
-  assert.deepStrictEqual(result, { exitCode: 2 },
-    'Second call for same domain should return { exitCode: 2 }');
-  console.log('  PASS testSecondCallSameDomainBlocked');
-  cleanState(sessionId);
+    const result = runWithSession(sessionId, fakeDispatchCmd(requestFile));
+    assert.deepStrictEqual(result, { exitCode: 2 },
+      'Second automatic dispatch for same domain should return { exitCode: 2 }');
+    console.log('  PASS testSecondCallSameDomainBlocked');
+  } finally {
+    try { fs.unlinkSync(requestFile); } catch {}
+    cleanState(sessionId);
+  }
 }
 
 function testSecondCallDifferentDomainAllowed() {
   const sessionId = 'test-second-diff-domain-' + Date.now();
   cleanState(sessionId);
 
-  const cmd1 = fakeCompanionCmd('domain_hooks');
-  const cmd2 = fakeCompanionCmd('domain_session');
+  const requestFile1 = makeRequestFile(createDomainDelegation({
+    source: 'plan-auto',
+    domainId: 'domain_hooks',
+    engine: 'codex',
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    task: 'Hooks plan',
+    files: ['scripts/hooks/pre-bash-codex-guard.js'],
+  }));
+  const requestFile2 = makeRequestFile(createDomainDelegation({
+    source: 'plan-auto',
+    domainId: 'domain_session',
+    engine: 'codex',
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    task: 'Session plan',
+    files: ['scripts/hooks/session-start-bootstrap.js'],
+  }));
 
-  // Call domain_hooks first
-  runWithSession(sessionId, cmd1);
-
-  // Then call domain_session — should be allowed (different domain)
-  const result = runWithSession(sessionId, cmd2);
-  assert.ok(typeof result === 'string',
-    'Second call for a different domain should be allowed');
-  console.log('  PASS testSecondCallDifferentDomainAllowed');
-  cleanState(sessionId);
+  try {
+    runWithSession(sessionId, fakeDispatchCmd(requestFile1));
+    const result = runWithSession(sessionId, fakeDispatchCmd(requestFile2));
+    assert.ok(typeof result === 'string',
+      'Second automatic dispatch for a different domain should be allowed');
+    console.log('  PASS testSecondCallDifferentDomainAllowed');
+  } finally {
+    try { fs.unlinkSync(requestFile1); } catch {}
+    try { fs.unlinkSync(requestFile2); } catch {}
+    cleanState(sessionId);
+  }
 }
 
-function testDefaultDomainUsedWhenNoDomainId() {
-  const sessionId = 'test-default-domain-' + Date.now();
+function testManualBackgroundDispatchAllowed() {
+  const sessionId = 'test-manual-background-' + Date.now();
   cleanState(sessionId);
 
-  // Command without --domain-id → uses '_default'
-  const cmdNoId = `node "/path/codex-companion.mjs" task --prompt-file /tmp/brief.txt`;
+  const requestFile = makeRequestFile(createFallbackRescue({
+    source: 'manual-rescue',
+    engine: 'codex',
+    mode: 'background',
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    task: 'Manual fallback rescue',
+    files: ['misc/untracked.js'],
+  }));
 
-  runWithSession(sessionId, cmdNoId);
-
-  // Second call with no domain-id — same '_default' bucket, should block
-  const result = runWithSession(sessionId, cmdNoId);
-  assert.deepStrictEqual(result, { exitCode: 2 },
-    'No domain-id: second call should be blocked via _default bucket');
-  console.log('  PASS testDefaultDomainUsedWhenNoDomainId');
-  cleanState(sessionId);
+  try {
+    const result = runWithSession(sessionId, fakeDispatchCmd(requestFile));
+    assert.ok(typeof result === 'string',
+      'Manual background dispatch should be allowed');
+    console.log('  PASS testManualBackgroundDispatchAllowed');
+  } finally {
+    try { fs.unlinkSync(requestFile); } catch {}
+    cleanState(sessionId);
+  }
 }
 
-function testBackgroundBlockedForDomainDelegation() {
-  const sessionId = 'test-background-domain-' + Date.now();
+function testPlanAutoBackgroundDispatchBlocked() {
+  const sessionId = 'test-plan-auto-background-' + Date.now();
   cleanState(sessionId);
 
-  const result = runWithSession(sessionId, fakeCompanionCmd('domain_hooks', '--background'));
-  assert.deepStrictEqual(result, { exitCode: 2 },
-    'Background mode should be blocked for domain-scoped delegation');
-  console.log('  PASS testBackgroundBlockedForDomainDelegation');
-  cleanState(sessionId);
+  const requestFile = makeRequestFile({
+    schemaVersion: 'ecc.codex.handoff.request.v1',
+    kind: 'domain',
+    state: 'ROUTED',
+    engine: 'codex',
+    source: 'plan-auto',
+    mode: 'background',
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    domainId: 'domain_hooks',
+    task: 'Broken plan auto',
+    files: ['scripts/hooks/pre-bash-codex-guard.js'],
+  });
+
+  try {
+    const result = runWithSession(sessionId, fakeDispatchCmd(requestFile));
+    assert.deepStrictEqual(result, { exitCode: 2 },
+      'Automatic plan dispatch should reject background mode');
+    console.log('  PASS testPlanAutoBackgroundDispatchBlocked');
+  } finally {
+    try { fs.unlinkSync(requestFile); } catch {}
+    cleanState(sessionId);
+  }
 }
 
 function testStateFileHasDomainsKey() {
   const sessionId = 'test-state-shape-' + Date.now();
   cleanState(sessionId);
 
-  runWithSession(sessionId, fakeCompanionCmd('domain_qa'));
+  const requestFile = makeRequestFile(createDomainDelegation({
+    source: 'plan-auto',
+    domainId: 'domain_qa',
+    engine: 'codex',
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    task: 'QA plan',
+    files: ['docs/qa/bug-topology.md'],
+  }));
+
+  runWithSession(sessionId, fakeDispatchCmd(requestFile));
 
   const statePath = getStatePathForSession(sessionId);
   const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
@@ -173,6 +278,7 @@ function testStateFileHasDomainsKey() {
   assert.strictEqual(state.domains['domain_qa'], 1, 'domains.domain_qa should equal 1');
   assert.ok(!('invocations' in state), 'Old "invocations" key should not exist');
   console.log('  PASS testStateFileHasDomainsKey');
+  try { fs.unlinkSync(requestFile); } catch {}
   cleanState(sessionId);
 }
 
@@ -183,12 +289,12 @@ function testStateFileHasDomainsKey() {
 const tests = [
   testNonCodexCommandPassThrough,
   testPromptFileDomainCallAllowed,
-  testInvalidFlagsBlocked,
-  testInlinePromptBlocked,
+  testRawCompanionCallsBlocked,
+  testInvalidDispatchRequestBlocked,
   testSecondCallSameDomainBlocked,
   testSecondCallDifferentDomainAllowed,
-  testDefaultDomainUsedWhenNoDomainId,
-  testBackgroundBlockedForDomainDelegation,
+  testManualBackgroundDispatchAllowed,
+  testPlanAutoBackgroundDispatchBlocked,
   testStateFileHasDomainsKey,
 ];
 

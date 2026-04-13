@@ -8,6 +8,7 @@
     "kind",
     "state",
     "engine",
+    "source",
     "mode",
     "routingRoot",
     "planFile",
@@ -26,6 +27,9 @@
     },
     "engine": {
       "enum": ["codex", "claude"]
+    },
+    "source": {
+      "enum": ["plan-auto", "manual-delegate", "manual-rescue"]
     },
     "mode": {
       "enum": ["foreground", "background"]
@@ -100,6 +104,22 @@
     }
   },
   "allOf": [
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "plan-auto"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "mode": {
+            "const": "foreground"
+          }
+        }
+      }
+    },
     {
       "if": {
         "properties": {

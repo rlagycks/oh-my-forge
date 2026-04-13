@@ -10,6 +10,7 @@ const {
   buildCompanionCommand,
   createDomainDelegation,
   createFallbackRescue,
+  dispatchHandoff,
   parseCodexResult,
   validateHandoff,
   validateResult,
@@ -47,6 +48,7 @@ if (test('createDomainDelegation returns a schema-valid domain handoff', () => {
   assert.strictEqual(validation.valid, true, validation.error);
   assert.strictEqual(request.kind, 'domain');
   assert.strictEqual(request.domainId, 'domain_hooks');
+  assert.strictEqual(request.source, 'manual-delegate');
   assert.strictEqual(request.state, 'ROUTED');
   assert.deepStrictEqual(request.dependsOn, ['domain_utils']);
 })) passed++; else failed++;
@@ -64,6 +66,7 @@ if (test('createFallbackRescue returns a schema-valid fallback handoff without d
   const validation = validateHandoff(request);
   assert.strictEqual(validation.valid, true, validation.error);
   assert.strictEqual(request.kind, 'fallback');
+  assert.strictEqual(request.source, 'manual-rescue');
   assert.ok(!Object.prototype.hasOwnProperty.call(request, 'domainId'));
 })) passed++; else failed++;
 
@@ -73,6 +76,7 @@ if (test('validateHandoff rejects domain handoffs without domainId', () => {
     kind: 'domain',
     state: 'ROUTED',
     engine: 'codex',
+    source: 'manual-delegate',
     mode: 'foreground',
     routingRoot: '/repo',
     planFile: '/repo/.claude/plans/retry.md',
@@ -82,6 +86,25 @@ if (test('validateHandoff rejects domain handoffs without domainId', () => {
 
   assert.strictEqual(validation.valid, false);
   assert.ok(validation.error.includes('domainId'), validation.error);
+})) passed++; else failed++;
+
+if (test('validateHandoff rejects background mode for automatic plan handoffs', () => {
+  const validation = validateHandoff({
+    schemaVersion: 'ecc.codex.handoff.request.v1',
+    kind: 'domain',
+    state: 'ROUTED',
+    engine: 'codex',
+    source: 'plan-auto',
+    mode: 'background',
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    domainId: 'domain_hooks',
+    task: 'Broken automatic handoff',
+    files: ['scripts/hooks/pre-bash-codex-guard.js'],
+  });
+
+  assert.strictEqual(validation.valid, false);
+  assert.ok(validation.error.includes('/mode') || validation.error.includes('constant'), validation.error);
 })) passed++; else failed++;
 
 if (test('buildBrief emits the shared handoff format', () => {
@@ -95,10 +118,11 @@ if (test('buildBrief emits the shared handoff format', () => {
     constraints: ['Foreground only'],
   });
 
-  const brief = buildBrief(request);
-  assert.ok(brief.includes('DOMAIN    : domain_hooks'), brief);
-  assert.ok(brief.includes('PLAN FILE : /repo/.claude/plans/retry.md'), brief);
-  assert.ok(brief.includes('HANDOFF   : Return: RESULT / FILES CHANGED / TESTS / SUMMARY'), brief);
+    const brief = buildBrief(request);
+    assert.ok(brief.includes('DOMAIN    : domain_hooks'), brief);
+    assert.ok(brief.includes('SOURCE    : manual-delegate'), brief);
+    assert.ok(brief.includes('PLAN FILE : /repo/.claude/plans/retry.md'), brief);
+    assert.ok(brief.includes('HANDOFF   : Return: RESULT / FILES CHANGED / TESTS / SUMMARY'), brief);
 })) passed++; else failed++;
 
 if (test('buildCompanionCommand emits prompt-file based command without inline prompt rewriting needs', () => {
@@ -128,6 +152,146 @@ if (test('buildCompanionCommand emits prompt-file based command without inline p
     assert.ok(!command.includes('Add retry guard coverage'), command);
   } finally {
     fs.unlinkSync(promptFile);
+  }
+})) passed++; else failed++;
+
+if (test('dispatchHandoff runs the companion with a generated prompt file and parses the result', () => {
+  const request = createDomainDelegation({
+    domainId: 'domain_hooks',
+    engine: 'codex',
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    task: 'Add retry guard coverage',
+    files: ['scripts/hooks/pre-bash-codex-guard.js'],
+  });
+
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-dispatch-'));
+  const companionPath = path.join(fixtureDir, 'fake-companion.mjs');
+  fs.writeFileSync(companionPath, [
+    'import fs from "node:fs";',
+    'const promptIdx = process.argv.indexOf("--prompt-file");',
+    'if (promptIdx === -1) {',
+    '  console.log("RESULT: BLOCKED");',
+    '  console.log("FILES CHANGED: none");',
+    '  console.log("TESTS: FAIL");',
+    '  console.log("SUMMARY: prompt file missing");',
+    '  process.exit(0);',
+    '}',
+    'const prompt = fs.readFileSync(process.argv[promptIdx + 1], "utf8");',
+    'console.log("RESULT: DONE");',
+    'console.log("FILES CHANGED: scripts/hooks/pre-bash-codex-guard.js");',
+    'console.log("TESTS: PASS");',
+    'console.log(`SUMMARY: ${prompt.includes("BRIEF") && prompt.includes("SOURCE") ? "dispatch ok" : "prompt malformed"}`);',
+  ].join('\n'), 'utf8');
+
+  try {
+    const result = dispatchHandoff({
+      companionPath,
+      request,
+    });
+
+    assert.strictEqual(result.result, 'DONE');
+    assert.strictEqual(result.tests, 'PASS');
+    assert.ok(result.summary.includes('dispatch ok'), result.summary);
+  } finally {
+    fs.rmSync(fixtureDir, { recursive: true, force: true });
+  }
+})) passed++; else failed++;
+
+if (test('dispatchHandoff resolves the companion from CODEX_COMPANION_PATH when explicit path is absent', () => {
+  const request = createDomainDelegation({
+    domainId: 'domain_hooks',
+    engine: 'codex',
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    task: 'Add retry guard coverage',
+    files: ['scripts/hooks/pre-bash-codex-guard.js'],
+  });
+
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-dispatch-env-'));
+  const companionPath = path.join(fixtureDir, 'env-companion.mjs');
+  fs.writeFileSync(companionPath, [
+    'console.log("RESULT: DONE");',
+    'console.log("FILES CHANGED: scripts/hooks/pre-bash-codex-guard.js");',
+    'console.log("TESTS: PASS");',
+    'console.log("SUMMARY: env path ok");',
+  ].join('\n'), 'utf8');
+
+  const previous = process.env.CODEX_COMPANION_PATH;
+  process.env.CODEX_COMPANION_PATH = companionPath;
+  try {
+    const result = dispatchHandoff({ request });
+    assert.strictEqual(result.result, 'DONE');
+    assert.ok(result.summary.includes('env path ok'), result.summary);
+  } finally {
+    if (previous === undefined) delete process.env.CODEX_COMPANION_PATH;
+    else process.env.CODEX_COMPANION_PATH = previous;
+    fs.rmSync(fixtureDir, { recursive: true, force: true });
+  }
+})) passed++; else failed++;
+
+if (test('dispatchHandoff auto-resolves the companion when no explicit path or env override is provided', () => {
+  const request = createDomainDelegation({
+    domainId: 'domain_hooks',
+    engine: 'codex',
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    task: 'Add retry guard coverage',
+    files: ['scripts/hooks/pre-bash-codex-guard.js'],
+  });
+
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-dispatch-auto-'));
+  const eccRoot = path.join(fixtureDir, 'ecc-root');
+  const companionPath = path.join(eccRoot, 'scripts', 'codex-companion.mjs');
+  fs.mkdirSync(path.dirname(companionPath), { recursive: true });
+  fs.writeFileSync(companionPath, [
+    'console.log("RESULT: DONE");',
+    'console.log("FILES CHANGED: scripts/hooks/pre-bash-codex-guard.js");',
+    'console.log("TESTS: PASS");',
+    'console.log("SUMMARY: auto path ok");',
+  ].join('\n'), 'utf8');
+
+  const previous = process.env.CODEX_COMPANION_PATH;
+  delete process.env.CODEX_COMPANION_PATH;
+  try {
+    const result = dispatchHandoff({
+      request,
+      envRoot: eccRoot,
+      homeDir: fixtureDir,
+    });
+    assert.strictEqual(result.result, 'DONE');
+    assert.ok(result.summary.includes('auto path ok'), result.summary);
+  } finally {
+    if (previous === undefined) delete process.env.CODEX_COMPANION_PATH;
+    else process.env.CODEX_COMPANION_PATH = previous;
+    fs.rmSync(fixtureDir, { recursive: true, force: true });
+  }
+})) passed++; else failed++;
+
+if (test('dispatchHandoff turns missing RESULT output into explicit BLOCKED status', () => {
+  const request = createFallbackRescue({
+    engine: 'codex',
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    task: 'Fallback rescue',
+    files: ['src/untracked.js'],
+  });
+
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-dispatch-blocked-'));
+  const companionPath = path.join(fixtureDir, 'fake-companion.mjs');
+  fs.writeFileSync(companionPath, 'console.log("SUMMARY: missing result");\n', 'utf8');
+
+  try {
+    const result = dispatchHandoff({
+      companionPath,
+      request,
+    });
+
+    assert.strictEqual(result.state, 'BLOCKED');
+    assert.strictEqual(result.result, 'BLOCKED');
+    assert.ok(result.error.includes('RESULT'), result.error);
+  } finally {
+    fs.rmSync(fixtureDir, { recursive: true, force: true });
   }
 })) passed++; else failed++;
 

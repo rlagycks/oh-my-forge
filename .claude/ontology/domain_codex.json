@@ -134,6 +134,34 @@
         "commands/codex-delegate.md"
       ],
       "ref": "PR #9, feat/codex-bash-guard-hook"
+    },
+    {
+      "id": "dec-20260413-003",
+      "date": "2026-04-13",
+      "type": "design",
+      "domain": "domain_codex",
+      "summary": "Codex handoff는 schema-validated request artifact를 받는 dispatch 단일 진입점으로 수렴한다",
+      "why": "buildCompanionCommand가 만드는 명령 형상 자체는 Claude가 손으로 재현할 수 있다. 따라서 --prompt-file, --domain-id 같은 플래그 형상 검사만으로는 runtime provenance를 증명할 수 없다. 이후 codex-handoff runtime은 dispatch --request-file 경로에서 validateHandoff, BRIEF 생성, companion 호출, result 파싱을 내부 처리하고, 프롬프트는 request 생성까지만 담당한다.",
+      "files": [
+        "scripts/lib/codex-handoff.js",
+        "schemas/codex-handoff-request.schema.json",
+        "tests/lib/codex-handoff.test.js"
+      ],
+      "ref": "2026-04-13 prompt-contract review"
+    },
+    {
+      "id": "dec-20260413-005",
+      "date": "2026-04-13",
+      "type": "design",
+      "domain": "domain_codex",
+      "summary": "Codex companion path는 explicit flag > CODEX_COMPANION_PATH > bounded auto-discovery > fail-hard 순으로 해석한다",
+      "why": "dispatch entrypoint가 prompt-side path plumbing을 흡수해야 문서와 프롬프트가 단순해진다. 다만 설치 변형과 디버깅을 위해 호출자 override는 유지해야 한다. 그래서 런타임은 명시 경로와 env override를 먼저 존중하고, 그 다음에만 ECC root와 codex-plugin-cc 설치 위치를 제한적으로 probe한다. 어느 단계에서도 찾지 못하면 추측 실행 없이 즉시 BLOCKED로 실패한다.",
+      "files": [
+        "scripts/lib/resolve-codex-companion.js",
+        "scripts/lib/codex-handoff.js",
+        "tests/lib/resolve-codex-companion.test.js"
+      ],
+      "ref": "feat/dispatch-handoff-runtime"
     }
   ]
 }

@@ -1,8 +1,11 @@
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const Ajv = require('ajv');
+const { resolveCodexCompanionPath } = require('./resolve-codex-companion');
 
 const {
   resolveProjectOntologyRoot,
@@ -138,10 +141,13 @@ function assertValidResult(payload, label) {
 }
 
 function baseRequest(options = {}) {
+  const kind = options.kind || 'fallback';
+  const defaultSource = kind === 'domain' ? 'manual-delegate' : 'manual-rescue';
   return {
     schemaVersion: 'ecc.codex.handoff.request.v1',
     state: options.state || 'ROUTED',
     engine: options.engine || 'codex',
+    source: options.source || defaultSource,
     mode: options.mode || 'foreground',
     routingRoot: path.resolve(options.routingRoot || process.cwd()),
     planFile: options.planFile,
@@ -159,7 +165,7 @@ function baseRequest(options = {}) {
 
 function createDomainDelegation(options = {}) {
   const request = {
-    ...baseRequest(options),
+    ...baseRequest({ ...options, kind: 'domain' }),
     kind: 'domain',
     domainId: options.domainId,
   };
@@ -169,7 +175,7 @@ function createDomainDelegation(options = {}) {
 
 function createFallbackRescue(options = {}) {
   const request = {
-    ...baseRequest(options),
+    ...baseRequest({ ...options, kind: 'fallback' }),
     kind: 'fallback',
   };
   assertValidHandoff(request, 'fallback rescue');
@@ -183,6 +189,7 @@ function buildBrief(request) {
     'BRIEF',
     '=====',
     `DOMAIN    : ${request.kind === 'domain' ? request.domainId : '_default'}`,
+    `SOURCE    : ${request.source}`,
     `TASK      : ${request.task}`,
     `FILES     : ${request.files.join(', ')}`,
     `ENDPOINTS : ${(request.endpoints || []).join(', ') || 'N/A'}`,
@@ -201,6 +208,33 @@ function quoteShell(value) {
   return `"${String(value).replace(/(["\\$`])/g, '\\$1')}"`;
 }
 
+function buildCompanionArgs(options = {}) {
+  const request = options.request;
+  assertValidHandoff(request, 'buildCompanionArgs');
+
+  const promptFile = options.promptFile;
+  if (!promptFile) {
+    throw new Error('buildCompanionCommand requires promptFile');
+  }
+
+  const args = ['task'];
+
+  if (request.kind === 'domain') {
+    args.push('--domain-id', request.domainId);
+  }
+
+  if (request.mode === 'background') {
+    args.push('--background');
+  }
+
+  if (options.fresh !== false) {
+    args.push('--fresh');
+  }
+
+  args.push('--prompt-file', promptFile);
+  return args;
+}
+
 function buildCompanionCommand(options = {}) {
   const request = options.request;
   assertValidHandoff(request, 'buildCompanionCommand');
@@ -211,26 +245,63 @@ function buildCompanionCommand(options = {}) {
     throw new Error('buildCompanionCommand requires companionPath and promptFile');
   }
 
-  const parts = [
+  return [
     'node',
     quoteShell(companionPath),
     'task',
-  ];
+    ...(request.kind === 'domain' ? ['--domain-id', request.domainId] : []),
+    ...(request.mode === 'background' ? ['--background'] : []),
+    ...(options.fresh !== false ? ['--fresh'] : []),
+    '--prompt-file',
+    quoteShell(promptFile),
+  ].join(' ');
+}
 
-  if (request.kind === 'domain') {
-    parts.push('--domain-id', request.domainId);
+function dispatchHandoff(options = {}) {
+  const request = options.request;
+  assertValidHandoff(request, 'dispatchHandoff');
+
+  if (request.engine !== 'codex') {
+    throw new Error(`dispatchHandoff only supports codex engine requests (received ${request.engine})`);
   }
 
-  if (request.mode === 'background') {
-    parts.push('--background');
-  }
+  const resolvedCompanion = resolveCodexCompanionPath({
+    explicitPath: options.companionPath,
+    envPath: process.env.CODEX_COMPANION_PATH,
+    homeDir: options.homeDir,
+    envRoot: options.envRoot,
+    eccRoot: options.eccRoot,
+  });
+  const companionPath = resolvedCompanion.path;
 
-  if (options.fresh !== false) {
-    parts.push('--fresh');
-  }
+  const spawnSyncImpl = options.spawnSyncImpl || spawnSync;
+  const tempRoot = options.tempRoot || os.tmpdir();
+  const tempDir = fs.mkdtempSync(path.join(tempRoot, 'codex-handoff-'));
+  const promptFile = path.join(tempDir, 'brief.txt');
+  const spawnCwd = options.cwd || (fs.existsSync(request.routingRoot) ? request.routingRoot : process.cwd());
 
-  parts.push('--prompt-file', quoteShell(promptFile));
-  return parts.join(' ');
+  try {
+    fs.writeFileSync(promptFile, buildBrief(request), 'utf8');
+    const args = [companionPath, ...buildCompanionArgs({
+      request,
+      promptFile,
+      fresh: options.fresh,
+    })];
+    const result = spawnSyncImpl(process.execPath, args, {
+      cwd: spawnCwd,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    const output = [result.stdout, result.stderr]
+      .filter(value => typeof value === 'string' && value.trim().length > 0)
+      .join('\n')
+      .trim();
+
+    return parseCodexResult(output);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 }
 
 function splitFilesChanged(value) {
@@ -362,6 +433,7 @@ function createPlanRoute(options = {}) {
       handoffs: [
         createFallbackRescue({
           engine,
+          source: options.source || 'plan-auto',
           mode: options.mode,
           routingRoot,
           planFile: options.planFile,
@@ -397,12 +469,13 @@ function createPlanRoute(options = {}) {
   const handoffs = [];
   for (const domainKey of orderDomainKeys(domainGroups)) {
     const group = domainGroups.get(domainKey);
-    handoffs.push(createDomainDelegation({
-      domainId: domainKey,
-      engine,
-      mode: options.mode,
-      routingRoot,
-      planFile: options.planFile,
+      handoffs.push(createDomainDelegation({
+        domainId: domainKey,
+        engine,
+        source: options.source || 'plan-auto',
+        mode: options.mode,
+        routingRoot,
+        planFile: options.planFile,
       featureName: options.featureName,
       task: options.task,
       files: group.files,
@@ -418,6 +491,7 @@ function createPlanRoute(options = {}) {
   if (unmatchedFiles.length > 0) {
     handoffs.push(createFallbackRescue({
       engine,
+      source: options.source || 'plan-auto',
       mode: options.mode,
       routingRoot,
       planFile: options.planFile,
@@ -529,10 +603,22 @@ function runCli(argv = process.argv.slice(2)) {
     process.exit(validation.valid ? 0 : 1);
   }
 
+  if (command === 'dispatch') {
+    const request = JSON.parse(readInputFile('--request-file', argv));
+    const result = dispatchHandoff({
+      request,
+      companionPath: readFlag('--companion-path', argv) || undefined,
+      fresh: readFlag('--fresh', argv) === 'false' ? false : true,
+    });
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+    process.exit(result.state === 'COMPLETED' ? 0 : 1);
+  }
+
   process.stderr.write(
     'Usage:\n' +
     '  node scripts/lib/codex-handoff.js route --engine codex --routing-root <dir> --plan-file <file> --task <text> --files a,b\n' +
     '  node scripts/lib/codex-handoff.js build-brief --request-file <json>\n' +
+    '  node scripts/lib/codex-handoff.js dispatch --request-file <json> [--companion-path <file>]\n' +
     '  node scripts/lib/codex-handoff.js parse-result --result-file <txt>\n' +
     '  node scripts/lib/codex-handoff.js validate-request --request-file <json>\n' +
     '  node scripts/lib/codex-handoff.js validate-result --result-file <json>\n'
@@ -543,6 +629,7 @@ function runCli(argv = process.argv.slice(2)) {
 module.exports = {
   buildBrief,
   buildCompanionCommand,
+  dispatchHandoff,
   createDomainDelegation,
   createFallbackRescue,
   createPlanRoute,

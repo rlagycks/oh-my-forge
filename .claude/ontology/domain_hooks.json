@@ -106,6 +106,19 @@
         "scripts/hooks/pre-write-edit-codex-guard.js"
       ],
       "ref": "PR #19, commit 77ae345"
+    },
+    {
+      "id": "dec-20260413-004",
+      "date": "2026-04-13",
+      "type": "design",
+      "domain": "domain_hooks",
+      "summary": "pre-bash-codex-guard는 companion 플래그 형상 검사에서 dispatch provenance/admission 검사로 역할을 이동한다",
+      "why": "현재 guard는 잘못된 플래그와 inline prompt는 막지만, shape-equivalent command를 Claude가 직접 조립해도 통과시킬 수 있다. 자동 /plan 경로에서는 raw codex-companion 호출을 허용하지 않고 schema-validated dispatch entrypoint만 허용해야 runtime 우회를 차단할 수 있다. manual rescue/background는 별도 source 정책으로 분리한다.",
+      "files": [
+        "scripts/hooks/pre-bash-codex-guard.js",
+        "tests/hooks/pre-bash-codex-guard.test.js"
+      ],
+      "ref": "2026-04-13 prompt-contract review"
     }
   ]
 }

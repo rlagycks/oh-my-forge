@@ -53,6 +53,7 @@ if (test('plan delegates routing and request construction to the shared codex ha
   expectIncludes(planMd, 'scripts/lib/codex-handoff.js');
   expectIncludes(planMd, 'createPlanRoute');
   expectIncludes(planMd, 'validateHandoff');
+  expectIncludes(planMd, 'dispatch --request-file');
 })) passed++; else failed++;
 
 if (test('plan no longer falls back to a domain-less /codex-delegate call', () => {
@@ -68,7 +69,8 @@ if (test('plan blocks silent Claude fallback when engine=codex but routing data 
 if (test('codex-delegate documents the shared handoff runtime as the source of truth', () => {
   expectIncludes(codexDelegateMd, 'scripts/lib/codex-handoff.js');
   expectIncludes(codexDelegateMd, 'buildBrief');
-  expectIncludes(codexDelegateMd, 'buildCompanionCommand');
+  expectIncludes(codexDelegateMd, 'dispatch --request-file');
+  expectNotIncludes(codexDelegateMd, 'buildCompanionCommand');
 })) passed++; else failed++;
 
 if (test('codex-delegate documents background rescue as a manual path only', () => {
