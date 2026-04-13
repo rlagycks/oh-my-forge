@@ -149,7 +149,7 @@ This runtime owns:
 - `createPlanRoute` — route the confirmed file list against the project-local ontology
 - `validateHandoff` — reject malformed requests before delegation
 - `buildBrief` — generate the shared BRIEF format
-- `buildCompanionCommand` — generate prompt-file based Codex companion calls
+- `dispatchHandoff` / `dispatch --request-file` — generate the BRIEF, invoke Codex, and parse the result inside the runtime
 - `parseCodexResult` — reject Codex output that does not contain `RESULT:`
 - `formatImplementationSummary` — produce the final status report
 
@@ -173,14 +173,24 @@ node "$PLUGIN_ROOT/scripts/lib/codex-handoff.js" route \
   --files "src/a.js,src/b.js"
 ```
 
-### Step 4 — Execute the Generated Route
+### Step 4 — Execute the Generated Route via Dispatch
 
 If `createPlanRoute` returns `route = "claude-inline"`:
 - implement inline as Claude
 
 If `createPlanRoute` returns Codex handoffs:
-- `kind = "domain"` → delegate via `/codex-delegate <domain_id>` using the helper-generated BRIEF
-- `kind = "fallback"` → delegate via `/codex:rescue` using the helper-generated BRIEF
+- write each handoff request JSON to a temp file
+- dispatch it through the shared runtime:
+
+```bash
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+node "$PLUGIN_ROOT/scripts/lib/codex-handoff.js" dispatch \
+  --request-file "<handoff-request.json>"
+```
+
+- `source = "plan-auto"` handoffs must stay foreground
+- do NOT call `codex-companion.mjs task ...` directly from this flow
+- if the default companion resolution is wrong in your environment, override it with `--companion-path`
 
 For matched domains, respect `dependsOn` order from `createPlanRoute`. Files outside any matched domain must go through fallback rescue rather than a domain-less `/codex-delegate`.
 

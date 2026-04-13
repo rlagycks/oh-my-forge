@@ -9,6 +9,34 @@ and the global log at `~/.claude/decisions/index.jsonl`.
 
 ---
 
+## 2026-04-13 — domain_codex [updated]
+**Fields**: decisions
+**Trigger**: dispatch-companion-hybrid-resolution
+**Reason**: Recorded the hybrid companion resolution order for Codex dispatch: explicit flag, env override, bounded auto-discovery, then fail-hard.
+
+---
+
+## 2026-04-13 — domain_hooks [updated]
+**Fields**: decisions
+**Trigger**: prompt-contract-review
+**Reason**: Recorded the decision to move the Codex bash guard from flag-shape validation to dispatch admission checks.
+
+---
+
+## 2026-04-13 — domain_codex [updated]
+**Fields**: decisions
+**Trigger**: prompt-contract-review
+**Reason**: Recorded the decision to converge Codex handoffs on a schema-validated dispatch entrypoint.
+
+---
+
+## 2026-04-13 — domain_commands [updated]
+**Fields**: decisions
+**Trigger**: prompt-contract-review
+**Reason**: Recorded the decision that command markdown must document runtime usage rather than assemble Codex handoffs.
+
+---
+
 ## 2026-04-13 — domain_hooks [updated]
 **Fields**: files, constraints, decisions
 **Trigger**: hook-routing-unification
@@ -30,4 +58,3 @@ and the global log at `~/.claude/decisions/index.jsonl`.
 **Reason**: index.json had $version instead of $schema; all spec fields pointed to domain_*.json instead of docs/features/*.md; codexWorkerHint was missing on all domains. Root cause: 6 new domains were added manually without running validate-ontology.js or reading _schema.json.
 
 ---
-

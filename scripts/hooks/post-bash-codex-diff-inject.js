@@ -11,6 +11,7 @@
  * Codex execution detection: command must contain one of:
  *   - "codex exec"
  *   - "codex-companion.mjs task"
+ *   - "codex-handoff.js dispatch"
  *   - "orchestrate-codex-worker.sh"
  *
  * Trigger: PostToolUse on Bash
@@ -56,6 +57,7 @@ function saveState(state) {
 const CODEX_PATTERNS = [
   'codex exec',
   'codex-companion.mjs task',
+  'codex-handoff.js dispatch',
   'orchestrate-codex-worker.sh',
 ];
 

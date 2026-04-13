@@ -51,8 +51,7 @@ Fallback (flat format only): read `## 핵심 제약` section of `entry.spec`.
 Use `scripts/lib/codex-handoff.js` as the source of truth for request construction.
 
 - `buildBrief` generates the BRIEF text.
-- `buildCompanionCommand` generates the prompt-file based `codex-companion.mjs task ...` call.
-- `parseCodexResult` validates that Codex returned `RESULT:` before the caller proceeds.
+- `dispatch --request-file` generates the prompt file, invokes Codex, and validates that Codex returned `RESULT:` before the caller proceeds.
 
 Construct the BRIEF in the shared runtime format:
 
@@ -91,7 +90,22 @@ Return your result in the following structure:
   SUMMARY: <one paragraph>
 ```
 
-**If codex-plugin-cc is installed** (foreground delegation expected by the caller), write the BRIEF to a prompt file and generate the companion command via `buildCompanionCommand`.
+**If codex-plugin-cc is installed** (foreground delegation expected by the caller), write the request JSON to a temp file and dispatch it through the shared runtime:
+
+```bash
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+node "$PLUGIN_ROOT/scripts/lib/codex-handoff.js" dispatch \
+  --request-file "<handoff-request.json>"
+```
+
+If auto-resolution selects the wrong companion in your environment, override it explicitly:
+
+```bash
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+node "$PLUGIN_ROOT/scripts/lib/codex-handoff.js" dispatch \
+  --request-file "<handoff-request.json>" \
+  --companion-path "<codex-companion.mjs>"
+```
 
 **Fallback** (sync, requires Codex CLI in PATH):
 ```bash
