@@ -11,7 +11,9 @@
     ".codex/agents/implementer.toml",
     "commands/codex-delegate.md",
     "agents/codex-rescue.md",
-    "scripts/hooks/pre-bash-codex-guard.js"
+    "scripts/hooks/pre-bash-codex-guard.js",
+    "scripts/lib/codex-handoff.js",
+    "schemas/codex-handoff-request.schema.json"
   ],
   "summary": "Codex CLI 통합. 4개 멀티에이전트 역할(explorer/reviewer/docs-researcher/implementer), MCP 서버 구성, sandbox 정책. Claude Code hooks 없이 approval_policy + sandbox_mode로 행동 제어.",
   "models": [
@@ -88,6 +90,7 @@
     "implementer 완료 보고 형식: RESULT / FILES CHANGED / TESTS / SUMMARY 고정",
     "multi_agent 활성화 시 max_threads = 6, max_depth = 1",
     "신규 파일 생성 시 .claude/ontology/index.json 업데이트 필수 (implementer 규칙)",
+    "codex-handoff request artifact는 implementation source에서 write=true 필수 — dispatch는 이 값을 companion --write로 승격",
     "codex-companion.mjs 호출 시 --approval-mode 플래그 사용 금지 — pre-bash-codex-guard가 차단하지만 소스에도 작성 불가|pattern:--approval-mode",
     "codex-companion.mjs task 호출은 인라인 positional 프롬프트 금지 — --prompt-file 사용 필수|pattern:companion.mjs task \"",
     "codex-rescue 에이전트 수정 시 반드시 fail-fast 보장 — 재시도 루프 추가 금지|pattern:retry"
@@ -162,6 +165,21 @@
         "tests/lib/resolve-codex-companion.test.js"
       ],
       "ref": "feat/dispatch-handoff-runtime"
+    },
+    {
+      "id": "dec-20260414-002",
+      "date": "2026-04-14",
+      "type": "bug-fix",
+      "domain": "domain_codex",
+      "summary": "Codex implementation handoff는 schema에서 write=true를 강제하고 dispatch가 companion --write를 누락하지 않는다",
+      "why": "plan-auto/manual delegate가 schema-valid request artifact를 만들더라도, write 의도가 request에 없어서 dispatch가 codex-companion.mjs task를 read-only로 실행할 수 있었다. 이 경우 Codex는 탐색만 하고 실제 파일 쓰기에서 멈추거나 timeout으로 보였다. handoff request에 write=true를 필수화하고 dispatch/buildCompanionCommand가 이를 --write로 승격해 구현 handoff가 항상 workspace-write로 실행되게 고정했다.",
+      "files": [
+        "scripts/lib/codex-handoff.js",
+        "schemas/codex-handoff-request.schema.json",
+        "tests/lib/codex-handoff.test.js",
+        "tests/hooks/pre-bash-codex-guard.test.js"
+      ],
+      "ref": "fix/codex-handoff-write-guard"
     }
   ]
 }

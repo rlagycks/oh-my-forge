@@ -158,6 +158,7 @@ For routing, treat `process.cwd()` as the active project root.
 - Do NOT use `CLAUDE_PLUGIN_ROOT` to decide whether the current project has an ontology.
 - Extract the file paths mentioned in the confirmed plan, then pass them into `createPlanRoute`.
 - If `validateHandoff` fails for any generated request, stop and report `BLOCKED`.
+- Codex implementation handoffs must validate with `write = true`; read-only request artifacts are invalid for this flow.
 - `domain-less `/codex-delegate` calls are invalid`; use fallback rescue instead.
 - If `ENGINE = "codex"` and you do not have a routable Codex handoff, do NOT silently switch to Claude implementation.
 
@@ -189,6 +190,7 @@ node "$PLUGIN_ROOT/scripts/lib/codex-handoff.js" dispatch \
 ```
 
 - `source = "plan-auto"` handoffs must stay foreground
+- dispatch adds `--write` from the validated request artifact; do not craft or run a read-only Codex implementation handoff
 - do NOT call `codex-companion.mjs task ...` directly from this flow
 - if the default companion resolution is wrong in your environment, override it with `--companion-path`
 

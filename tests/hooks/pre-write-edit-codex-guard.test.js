@@ -7,6 +7,7 @@
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
@@ -17,11 +18,44 @@ const { run } = require(hookPath);
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeInput(toolName, filePath) {
+function makeInput(toolName, filePath, extraToolInput = {}) {
   return JSON.stringify({
     tool_name: toolName,
-    tool_input: { file_path: filePath, content: 'test content' },
+    tool_input: { file_path: filePath, content: 'test content', ...extraToolInput },
   });
+}
+
+function mkdirp(dirPath) {
+  fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function writeJson(filePath, value) {
+  mkdirp(path.dirname(filePath));
+  fs.writeFileSync(filePath, JSON.stringify(value, null, 2), 'utf8');
+}
+
+function makeFixture(initialEngine = 'codex') {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pre-write-codex-guard-'));
+  const projectRoot = path.join(tempRoot, 'project');
+  const trackedFile = path.join(projectRoot, 'src', 'tracked.js');
+  const settingsFile = path.join(projectRoot, '.claude', 'settings.json');
+
+  mkdirp(path.dirname(trackedFile));
+  mkdirp(path.join(projectRoot, '.claude', 'ontology'));
+  fs.writeFileSync(trackedFile, 'module.exports = 1;\n', 'utf8');
+  writeJson(path.join(projectRoot, '.claude', 'ontology', 'index.json'), {
+    domain_project: {
+      summary: 'project-owned domain',
+      owner: 'project',
+      files: ['src/tracked.js'],
+      spec: 'docs/features/project.md',
+    },
+  });
+  if (initialEngine) {
+    writeJson(settingsFile, { implementationEngine: initialEngine });
+  }
+
+  return { tempRoot, projectRoot, trackedFile, settingsFile };
 }
 
 function captureExit(fn) {
@@ -168,6 +202,50 @@ function testSelfRepoMetaPathNotBypassed() {
   console.log('  PASS testSelfRepoMetaPathNotBypassed');
 }
 
+function testImplementationEngineSettingsChangeBlocked() {
+  const fixture = makeFixture('codex');
+  const originalCwd = process.cwd();
+  process.chdir(fixture.projectRoot);
+  process.env.CLAUDE_SESSION_ID = `settings-change-${Date.now()}`;
+
+  try {
+    const input = makeInput('Write', fixture.settingsFile, {
+      content: JSON.stringify({ implementationEngine: 'claude' }, null, 2),
+    });
+    const { exitCode, stdout } = captureExit(() => run(input));
+    assert.strictEqual(exitCode, 2, 'implementationEngine flip should be blocked');
+    assert.ok(stdout.includes('implementationEngine'), stdout);
+    console.log('  PASS testImplementationEngineSettingsChangeBlocked');
+  } finally {
+    process.chdir(originalCwd);
+    delete process.env.CLAUDE_SESSION_ID;
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testSessionPinnedEngineIgnoresSettingsFlip() {
+  const fixture = makeFixture('codex');
+  const originalCwd = process.cwd();
+  process.chdir(fixture.projectRoot);
+  process.env.CLAUDE_SESSION_ID = `pinned-engine-${Date.now()}`;
+
+  try {
+    const trackedInput = makeInput('Edit', fixture.trackedFile, { new_string: 'module.exports = 2;\n' });
+    let result = captureExit(() => run(trackedInput));
+    assert.strictEqual(result.exitCode, 2, 'tracked edit should pin codex and block direct edit');
+
+    writeJson(fixture.settingsFile, { implementationEngine: 'claude' });
+
+    result = captureExit(() => run(trackedInput));
+    assert.strictEqual(result.exitCode, 2, 'pinned codex engine should ignore later settings flips');
+    console.log('  PASS testSessionPinnedEngineIgnoresSettingsFlip');
+  } finally {
+    process.chdir(originalCwd);
+    delete process.env.CLAUDE_SESSION_ID;
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Run all tests
 // ---------------------------------------------------------------------------
@@ -180,6 +258,8 @@ const tests = [
   testNotTrackedFilePassThrough,
   testClaudeEnginePassThrough,
   testSelfRepoMetaPathNotBypassed,
+  testImplementationEngineSettingsChangeBlocked,
+  testSessionPinnedEngineIgnoresSettingsFlip,
 ];
 
 let passed = 0;

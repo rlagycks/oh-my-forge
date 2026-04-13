@@ -90,10 +90,13 @@ Both commands use the same BRIEF format and produce the same HANDOFF output — 
 4. Auto-detect: `codex` binary absent → `"claude"`
 5. Default: `"codex"`
 
+Project/global `implementationEngine` is operator configuration, not an in-session escape hatch. `pre-write-edit-codex-guard` pins the resolved engine per session and blocks direct `.claude/settings.json` engine flips unless `ECC_BYPASS_CODEX_GUARD=1` is set explicitly.
+
 ```
 BRIEF
 =====
 DOMAIN: domain_hooks
+WRITE: true
 TASK: Add ECC_DISABLED_HOOKS support to the PostToolUse handler
 
 FILES:

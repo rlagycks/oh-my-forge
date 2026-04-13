@@ -22,6 +22,8 @@ This command is automatically selected by `/plan` when:
 - `CLAUDE_IMPL_ENGINE=claude` environment variable is set
 - `implementationEngine: "claude"` is set in `.claude/settings.json` or `~/.claude/settings.json`
 
+`implementationEngine` is resolved as configuration before execution. It is not a mid-session fallback knob for implementation tasks; guarded sessions block direct engine flips in `.claude/settings.json` unless an explicit operator bypass is set.
+
 | Condition | Use |
 |-----------|-----|
 | Single-domain bug fix or feature (no Codex) | `/claude-implement domain_X "task"` |

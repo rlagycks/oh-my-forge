@@ -1,47 +1,21 @@
 #!/usr/bin/env node
-/**
- * PreToolUse Hook: Write/Edit Codex Guard
- *
- * Enforces the Codex-first implementation policy:
- * when Claude is about to directly edit an ontology-tracked source file
- * and Codex is the configured implementation engine, this hook hard-blocks
- * the tool call (exit 2) and redirects to /codex-delegate.
- *
- * Policy:
- *   - File in ontology fileMap + ENGINE = codex → BLOCK (exit 2)
- *   - File not in ontology → pass-through (exit 0)
- *   - ENGINE = claude (Codex unavailable) → pass-through
- *   - ECC_BYPASS_CODEX_GUARD=1 → pass-through (escape hatch)
- *   - Meta paths (.claude/, scripts/, agents/, commands/, skills/, hooks/) → pass-through
- *     EXCEPTION: when pluginRoot === cwd (editing oh-my-forge itself), meta-path bypass
- *     is disabled so the guard remains effective for the plugin's own ontology-tracked files.
- *
- * Trigger: PreToolUse on Write|Edit|MultiEdit
- * Profile: standard,strict
- * Exit 0  → allow tool call
- * Exit 2  → block tool call with redirect message
- */
+/** PreToolUse Hook: block direct tracked edits when Codex is the pinned engine. */
 
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
-const crypto = require('crypto');
-const { execFileSync } = require('child_process');
 const {
   resolveProjectOntologyRoot,
   loadOntologyMaps,
   matchFileToDomain,
 } = require('../lib/ontology-routing');
+const {
+  detectPinnedImplementationEngine,
+  readImplementationEngineValue,
+  touchesImplementationEngine,
+} = require('../lib/implementation-engine');
 
-// ---- Meta path exclusions ----
-
-/**
- * Returns true for paths that are part of the plugin's own meta layer —
- * agent definitions, skill docs, hook scripts, command docs, config, etc.
- * These are never blocked because they are maintained by Claude directly.
- */
 function isMetaPath(relPath) {
   const norm = relPath.replace(/\\/g, '/');
   const META_PREFIXES = [
@@ -64,36 +38,34 @@ function isMetaPath(relPath) {
   return false;
 }
 
-// ---- Engine detection (mirrors plan.md Step 2) ----
+function detectEngineMutation(input, resolvedFile) {
+  const toolName = input.tool_name || '';
+  const ti = input.tool_input || {};
 
-function detectEngine(pluginRoot) {
-  const env = process.env.CLAUDE_IMPL_ENGINE;
-  if (env === 'claude') return 'claude';
-  if (env === 'codex') return 'codex';
-
-  const settingsCandidates = [
-    path.join(process.cwd(), '.claude', 'settings.json'),
-    path.join(pluginRoot || '', '.claude', 'settings.json'),
-    path.join(os.homedir(), '.claude', 'settings.json'),
-  ];
-
-  for (const f of settingsCandidates) {
-    try {
-      const s = JSON.parse(fs.readFileSync(f, 'utf8'));
-      if (s.implementationEngine === 'claude') return 'claude';
-      if (s.implementationEngine === 'codex') return 'codex';
-    } catch { /* skip */ }
+  if (toolName === 'Write') {
+    const currentText = fs.existsSync(resolvedFile) ? fs.readFileSync(resolvedFile, 'utf8') : '';
+    const proposedText = ti.content || '';
+    const current = readImplementationEngineValue(currentText);
+    const proposed = readImplementationEngineValue(proposedText);
+    if (!touchesImplementationEngine(proposedText) && current === proposed) return null;
+    if (current === proposed && current !== null) return null;
+    return { current, proposed };
   }
 
-  try {
-    execFileSync('which', ['codex'], { stdio: 'ignore' });
-    return 'codex';
-  } catch {
-    return 'claude';
+  const edits = toolName === 'MultiEdit'
+    ? (Array.isArray(ti.edits) ? ti.edits : [])
+    : [{ old_string: ti.old_string, new_string: ti.new_string }];
+
+  for (const edit of edits) {
+    const current = readImplementationEngineValue(edit?.old_string || '');
+    const proposed = readImplementationEngineValue(edit?.new_string || '');
+    if (!touchesImplementationEngine(edit?.old_string) && !touchesImplementationEngine(edit?.new_string)) continue;
+    if (current === proposed && current !== null) continue;
+    return { current, proposed };
   }
+
+  return null;
 }
-
-// ---- Main ----
 
 function run(rawInput) {
   let input;
@@ -114,30 +86,49 @@ function run(rawInput) {
 
   const resolvedFile = path.resolve(filePath);
   const relPath = path.relative(ontologyRoot, resolvedFile);
+  const normalizedRelPath = relPath.replace(/\\/g, '/');
 
-  // Skip meta paths — UNLESS we are editing the plugin repo itself (pluginRoot === cwd).
-  // When editing oh-my-forge directly, every file is a "meta path" which would make
-  // the guard completely ineffective. In self-repo mode, meta-path bypass is disabled
-  // so ontology-tracked files remain protected.
+  if (normalizedRelPath === '.claude/settings.json') {
+    const mutation = detectEngineMutation(input, resolvedFile);
+    if (mutation) {
+      const sessionEngine = detectPinnedImplementationEngine(ontologyRoot);
+      const current = mutation.current || sessionEngine || 'unset';
+      const proposed = mutation.proposed || 'unset';
+      const msg = [
+        '',
+        '[CODEX GUARD] implementationEngine change blocked',
+        '',
+        `  File    : ${normalizedRelPath}`,
+        `  Engine  : ${current} -> ${proposed}`,
+        '',
+        '  implementationEngine is pinned for the current session.',
+        '  Start a new session to switch engines, or set ECC_BYPASS_CODEX_GUARD=1',
+        '  for an explicit operator override.',
+        '',
+      ].join('\n');
+      process.stderr.write(msg);
+      process.stdout.write(JSON.stringify({
+        decision: 'block',
+        reason: '[CODEX GUARD] implementationEngine cannot be changed during the current session.',
+      }));
+      process.exit(2);
+    }
+  }
+
   const isSelfRepo = path.resolve(ontologyRoot) === path.resolve(process.cwd());
-  if (!isSelfRepo && isMetaPath(relPath)) return rawInput;
+  if (!isSelfRepo && isMetaPath(normalizedRelPath)) return rawInput;
 
-  // Check ontology
   const { fileMap } = loadOntologyMaps(ontologyRoot);
   const domainKey = matchFileToDomain({ filePath, ontologyRoot, fileMap })?.domainKey || null;
-
-  if (!domainKey) return rawInput; // not tracked → no restriction
-
-  // Detect engine
-  const engine = detectEngine(ontologyRoot);
+  if (!domainKey) return rawInput;
+  const engine = detectPinnedImplementationEngine(ontologyRoot);
   if (engine !== 'codex') return rawInput;
 
-  // BLOCK: redirect to /codex-delegate
   const msg = [
     '',
     '[CODEX GUARD] Direct edit blocked — Codex-first policy active',
     '',
-    `  File    : ${relPath}`,
+    `  File    : ${normalizedRelPath}`,
     `  Domain  : ${domainKey}`,
     '',
     '  Implementation tasks for ontology-tracked source files must go through Codex.',
@@ -152,7 +143,7 @@ function run(rawInput) {
   process.stderr.write(msg);
   process.stdout.write(JSON.stringify({
     decision: 'block',
-    reason: `[CODEX GUARD] File "${relPath}" is tracked by ${domainKey}. Use /codex-delegate instead.`,
+    reason: `[CODEX GUARD] File "${normalizedRelPath}" is tracked by ${domainKey}. Use /codex-delegate instead.`,
   }));
   process.exit(2);
 }
