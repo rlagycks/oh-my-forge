@@ -46,9 +46,15 @@ Use `entry.constraints` directly if present (both formats).
 
 Fallback (flat format only): read `## 핵심 제약` section of `entry.spec`.
 
-### Step 3 — Generate BRIEF and Delegate
+### Step 3 — Generate BRIEF via the Shared Runtime
 
-Construct the BRIEF and pass it to Codex:
+Use `scripts/lib/codex-handoff.js` as the source of truth for request construction.
+
+- `buildBrief` generates the BRIEF text.
+- `buildCompanionCommand` generates the prompt-file based `codex-companion.mjs task ...` call.
+- `parseCodexResult` validates that Codex returned `RESULT:` before the caller proceeds.
+
+Construct the BRIEF in the shared runtime format:
 
 ```
 BRIEF
@@ -85,21 +91,18 @@ Return your result in the following structure:
   SUMMARY: <one paragraph>
 ```
 
-**If codex-plugin-cc is installed** (foreground delegation expected by the caller):
-```
-/codex:rescue <BRIEF> --wait --fresh
-```
+**If codex-plugin-cc is installed** (foreground delegation expected by the caller), write the BRIEF to a prompt file and generate the companion command via `buildCompanionCommand`.
 
 **Fallback** (sync, requires Codex CLI in PATH):
 ```bash
 codex "<BRIEF>"
 ```
 
-If you explicitly want queued background work, call `/codex:rescue --background` directly instead of `/codex-delegate`. Automatic callers such as `/plan` expect a foreground Codex result in the same control flow.
+Background mode is manual-only. If you explicitly want queued background work, call `/codex:rescue --background` directly instead of `/codex-delegate`. Automatic callers such as `/plan` expect a foreground Codex result in the same control flow.
 
 ### Step 4 — Validate Codex Result
 
-After `/codex:rescue` or `codex` completes, inspect the output:
+After `/codex:rescue` or `codex` completes, inspect the output with `parseCodexResult`:
 
 - If the output is empty, or contains no `RESULT:` line → output `CODEX_DELEGATION_FAILED: rescue returned no result` and return `RESULT: BLOCKED` immediately.
 - Do NOT proceed to code review or commit if Codex did not confirm execution.

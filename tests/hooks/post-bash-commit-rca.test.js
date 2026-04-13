@@ -7,6 +7,8 @@
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 // ---------------------------------------------------------------------------
@@ -14,7 +16,9 @@ const path = require('path');
 // ---------------------------------------------------------------------------
 
 const hookPath = path.resolve(__dirname, '../../scripts/hooks/post-bash-commit-rca.js');
-const { run } = require(hookPath);
+const { run, writeBundleToStore } = require(hookPath);
+
+let bundleDir = null;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -36,6 +40,19 @@ function captureRun(command) {
   run(makeInput(command));
   process.stdout.write = origWrite;
   return captured;
+}
+
+function setupBundleDir() {
+  bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commit-rca-test-'));
+  process.env.CLAUDE_RCA_BUNDLE_DIR = bundleDir;
+}
+
+function cleanupBundleDir() {
+  delete process.env.CLAUDE_RCA_BUNDLE_DIR;
+  if (bundleDir) {
+    fs.rmSync(bundleDir, { recursive: true, force: true });
+    bundleDir = null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -149,11 +166,39 @@ function testContextBuilderExport() {
   console.log('  ✓ rca-context-builder exports buildRcaBundle');
 }
 
+function testBundleStoreFallsBackWhenPrimaryPathIsInvalid() {
+  const primaryPath = path.join(bundleDir, 'blocked-parent');
+  fs.writeFileSync(primaryPath, 'not-a-directory', 'utf8');
+
+  const fallbackDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commit-rca-fallback-'));
+  try {
+    const result = writeBundleToStore({
+      commitRef: 'HEAD',
+      generatedAt: new Date().toISOString(),
+      changedFiles: [],
+      affectedDomains: [],
+    }, {
+      bundleDir: path.join(primaryPath, 'nested'),
+      candidateDirs: [path.join(primaryPath, 'nested'), fallbackDir],
+    });
+
+    assert.ok(result.bundlePath.startsWith(fallbackDir), result.bundlePath);
+    assert.strictEqual(result.storageMode, 'fallback');
+    assert.ok(fs.existsSync(result.bundlePath), 'fallback bundle should exist');
+  } finally {
+    fs.rmSync(fallbackDir, { recursive: true, force: true });
+  }
+
+  console.log('  ✓ bundle store falls back when primary path is invalid');
+}
+
 // ---------------------------------------------------------------------------
 // Run all tests
 // ---------------------------------------------------------------------------
 
 console.log('post-bash-commit-rca tests:');
+
+setupBundleDir();
 
 let passed = 0;
 let failed = 0;
@@ -164,6 +209,7 @@ const tests = [
   testFixPatternCommits,
   testPrCreateTrigger,
   testContextBuilderExport,
+  testBundleStoreFallsBackWhenPrimaryPathIsInvalid,
 ];
 
 for (const t of tests) {
@@ -175,6 +221,8 @@ for (const t of tests) {
     failed++;
   }
 }
+
+cleanupBundleDir();
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
