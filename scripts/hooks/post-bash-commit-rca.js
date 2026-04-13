@@ -6,7 +6,8 @@
  * with a "fix-type" prefix (fix:, fix(gap):, fix(design):, hotfix:), this hook:
  *
  *   1. Builds a context bundle (git diff, decisions, affected ontology domains)
- *   2. Writes the bundle to ~/.claude/tmp/rca-bundle-<hash>.json
+ *   2. Writes the bundle to the shared RCA store:
+ *        ~/.claude/rca/bundles/rca-bundle-<hash>.json
  *   3. Outputs hookSpecificOutput instructing Claude to spawn an isolated Agent
  *      running the /commit-rca skill to perform root-cause analysis and update
  *      the ontology constraints
@@ -30,6 +31,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const { ensureDir, getTempDir } = require('../lib/utils');
 
 const FIX_PATTERN = /^(fix|hotfix|bugfix)(\([^)]*\))?:/i;
 
@@ -106,23 +108,68 @@ function analyzeCommand(cmd) {
 // Bundle helpers
 // ---------------------------------------------------------------------------
 
-function writeBundleToTmp(bundle) {
-  const tmpDir = path.join(os.homedir(), '.claude', 'tmp');
-  fs.mkdirSync(tmpDir, { recursive: true });
+function getRcaStoreCandidates(options = {}) {
+  if (Array.isArray(options.candidateDirs) && options.candidateDirs.length > 0) {
+    return Array.from(new Set(options.candidateDirs.filter(Boolean)));
+  }
+
+  const configuredDir = options.bundleDir
+    || process.env.CLAUDE_RCA_BUNDLE_DIR
+    || null;
+  const homeDir = process.env.HOME || os.homedir();
+  const canonicalDir = path.join(homeDir, '.claude', 'rca', 'bundles');
+  const fallbackTempDir = path.join(getTempDir(), 'ecc-rca-bundles');
+
+  return Array.from(new Set([
+    configuredDir,
+    canonicalDir,
+    fallbackTempDir,
+  ].filter(Boolean)));
+}
+
+function classifyStore(dirPath, options = {}) {
+  const configuredDir = options.bundleDir
+    || process.env.CLAUDE_RCA_BUNDLE_DIR
+    || null;
+  const canonicalDir = path.join(process.env.HOME || os.homedir(), '.claude', 'rca', 'bundles');
+  if (configuredDir && path.resolve(dirPath) === path.resolve(configuredDir)) {
+    return 'persistent';
+  }
+
+  return path.resolve(dirPath) === path.resolve(canonicalDir)
+    ? 'persistent'
+    : 'fallback';
+}
+
+function writeBundleToStore(bundle, options = {}) {
   const hash = crypto.createHash('sha1')
     .update(bundle.commitRef + bundle.generatedAt)
     .digest('hex')
     .slice(0, 8);
-  const bundlePath = path.join(tmpDir, `rca-bundle-${hash}.json`);
-  fs.writeFileSync(bundlePath, JSON.stringify(bundle, null, 2), 'utf8');
-  return bundlePath;
+
+  const errors = [];
+  for (const dirPath of getRcaStoreCandidates(options)) {
+    try {
+      ensureDir(dirPath);
+      const bundlePath = path.join(dirPath, `rca-bundle-${hash}.json`);
+      fs.writeFileSync(bundlePath, JSON.stringify(bundle, null, 2), 'utf8');
+      return {
+        bundlePath,
+        storageMode: classifyStore(dirPath, options),
+      };
+    } catch (error) {
+      errors.push(`${dirPath}: ${error.message}`);
+    }
+  }
+
+  throw new Error(`Failed to write bundle to any RCA store: ${errors.join(' | ')}`);
 }
 
 // ---------------------------------------------------------------------------
 // hookSpecificOutput builder
 // ---------------------------------------------------------------------------
 
-function buildHookOutput(bundle, bundlePath, subject, triggerType) {
+function buildHookOutput(bundle, bundlePath, subject, triggerType, storageMode) {
   const domains = bundle.affectedDomains.map(d => d.domainKey).join(', ') || '(unknown)';
   const files = bundle.changedFiles.slice(0, 8).join('\n  ') || '(none)';
 
@@ -133,6 +180,7 @@ function buildHookOutput(bundle, bundlePath, subject, triggerType) {
     `**변경 파일** (${bundle.changedFiles.length}개):`,
     `  ${files}`,
     `**영향 도메인**: ${domains}`,
+    `**저장소**: ${storageMode === 'persistent' ? 'shared RCA store' : 'fallback temp store'}`,
     ``,
     `### 다음 단계`,
     ``,
@@ -199,20 +247,24 @@ function run(rawInput) {
     return;
   }
 
-  let bundlePath;
+  let bundleInfo;
   try {
-    bundlePath = writeBundleToTmp(bundle);
+    bundleInfo = writeBundleToStore(bundle);
   } catch (e) {
     process.stderr.write(`[commit-rca] Failed to write bundle: ${e.message}\n`);
     process.stdout.write(rawInput);
     return;
   }
 
-  process.stderr.write(`[commit-rca] RCA triggered for "${analysis.subject}". Bundle: ${bundlePath}\n`);
-  process.stdout.write(buildHookOutput(bundle, bundlePath, analysis.subject, analysis.type));
+  if (bundleInfo.storageMode !== 'persistent') {
+    process.stderr.write(`[commit-rca] Warning: using fallback RCA store at ${bundleInfo.bundlePath}\n`);
+  }
+
+  process.stderr.write(`[commit-rca] RCA triggered for "${analysis.subject}". Bundle: ${bundleInfo.bundlePath}\n`);
+  process.stdout.write(buildHookOutput(bundle, bundleInfo.bundlePath, analysis.subject, analysis.type, bundleInfo.storageMode));
 }
 
-module.exports = { run };
+module.exports = { run, writeBundleToStore, getRcaStoreCandidates };
 
 if (require.main === module) {
   const chunks = [];
