@@ -45,20 +45,7 @@ The plan must include:
 When the user confirms:
 
 ```bash
-node -e "
-const fs=require('fs'),os=require('os'),path=require('path');
-const name=process.argv[1]||'plan';
-const content=process.argv[2]||'';
-if(!content.trim()){process.stderr.write('No content\n');process.exit(1);}
-const slug=name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60)||'plan';
-const d=new Date(),p=(n)=>String(n).padStart(2,'0');
-const ts=d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes());
-const dir=path.join(os.homedir(),'.claude','plans');
-fs.mkdirSync(dir,{recursive:true});
-const file=path.join(dir,slug+'-'+ts+'.md');
-fs.writeFileSync(file,content,'utf8');
-process.stdout.write(file+'\n');
-" "<feature-name>" "<full plan markdown>"
+node scripts/lib/save-plan.js "<feature-name>" --content "<full plan markdown>"
 ```
 
 Store the path as `PLAN_FILE`.
@@ -66,52 +53,27 @@ Store the path as `PLAN_FILE`.
 ### Step 3 — Detect Engine
 
 ```bash
-node -e "
-const fs=require('fs'),os=require('os'),path=require('path');
-const env=process.env.CLAUDE_IMPL_ENGINE;
-if(env==='claude'||env==='codex'){console.log(env);process.exit(0);}
-for(const f of [path.join(process.cwd(),'.claude/settings.json'),path.join(os.homedir(),'.claude/settings.json')]){
-  try{const s=JSON.parse(fs.readFileSync(f,'utf8'));if(s.implementationEngine==='claude'||s.implementationEngine==='codex'){console.log(s.implementationEngine);process.exit(0);}}catch{}
-}
-const {execFileSync}=require('child_process');
-try{execFileSync('which',['codex'],{stdio:'ignore'});console.log('codex');}catch{console.log('claude');}
-"
+node -e "const { detectImplementationEngine } = require('./scripts/lib/utils.js'); console.log(detectImplementationEngine())"
 ```
 
-### Step 4 — Delegate to Codex (ENGINE = codex)
+### Step 4 — Build the Route via `scripts/lib/codex-handoff.js`
 
-For each ontology domain touched by the plan, in `dependsOn` order, invoke via the Skill tool directly (do NOT use Agent with a text "Run /codex-delegate" instruction — subagents cannot invoke Skill):
+Treat `scripts/lib/codex-handoff.js` as the single source of truth for:
+- `createPlanRoute`
+- `validateHandoff`
+- `buildBrief`
+- `buildCompanionCommand`
+- `parseCodexResult`
+
+Extract the file paths from the confirmed plan, then route them through `createPlanRoute`.
+
+If `createPlanRoute` returns Codex domain handoffs, invoke them in `dependsOn` order. For independent domains, call multiple Skill invocations **in parallel**.
 
 ```
 Skill({ skill: "codex-delegate", args: "<domain_key> <task description>" })
 ```
 
-Pass the plan context by including the PLAN_FILE path and relevant phase steps in the BRIEF per the BRIEF format in `codex-delegate.md`.
-
-For independent domains, call multiple Skill invocations **in parallel**.
-
-For files not matched to any domain, construct the BRIEF directly and invoke via Skill:
-
-```
-BRIEF
-=====
-DOMAIN    : _default
-TASK      : <one-sentence description of what needs to be implemented>
-FILES     : <comma-separated list of all unmatched file paths>
-PLAN FILE : <PLAN_FILE absolute path>
-ENDPOINTS : N/A
-MODELS    : N/A
-SYMBOLS   : N/A
-CONSTRAINTS: Follow plan phases in order. Do not skip tests.
-DEPENDS ON: none
-HANDOFF   : Return: RESULT / FILES CHANGED / TESTS / SUMMARY
-```
-
-Then invoke via the Skill tool (do NOT use Agent with a text "Run /codex-delegate" instruction):
-
-```
-Skill({ skill: "codex-delegate", args: "<BRIEF above>" })
-```
+If `createPlanRoute` returns fallback handoffs, delegate them via rescue instead. Domain-less `/codex-delegate` calls are invalid.
 
 ### Step 5 — Fallback (ENGINE = claude)
 

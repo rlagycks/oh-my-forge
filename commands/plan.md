@@ -141,62 +141,54 @@ node -e "const { detectImplementationEngine } = require(process.argv[1]); consol
 
 Store result as `ENGINE` ("codex" or "claude").
 
-### Step 3 — Resolve routing root and project ontology
+### Step 3 — Build a Route with the Shared Handoff Runtime
 
-For implementation routing, treat `process.cwd()` as the active project root.
+Use `scripts/lib/codex-handoff.js` as the single source of truth for plan routing and request construction.
 
-- Check `process.cwd()/.claude/ontology/index.json` to decide whether the current project has an ontology.
-- Do NOT use `CLAUDE_PLUGIN_ROOT` to decide whether the current project has an ontology. `CLAUDE_PLUGIN_ROOT` points at the installed ECC plugin copy and can create false matches.
-- If the project ontology file is missing, skip domain routing and go to **Step 5 (Codex fallback)**.
+This runtime owns:
+- `createPlanRoute` — route the confirmed file list against the project-local ontology
+- `validateHandoff` — reject malformed requests before delegation
+- `buildBrief` — generate the shared BRIEF format
+- `buildCompanionCommand` — generate prompt-file based Codex companion calls
+- `parseCodexResult` — reject Codex output that does not contain `RESULT:`
+- `formatImplementationSummary` — produce the final status report
 
-### Step 4 — Build project fileMap and map plan phases to domains
+For routing, treat `process.cwd()` as the active project root.
 
-Load the project-local ontology index from `process.cwd()/.claude/ontology/index.json` and build a `fileMap` from each domain's `files[]`.
+- Do NOT use `CLAUDE_PLUGIN_ROOT` to decide whether the current project has an ontology.
+- Extract the file paths mentioned in the confirmed plan, then pass them into `createPlanRoute`.
+- If `validateHandoff` fails for any generated request, stop and report `BLOCKED`.
+- `domain-less `/codex-delegate` calls are invalid`; use fallback rescue instead.
+- If `ENGINE = "codex"` and you do not have a routable Codex handoff, do NOT silently switch to Claude implementation.
 
-- Match the file paths mentioned in the confirmed plan against that project-local `fileMap`.
-- If no mentioned file maps to any domain, treat this as a routing miss and skip to **Step 5 (Codex fallback)**.
-- This check prevents the failure chain `resolver mismatch → wrong root → fileMap miss → guard miss → Claude direct implementation`.
-- If `ENGINE = "codex"` and you do not have a project-local ontology match, do NOT silently switch to Claude implementation.
+Example CLI usage:
 
-For matched domains: delegate per domain respecting `dependsOn` order. Parallel agents for independent domains.
-
-**If ENGINE = "codex"**:
-
-```
-Agent({
-  description: "Implement domain_X",
-  prompt: "Run /codex-delegate domain_X with this plan context:\nplan_file: <PLAN_FILE>\n\n<paste only the relevant phase steps for this domain>\n\nThis automatic /plan flow expects a foreground Codex result in the same control flow. Do not switch this handoff to background rescue."
-})
-```
-
-**If ENGINE = "claude"**: Use the `Agent` tool to invoke `claude-implement` for each matched domain with the same BRIEF.
-
-Files outside any matched domain:
-- `ENGINE = "claude"` → implement inline
-- `ENGINE = "codex"` → send them through **Step 5 (Codex fallback)** instead of implementing them inline
-
-Skip to **Step 6**.
-
-### Step 5 — Codex fallback (no ontology or no fileMap match)
-
-Even without an ontology match, still delegate to the implementation engine.
-
-**If ENGINE = "codex"**: Extract all file paths mentioned in the plan and delegate directly to Codex as a single rescue task. Do not route this case through `/codex-delegate`, because `/codex-delegate` requires a concrete domain id.
-
-```
-Agent({
-  description: "Implement <feature-name>",
-  prompt: "Run /codex:rescue --wait --fresh with this plan context:\nplan_file: <PLAN_FILE>\n\nFILES:\n<all file paths from the plan, one per line>\n\nTASK: Implement all phases in the plan file.\n\nThis is a fallback because the current project has no domain/fileMap route for the files above. Return the final Codex result in the same thread."
-})
+```bash
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+node "$PLUGIN_ROOT/scripts/lib/codex-handoff.js" route \
+  --engine "$ENGINE" \
+  --routing-root "$PWD" \
+  --plan-file "$PLAN_FILE" \
+  --task "<one-sentence implementation task>" \
+  --files "src/a.js,src/b.js"
 ```
 
-**If ENGINE = "claude"**: Implement directly inline as Claude.
+### Step 4 — Execute the Generated Route
 
-If `ENGINE = "codex"` but rescue cannot be started, report `BLOCKED` clearly. Do NOT silently switch to Claude implementation after Codex routing fails.
+If `createPlanRoute` returns `route = "claude-inline"`:
+- implement inline as Claude
 
-### Step 6 — Report delegation status
+If `createPlanRoute` returns Codex handoffs:
+- `kind = "domain"` → delegate via `/codex-delegate <domain_id>` using the helper-generated BRIEF
+- `kind = "fallback"` → delegate via `/codex:rescue` using the helper-generated BRIEF
 
-Automatic `/plan` implementation must use a foreground Codex handoff. If you intentionally use `/codex:rescue --background` outside this flow, report it as `DISPATCHED` only; do not claim the implementation completed until `/codex:result` confirms it.
+For matched domains, respect `dependsOn` order from `createPlanRoute`. Files outside any matched domain must go through fallback rescue rather than a domain-less `/codex-delegate`.
+
+If `ENGINE = "codex"` but the route state is `BLOCKED`, report `BLOCKED` clearly. Do NOT silently switch to Claude implementation after Codex routing fails.
+
+### Step 5 — Validate Result and Report Status
+
+Automatic `/plan` implementation must use a foreground Codex handoff. Background mode is manual-only. If you intentionally use `/codex:rescue --background` outside this flow, report it as `DISPATCHED` only; do not claim the implementation completed until `/codex:result` confirms it.
 
 ```
 Implementation summary
@@ -207,6 +199,6 @@ Routing root: <process.cwd()>
 Plan saved: ~/.claude/plans/<feature>-<timestamp>.md
 Ontology: project-local match | none
 domain_hooks    → /codex-delegate completed (ontology match)
-mobile/src/...  → /codex:rescue --wait completed (fallback)
+mobile/src/...  → /codex:rescue completed (fallback)
 ──────────────────────────────────────────
 ```

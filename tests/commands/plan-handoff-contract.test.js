@@ -49,15 +49,15 @@ if (test('plan resolves engine via shared detectImplementationEngine helper', ()
   expectIncludes(planMd, 'scripts/lib/utils.js');
 })) passed++; else failed++;
 
-if (test('plan treats process.cwd() as the routing root for ontology/fileMap checks', () => {
-  expectIncludes(planMd, 'treat `process.cwd()` as the active project root');
-  expectIncludes(planMd, 'Do NOT use `CLAUDE_PLUGIN_ROOT` to decide whether the current project has an ontology');
-  expectIncludes(planMd, 'fileMap');
+if (test('plan delegates routing and request construction to the shared codex handoff runtime', () => {
+  expectIncludes(planMd, 'scripts/lib/codex-handoff.js');
+  expectIncludes(planMd, 'createPlanRoute');
+  expectIncludes(planMd, 'validateHandoff');
 })) passed++; else failed++;
 
 if (test('plan no longer falls back to a domain-less /codex-delegate call', () => {
   expectNotIncludes(planMd, 'prompt: "Run /codex-delegate with this plan context:');
-  expectIncludes(planMd, '/codex:rescue --wait --fresh');
+  expectIncludes(planMd, 'domain-less `/codex-delegate` calls are invalid');
 })) passed++; else failed++;
 
 if (test('plan blocks silent Claude fallback when engine=codex but routing data is unavailable', () => {
@@ -65,13 +65,14 @@ if (test('plan blocks silent Claude fallback when engine=codex but routing data 
   expectIncludes(planMd, 'BLOCKED');
 })) passed++; else failed++;
 
-if (test('codex-delegate uses foreground rescue for automatic plan handoff', () => {
-  expectIncludes(codexDelegateMd, '/codex:rescue <BRIEF> --wait --fresh');
-  expectNotIncludes(codexDelegateMd, '/codex:rescue <BRIEF> --background --fresh');
+if (test('codex-delegate documents the shared handoff runtime as the source of truth', () => {
+  expectIncludes(codexDelegateMd, 'scripts/lib/codex-handoff.js');
+  expectIncludes(codexDelegateMd, 'buildBrief');
+  expectIncludes(codexDelegateMd, 'buildCompanionCommand');
 })) passed++; else failed++;
 
 if (test('codex-delegate documents background rescue as a manual path only', () => {
-  expectIncludes(codexDelegateMd, 'If you explicitly want queued background work, call `/codex:rescue --background` directly');
+  expectIncludes(codexDelegateMd, 'Background mode is manual-only');
 })) passed++; else failed++;
 
 console.log(`\n  ${passed} passed, ${failed} failed\n`);

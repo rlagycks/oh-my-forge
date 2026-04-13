@@ -1,5 +1,5 @@
 /**
- * Tests for pre-bash-codex-guard.js — domain-keyed invocation counter
+ * Tests for pre-bash-codex-guard.js — validator-only Codex bash guard
  *
  * Run with: node tests/hooks/pre-bash-codex-guard.test.js
  */
@@ -25,9 +25,9 @@ function makeInput(command) {
   });
 }
 
-function fakeCompanionCmd(domainId) {
+function fakeCompanionCmd(domainId, extraFlags = '') {
   const domainFlag = domainId ? `--domain-id ${domainId}` : '';
-  return `node "/some/path/codex-companion.mjs" task ${domainFlag} --prompt-file /tmp/brief.txt`;
+  return `node "/some/path/codex-companion.mjs" task ${domainFlag} ${extraFlags} --prompt-file /tmp/brief.txt`.trim();
 }
 
 function getStatePathForSession(sessionId) {
@@ -63,15 +63,38 @@ function testNonCodexCommandPassThrough() {
   cleanState(sessionId);
 }
 
-function testFirstDomainCallAllowed() {
+function testPromptFileDomainCallAllowed() {
   const sessionId = 'test-first-domain-' + Date.now();
   cleanState(sessionId);
 
   const cmd = fakeCompanionCmd('domain_hooks');
   const result = runWithSession(sessionId, cmd);
   // Should not return exitCode:2 (i.e. result is a string, not an object with exitCode)
-  assert.ok(typeof result === 'string', 'First domain call should be allowed (string result)');
-  console.log('  PASS testFirstDomainCallAllowed');
+  assert.ok(typeof result === 'string', 'Prompt-file domain call should be allowed (string result)');
+  console.log('  PASS testPromptFileDomainCallAllowed');
+  cleanState(sessionId);
+}
+
+function testInvalidFlagsBlocked() {
+  const sessionId = 'test-invalid-flags-' + Date.now();
+  cleanState(sessionId);
+
+  const result = runWithSession(sessionId, fakeCompanionCmd('domain_hooks', '--approval-mode workspace-write'));
+  assert.deepStrictEqual(result, { exitCode: 2 },
+    'Unknown flags should be blocked instead of stripped');
+  console.log('  PASS testInvalidFlagsBlocked');
+  cleanState(sessionId);
+}
+
+function testInlinePromptBlocked() {
+  const sessionId = 'test-inline-prompt-' + Date.now();
+  cleanState(sessionId);
+
+  const cmd = 'node "/some/path/codex-companion.mjs" task --domain-id domain_hooks "inline prompt"';
+  const result = runWithSession(sessionId, cmd);
+  assert.deepStrictEqual(result, { exitCode: 2 },
+    'Inline prompt should be blocked instead of being rewritten');
+  console.log('  PASS testInlinePromptBlocked');
   cleanState(sessionId);
 }
 
@@ -127,6 +150,17 @@ function testDefaultDomainUsedWhenNoDomainId() {
   cleanState(sessionId);
 }
 
+function testBackgroundBlockedForDomainDelegation() {
+  const sessionId = 'test-background-domain-' + Date.now();
+  cleanState(sessionId);
+
+  const result = runWithSession(sessionId, fakeCompanionCmd('domain_hooks', '--background'));
+  assert.deepStrictEqual(result, { exitCode: 2 },
+    'Background mode should be blocked for domain-scoped delegation');
+  console.log('  PASS testBackgroundBlockedForDomainDelegation');
+  cleanState(sessionId);
+}
+
 function testStateFileHasDomainsKey() {
   const sessionId = 'test-state-shape-' + Date.now();
   cleanState(sessionId);
@@ -148,17 +182,20 @@ function testStateFileHasDomainsKey() {
 
 const tests = [
   testNonCodexCommandPassThrough,
-  testFirstDomainCallAllowed,
+  testPromptFileDomainCallAllowed,
+  testInvalidFlagsBlocked,
+  testInlinePromptBlocked,
   testSecondCallSameDomainBlocked,
   testSecondCallDifferentDomainAllowed,
   testDefaultDomainUsedWhenNoDomainId,
+  testBackgroundBlockedForDomainDelegation,
   testStateFileHasDomainsKey,
 ];
 
 let passed = 0;
 let failed = 0;
 
-console.log('\npre-bash-codex-guard.test.js (domain-keyed counter)');
+console.log('\npre-bash-codex-guard.test.js (validator-only guard)');
 
 for (const test of tests) {
   try {

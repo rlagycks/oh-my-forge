@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Codex Handoff Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "state",
+    "valid",
+    "result",
+    "filesChanged",
+    "tests",
+    "summary"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "ecc.codex.handoff.result.v1"
+    },
+    "state": {
+      "enum": ["COMPLETED", "BLOCKED", "PARTIAL"]
+    },
+    "valid": {
+      "type": "boolean"
+    },
+    "result": {
+      "enum": ["DONE", "BLOCKED", "PARTIAL"]
+    },
+    "filesChanged": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "tests": {
+      "enum": ["PASS", "FAIL", "SKIPPED"]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "error": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rawOutput": {
+      "type": "string"
+    }
+  }
+}
