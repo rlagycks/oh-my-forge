@@ -78,8 +78,11 @@ if (test('createPlanRoute groups matched files by domain and appends unmatched f
     assert.strictEqual(route.state, 'ROUTED');
     assert.strictEqual(route.ontology, 'project-local match');
     assert.strictEqual(route.handoffs.length, 3);
+    assert.strictEqual(route.handoffs[0].source, 'plan-auto');
     assert.strictEqual(route.handoffs[0].domainId, 'domain_utils');
+    assert.strictEqual(route.handoffs[1].source, 'plan-auto');
     assert.strictEqual(route.handoffs[1].domainId, 'domain_hooks');
+    assert.strictEqual(route.handoffs[2].source, 'plan-auto');
     assert.strictEqual(route.handoffs[2].kind, 'fallback');
     assert.deepStrictEqual(route.handoffs[2].files, ['misc/unmatched.js']);
   } finally {
@@ -102,6 +105,7 @@ if (test('createPlanRoute falls back when no ontology is present but files exist
     assert.strictEqual(route.state, 'ROUTED');
     assert.strictEqual(route.ontology, 'none');
     assert.strictEqual(route.handoffs.length, 1);
+    assert.strictEqual(route.handoffs[0].source, 'plan-auto');
     assert.strictEqual(route.handoffs[0].kind, 'fallback');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

@@ -54,6 +54,16 @@
       "why": "~/.claude/scripts/lib/utils.js에 detectImplementationEngine이 export되지 않아 절대경로로 바꿔도 동일하게 실패. 함수 자체를 node -e 블록으로 이식.",
       "files": ["commands/plan.md"],
       "ref": "PR #6"
+    },
+    {
+      "id": "dec-20260413-002",
+      "date": "2026-04-13",
+      "type": "design",
+      "domain": "domain_commands",
+      "summary": "plan.md와 codex-delegate.md는 실행 메커니즘이 아니라 handoff runtime 사용법만 문서화한다",
+      "why": "프롬프트 계약 픽스가 누적된 근본 원인은 마크다운 커맨드가 명세이자 실행 메커니즘이었기 때문이다. 실패가 나면 스키마나 런타임이 아니라 문서에 지시를 추가하는 경로로 수렴했다. 이후 commands/*.md는 route/request/dispatch/result 흐름만 설명하고, 명령 조립과 실행 정책은 코드 런타임이 소유한다.",
+      "files": ["commands/plan.md", "commands/codex-delegate.md"],
+      "ref": "2026-04-13 prompt-contract review"
     }
   ]
 }

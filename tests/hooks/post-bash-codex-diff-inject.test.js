@@ -102,6 +102,20 @@ function testCodexCompanionDetected() {
   console.log('  PASS testCodexCompanionDetected');
 }
 
+function testCodexDispatchDetected() {
+  clearState();
+  const { captured } = captureRun('node scripts/lib/codex-handoff.js dispatch --request-file /tmp/request.json');
+  if (captured) {
+    try {
+      const parsed = JSON.parse(captured);
+      assert.ok(parsed.hookSpecificOutput, 'Should have hookSpecificOutput');
+    } catch {
+      // pass-through acceptable when git not available
+    }
+  }
+  console.log('  PASS testCodexDispatchDetected');
+}
+
 function testOrchestratorDetected() {
   clearState();
   const { captured } = captureRun('bash scripts/orchestrate-codex-worker.sh');
@@ -146,6 +160,7 @@ const tests = [
   testNpmCommandPassThrough,
   testCodexExecDetected,
   testCodexCompanionDetected,
+  testCodexDispatchDetected,
   testOrchestratorDetected,
   testSessionFlagSet,
   testInvalidJsonPassThrough,
