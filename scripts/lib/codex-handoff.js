@@ -11,6 +11,7 @@ const {
   resolveProjectOntologyRoot,
   loadOntologyMaps,
   matchFileToDomain,
+  uniqueStrings,
 } = require('./ontology-routing');
 
 const REQUEST_SCHEMA_PATH = path.join(__dirname, '..', '..', 'schemas', 'codex-handoff-request.schema.json');
@@ -62,10 +63,6 @@ function formatValidationErrors(errors = []) {
   return errors
     .map(error => `${error.instancePath || '/'} ${error.message}`)
     .join('; ');
-}
-
-function uniqueStrings(values) {
-  return Array.from(new Set((values || []).filter(value => typeof value === 'string' && value.trim().length > 0)));
 }
 
 function normalizeChecklist(values, fallback = []) {

@@ -165,4 +165,5 @@ module.exports = {
   resolveProjectOntologyRoot,
   loadOntologyMaps,
   matchFileToDomain,
+  uniqueStrings,
 };

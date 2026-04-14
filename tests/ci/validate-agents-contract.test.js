@@ -20,14 +20,16 @@ function test(name, fn) {
   }
 }
 
-function writeAgent(dir, fileName, bodySections) {
+function writeAgent(dir, fileName, bodySections, extraFrontmatter = {}) {
   fs.mkdirSync(dir, { recursive: true });
+  const extraLines = Object.entries(extraFrontmatter).map(([k, v]) => `${k}: ${v}`);
   fs.writeFileSync(path.join(dir, fileName), [
     '---',
     `name: ${fileName.replace(/\.md$/, '')}`,
     'description: test agent',
     'tools: ["Read"]',
     'model: sonnet',
+    ...extraLines,
     '---',
     '',
     ...bodySections,
@@ -48,7 +50,7 @@ if (test('validateAgents fails when a strict agent is missing contract sections'
     '- plan work',
     '## Success',
     '- clear plan',
-  ]);
+  ], { contract: 'strict' });
 
   try {
     const result = validateAgents({
@@ -101,7 +103,7 @@ if (test('validateAgents passes when a strict agent contains the full contract',
     '- checkpoint before risky steps',
     '## Style',
     '- concise',
-  ]);
+  ], { contract: 'strict' });
 
   try {
     const result = validateAgents({
@@ -111,6 +113,27 @@ if (test('validateAgents passes when a strict agent contains the full contract',
 
     assert.strictEqual(result.valid, true, JSON.stringify(result, null, 2));
     assert.deepStrictEqual(result.errors, []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+})) passed++; else failed++;
+
+if (test('validateAgents enforces strict contract via frontmatter without explicit strictContractAgents option', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-agents-'));
+  const agentsDir = path.join(root, 'agents');
+  writeAgent(agentsDir, 'my-agent.md', [
+    '## Mission',
+    '- do things',
+  ], { contract: 'strict' });
+
+  try {
+    const result = validateAgents({
+      agentDirs: [agentsDir],
+    });
+
+    assert.strictEqual(result.valid, false);
+    assert.ok(result.errors.some(error => error.includes('my-agent.md')), result.errors.join('\n'));
+    assert.ok(result.errors.some(error => error.includes('Not Do')), result.errors.join('\n'));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

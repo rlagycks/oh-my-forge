@@ -102,7 +102,7 @@ function validateAgentFile(filePath, options = {}) {
   const missingSections = CONTRACT_SECTIONS.filter(section => !hasHeading(body, section));
   if (missingSections.length > 0) {
     const message = `${fileName} - Missing contract section(s): ${missingSections.join(', ')}`;
-    if (strictContractAgents.includes(agentName)) {
+    if (strictContractAgents.includes(agentName) || frontmatter.contract === 'strict') {
       errors.push(`ERROR: ${message}`);
     } else {
       warnings.push(`WARN: ${message}`);
