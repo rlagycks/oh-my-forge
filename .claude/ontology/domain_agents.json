@@ -96,6 +96,16 @@
     ]
   },
   "retrievalProfiles": {
+    "context": {
+      "include": [
+        "summary",
+        "spec",
+        "constraints",
+        "completionContract.falseNormalChecks"
+      ],
+      "maxFailurePatterns": 0,
+      "maxDecisions": 1
+    },
     "implement": {
       "include": [
         "summary",

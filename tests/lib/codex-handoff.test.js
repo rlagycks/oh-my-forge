@@ -202,6 +202,23 @@ if (test('createPlanRoute marks generated Codex handoffs as write-enabled', () =
   assert.ok(route.handoffs.every(handoff => handoff.write === true), JSON.stringify(route.handoffs, null, 2));
 })) passed++; else failed++;
 
+if (test('createPlanRoute applies ontology retrieval profiles to generated handoffs', () => {
+  const route = createPlanRoute({
+    engine: 'codex',
+    routingRoot: path.resolve(__dirname, '../..'),
+    planFile: '/repo/.claude/plans/retry.md',
+    task: 'Tighten hook routing packet usage',
+    files: ['scripts/hooks/domain-context-inject.js'],
+  });
+
+  const request = route.handoffs.find(handoff => handoff.kind === 'domain' && handoff.domainId === 'domain_hooks');
+  assert.ok(request, JSON.stringify(route, null, 2));
+  assert.ok(request.successCriteria.some(line => line.includes('capture/inject 경계가 유지')), JSON.stringify(request, null, 2));
+  assert.ok(request.notDo.some(line => line.includes('장시간 차단')), JSON.stringify(request, null, 2));
+  assert.ok(request.notDo.some(line => line.includes('guard가 작동하지 않거나')), JSON.stringify(request, null, 2));
+  assert.ok(request.completionChecks.some(line => line.includes('훅이 조용하다고')), JSON.stringify(request, null, 2));
+})) passed++; else failed++;
+
 if (test('dispatchHandoff runs the companion with a generated prompt file and parses the result', () => {
   const request = createDomainDelegation({
     domainId: 'domain_hooks',

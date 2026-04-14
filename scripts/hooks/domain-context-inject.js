@@ -29,6 +29,7 @@ const {
   loadOntologyMaps,
   matchFileToDomain,
 } = require('../lib/ontology-routing');
+const { buildDomainPacket } = require('../lib/ontology-packet');
 
 // --- Session-scoped deduplication ---
 
@@ -78,60 +79,74 @@ function run(rawInput) {
   const entry = matchFileToDomain({ filePath, ontologyRoot, fileMap });
   if (!entry) return rawInput;
 
+  const packet = buildDomainPacket(entry, 'context');
+
   // Dedup check — skip entirely if primary domain already injected this session
   const injected = loadInjected();
   if (injected.has(entry.domainKey)) return rawInput;
 
   const lines = [];
 
-  if (entry.riskLevel === 'high') {
+  if (packet.riskLevel === 'high') {
     lines.push(`[HIGH RISK DOMAIN — review constraints before editing]`);
   }
 
-  lines.push(`[DOMAIN] ${entry.domainKey} (owner: ${entry.owner || 'unknown'})`);
+  lines.push(`[DOMAIN] ${entry.domainKey} (owner: ${packet.owner || 'unknown'})`);
 
-  // Split format: summary + basePath
-  if (entry.summary) lines.push(`Summary: ${entry.summary}`);
-  if (entry.basePath) lines.push(`Base path: ${entry.basePath}`);
+  if (packet.summary) lines.push(`Summary: ${packet.summary}`);
+  if (packet.basePath) lines.push(`Base path: ${packet.basePath}`);
 
-  // Flat format: spec file
-  if (entry.spec) lines.push(`Spec: ${entry.spec} — load for full context`);
+  if (packet.spec) lines.push(`Spec: ${packet.spec} — load for full context`);
 
-  // Split format: endpoint summary (method + path only, keep it brief)
-  if (Array.isArray(entry.endpoints) && entry.endpoints.length > 0) {
-    lines.push(`Endpoints (${entry.endpoints.length}):`);
-    for (const ep of entry.endpoints) {
+  if (Array.isArray(packet.endpoints) && packet.endpoints.length > 0) {
+    lines.push(`Endpoints (${packet.endpoints.length}):`);
+    for (const ep of packet.endpoints) {
       lines.push(`  ${ep.method} ${ep.path}${ep.summary ? ' — ' + ep.summary : ''}`);
     }
   }
 
-  if (entry.symbols && entry.symbols.length > 0) {
-    lines.push(`Key symbols: ${entry.symbols.join(', ')}`);
+  if (packet.symbols && packet.symbols.length > 0) {
+    lines.push(`Key symbols: ${packet.symbols.join(', ')}`);
   }
 
-  if (entry.constraints && entry.constraints.length > 0) {
+  if (packet.constraints && packet.constraints.length > 0) {
     lines.push('Constraints:');
-    for (const c of entry.constraints) {
+    for (const c of packet.constraints) {
       lines.push(`  - ${c}`);
     }
   }
 
-  // Multi-hop: surface constraints from dependsOn domains (skip already injected)
-  if (entry.dependsOn && entry.dependsOn.length > 0) {
-    const newDeps = entry.dependsOn.filter(dep => !injected.has(dep));
+  const falseNormalChecks = packet.completionContract?.falseNormalChecks || [];
+  if (falseNormalChecks.length > 0) {
+    lines.push('False-Normal Checks:');
+    for (const check of falseNormalChecks) {
+      lines.push(`  - ${check}`);
+    }
+  }
+
+  if (Array.isArray(packet.failurePatterns) && packet.failurePatterns.length > 0) {
+    lines.push('Watch For:');
+    for (const pattern of packet.failurePatterns) {
+      lines.push(`  - ${pattern.symptom} -> suspect ${pattern.nextSuspicion}`);
+    }
+  }
+
+  if (packet.dependsOn && packet.dependsOn.length > 0) {
+    const newDeps = packet.dependsOn.filter(dep => !injected.has(dep));
     if (newDeps.length > 0) {
-      lines.push(`Depends on: ${entry.dependsOn.join(', ')}`);
+      lines.push(`Depends on: ${packet.dependsOn.join(', ')}`);
       for (const dep of newDeps) {
         const depEntry = domainMap[dep];
-        if (depEntry?.constraints?.length > 0) {
+        const depPacket = depEntry ? buildDomainPacket(depEntry, 'context') : null;
+        if (depPacket?.constraints?.length > 0) {
           lines.push(`  [${dep}] key constraints:`);
-          for (const c of depEntry.constraints) {
+          for (const c of depPacket.constraints) {
             lines.push(`    - ${c}`);
           }
         }
       }
     } else {
-      lines.push(`Depends on: ${entry.dependsOn.join(', ')} (already in context)`);
+      lines.push(`Depends on: ${packet.dependsOn.join(', ')} (already in context)`);
     }
   }
 
@@ -146,8 +161,8 @@ function run(rawInput) {
 
   // Mark primary domain (and shown dep domains) as injected
   injected.add(entry.domainKey);
-  if (entry.dependsOn) {
-    for (const dep of entry.dependsOn) injected.add(dep);
+  if (packet.dependsOn) {
+    for (const dep of packet.dependsOn) injected.add(dep);
   }
   saveInjected(injected);
 
