@@ -145,10 +145,16 @@ if (test('buildBrief emits the shared handoff format', () => {
 
     const brief = buildBrief(request);
     assert.ok(brief.includes('DOMAIN    : domain_hooks'), brief);
+    assert.ok(brief.includes('PROBLEM   : Add retry guard coverage'), brief);
+    assert.ok(brief.includes('SUCCESS   :'), brief);
+    assert.ok(brief.includes('CHECKS    :'), brief);
     assert.ok(brief.includes('SOURCE    : manual-delegate'), brief);
     assert.ok(brief.includes('WRITE     : true'), brief);
     assert.ok(brief.includes('PLAN FILE : /repo/.claude/plans/retry.md'), brief);
-    assert.ok(brief.includes('HANDOFF   : Return: RESULT / FILES CHANGED / TESTS / SUMMARY'), brief);
+    assert.ok(brief.includes('HANDOFF   : Return: RESULT / FILES CHANGED / TESTS / EVIDENCE / FALSE NORMAL CHECKS / OPEN RISKS / NEXT ACTION / SUMMARY'), brief);
+    assert.strictEqual(request.schemaVersion, 'ecc.codex.handoff.request.v2');
+    assert.ok(Array.isArray(request.successCriteria) && request.successCriteria.length > 0, JSON.stringify(request));
+    assert.ok(Array.isArray(request.completionChecks) && request.completionChecks.length > 0, JSON.stringify(request));
 })) passed++; else failed++;
 
 if (test('buildCompanionCommand emits prompt-file based command without inline prompt rewriting needs', () => {
@@ -216,6 +222,10 @@ if (test('dispatchHandoff runs the companion with a generated prompt file and pa
     '  console.log("RESULT: BLOCKED");',
     '  console.log("FILES CHANGED: none");',
     '  console.log("TESTS: FAIL");',
+    '  console.log("EVIDENCE: prompt file missing");',
+    '  console.log("FALSE NORMAL CHECKS: request never reached Codex execution");',
+    '  console.log("OPEN RISKS: task not executed");',
+    '  console.log("NEXT ACTION: fix prompt file generation");',
     '  console.log("SUMMARY: prompt file missing");',
     '  process.exit(0);',
     '}',
@@ -223,6 +233,10 @@ if (test('dispatchHandoff runs the companion with a generated prompt file and pa
     'console.log("RESULT: DONE");',
     'console.log("FILES CHANGED: scripts/hooks/pre-bash-codex-guard.js");',
     'console.log("TESTS: PASS");',
+    'console.log("EVIDENCE: updated guard path | prompt file consumed");',
+    'console.log("FALSE NORMAL CHECKS: verified prompt included BRIEF and SOURCE");',
+    'console.log("OPEN RISKS: none");',
+    'console.log("NEXT ACTION: review diff and merge");',
     'console.log(`SUMMARY: ${prompt.includes("BRIEF") && prompt.includes("SOURCE") && hasWrite ? "dispatch ok" : "prompt malformed"}`);',
   ].join('\n'), 'utf8');
 
@@ -256,6 +270,10 @@ if (test('dispatchHandoff resolves the companion from CODEX_COMPANION_PATH when 
     'console.log("RESULT: DONE");',
     'console.log("FILES CHANGED: scripts/hooks/pre-bash-codex-guard.js");',
     'console.log("TESTS: PASS");',
+    'console.log("EVIDENCE: env override path used");',
+    'console.log("FALSE NORMAL CHECKS: confirmed env path companion executed");',
+    'console.log("OPEN RISKS: none");',
+    'console.log("NEXT ACTION: keep env override documented");',
     'console.log("SUMMARY: env path ok");',
   ].join('\n'), 'utf8');
 
@@ -290,6 +308,10 @@ if (test('dispatchHandoff auto-resolves the companion when no explicit path or e
     'console.log("RESULT: DONE");',
     'console.log("FILES CHANGED: scripts/hooks/pre-bash-codex-guard.js");',
     'console.log("TESTS: PASS");',
+    'console.log("EVIDENCE: bounded auto discovery resolved ecc-root script");',
+    'console.log("FALSE NORMAL CHECKS: confirmed auto-resolved companion actually executed");',
+    'console.log("OPEN RISKS: none");',
+    'console.log("NEXT ACTION: keep fallback discovery bounded");',
     'console.log("SUMMARY: auto path ok");',
   ].join('\n'), 'utf8');
 
@@ -342,12 +364,20 @@ if (test('parseCodexResult parses successful Codex output into a schema-valid re
     'RESULT: DONE',
     'FILES CHANGED: scripts/hooks/pre-bash-codex-guard.js, tests/hooks/pre-bash-codex-guard.test.js',
     'TESTS: PASS',
+    'EVIDENCE: updated guard logic | added coverage',
+    'FALSE NORMAL CHECKS: confirmed test pass covers changed path',
+    'OPEN RISKS: none',
+    'NEXT ACTION: request review',
     'SUMMARY: Updated the guard and added validator coverage.',
   ].join('\n'));
 
   const validation = validateResult(result);
   assert.strictEqual(validation.valid, true, validation.error);
   assert.strictEqual(result.result, 'DONE');
+  assert.deepStrictEqual(result.evidence, ['updated guard logic', 'added coverage']);
+  assert.deepStrictEqual(result.falseNormalChecks, ['confirmed test pass covers changed path']);
+  assert.deepStrictEqual(result.openRisks, []);
+  assert.strictEqual(result.nextAction, 'request review');
   assert.deepStrictEqual(result.filesChanged, [
     'scripts/hooks/pre-bash-codex-guard.js',
     'tests/hooks/pre-bash-codex-guard.test.js',

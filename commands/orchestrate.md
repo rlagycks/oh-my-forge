@@ -82,11 +82,20 @@ Between agents, create handoff document:
 ### Files Modified
 [List of files touched]
 
+### Evidence
+[Concrete proof collected so far]
+
+### False-Normal Checks
+[What looked done but still needed verification]
+
 ### Open Questions
 [Unresolved items for next agent]
 
-### Recommendations
-[Suggested next steps]
+### Open Risks
+[Residual risks for the next agent]
+
+### Next Action
+[Suggested next step]
 ```
 
 ## Example: Feature Workflow

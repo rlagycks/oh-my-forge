@@ -90,6 +90,61 @@
     "routing 계열 훅은 CLAUDE_PLUGIN_ROOT를 현재 프로젝트 ontology fallback으로 직접 사용하지 않는다 — fileMap miss로 guard가 우회될 수 있음",
     "pre-write-edit-codex-guard는 implementationEngine를 세션 단위로 고정하고, .claude/settings.json의 implementationEngine 변경은 explicit bypass 없이 차단"
   ],
+  "executionContract": {
+    "mission": "훅은 빠르게 신호를 캡처하고 컨텍스트를 주입하되, 무거운 판정은 런타임과 CI에 넘긴다.",
+    "notDo": [
+      "훅에서 장시간 차단이나 네트워크 의존 판정을 하지 않는다.",
+      "경고만 해야 할 것을 silent pass로 숨기지 않는다."
+    ],
+    "success": [
+      "capture/inject 경계가 유지되고, 무거운 enforcement는 schema/runtime로 이동한다.",
+      "도메인 매칭과 guard 우회 가능성이 줄어든다."
+    ],
+    "blockOn": [
+      "프로젝트 ontology root 미일치가 확인되면 관련 guard는 우회 위험으로 취급한다."
+    ]
+  },
+  "completionContract": {
+    "requiredEvidence": [
+      "hook warning이 runtime 또는 CI contract와 연결돼야 한다."
+    ],
+    "falseNormalChecks": [
+      "훅이 조용하다고 해서 작업이 안전하다고 결론내리지 않는다.",
+      "경고를 비활성화해도 실제 root cause가 해소된 것으로 간주하지 않는다."
+    ],
+    "handoffTemplate": [
+      "capturedSignal",
+      "blockingLayer",
+      "nextAction"
+    ]
+  },
+  "failurePatterns": [
+    {
+      "id": "ontology-root-mismatch",
+      "symptom": "guard가 작동하지 않거나 관련 domain context가 주입되지 않는다",
+      "looksNormalIf": "파일 편집은 성공하고 로그도 조용하다",
+      "actuallyMeans": "잘못된 ontology root를 보고 있어서 tracked file이 untracked처럼 취급된다",
+      "verifyWith": [
+        "project ontology root 확인",
+        "matched domain 확인"
+      ],
+      "nextSuspicion": "plugin root fallback 또는 fileMap miss"
+    }
+  ],
+  "retrievalProfiles": {
+    "implement": {
+      "include": [
+        "summary",
+        "constraints",
+        "executionContract.notDo",
+        "executionContract.success",
+        "completionContract.falseNormalChecks",
+        "failurePatterns"
+      ],
+      "maxFailurePatterns": 1,
+      "maxDecisions": 2
+    }
+  },
   "riskLevel": "high",
   "dependsOn": ["domain_common", "domain_state_store"],
   "decisions": [

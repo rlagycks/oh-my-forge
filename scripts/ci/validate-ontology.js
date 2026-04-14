@@ -23,6 +23,71 @@ const VALID_WORKER_HINTS = ['workspace-write', 'read-only'];
 const REQUIRED_H2_SECTIONS = ['## 목적', '## 진입점', '## 핵심 제약', '## 관련 도메인'];
 const DOMAIN_KEY_PATTERN = /^domain_[a-z][a-z0-9_]*$/;
 
+function isStringArray(value) {
+  return Array.isArray(value) && value.every(item => typeof item === 'string');
+}
+
+function validateDetailShape(domainKey, detailPath, detail, reportError) {
+  if (detail.executionContract) {
+    if (typeof detail.executionContract !== 'object' || Array.isArray(detail.executionContract)) {
+      reportError(`ERROR: ${domainKey} — detail.executionContract must be an object (${detailPath})`);
+    }
+    for (const field of ['notDo', 'success', 'approvalBoundary', 'blockOn']) {
+      if (detail.executionContract[field] && !isStringArray(detail.executionContract[field])) {
+        reportError(`ERROR: ${domainKey} — detail.executionContract.${field} must be a string array (${detailPath})`);
+      }
+    }
+  }
+
+  if (detail.completionContract) {
+    if (typeof detail.completionContract !== 'object' || Array.isArray(detail.completionContract)) {
+      reportError(`ERROR: ${domainKey} — detail.completionContract must be an object (${detailPath})`);
+    }
+    for (const field of ['requiredEvidence', 'falseNormalChecks', 'handoffTemplate']) {
+      if (detail.completionContract[field] && !isStringArray(detail.completionContract[field])) {
+        reportError(`ERROR: ${domainKey} — detail.completionContract.${field} must be a string array (${detailPath})`);
+      }
+    }
+  }
+
+  if (detail.failurePatterns) {
+    if (!Array.isArray(detail.failurePatterns)) {
+      reportError(`ERROR: ${domainKey} — detail.failurePatterns must be an array (${detailPath})`);
+    } else {
+      for (const pattern of detail.failurePatterns) {
+        if (!pattern || typeof pattern !== 'object') {
+          reportError(`ERROR: ${domainKey} — failurePatterns entries must be objects (${detailPath})`);
+          continue;
+        }
+        for (const field of ['id', 'symptom', 'looksNormalIf', 'actuallyMeans', 'nextSuspicion']) {
+          if (typeof pattern[field] !== 'string' || pattern[field].trim().length === 0) {
+            reportError(`ERROR: ${domainKey} — failurePatterns entries require non-empty ${field} (${detailPath})`);
+          }
+        }
+        if (!isStringArray(pattern.verifyWith || [])) {
+          reportError(`ERROR: ${domainKey} — failurePatterns.verifyWith must be a string array (${detailPath})`);
+        }
+      }
+    }
+  }
+
+  if (detail.retrievalProfiles) {
+    if (typeof detail.retrievalProfiles !== 'object' || Array.isArray(detail.retrievalProfiles)) {
+      reportError(`ERROR: ${domainKey} — detail.retrievalProfiles must be an object (${detailPath})`);
+    } else {
+      for (const [profileName, profile] of Object.entries(detail.retrievalProfiles)) {
+        if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
+          reportError(`ERROR: ${domainKey} — retrieval profile ${profileName} must be an object (${detailPath})`);
+          continue;
+        }
+        if (!isStringArray(profile.include || [])) {
+          reportError(`ERROR: ${domainKey} — retrieval profile ${profileName} include must be a string array (${detailPath})`);
+        }
+      }
+    }
+  }
+}
+
 function validateOntology() {
   if (!fs.existsSync(ONTOLOGY_DIR)) {
     console.log('No .claude/ontology directory found, skipping validation');
@@ -101,6 +166,25 @@ function validateOntology() {
             console.error(`ERROR: ${key} — spec ${entry.spec} missing section: ${section}`);
             hasErrors = true;
           }
+        }
+      }
+    }
+
+    if (entry.detail) {
+      const detailAbs = path.join(ROOT, entry.detail);
+      if (!fs.existsSync(detailAbs)) {
+        console.error(`ERROR: ${key} — detail not found: ${entry.detail}`);
+        hasErrors = true;
+      } else {
+        try {
+          const detail = JSON.parse(fs.readFileSync(detailAbs, 'utf8'));
+          validateDetailShape(key, entry.detail, detail, message => {
+            console.error(message);
+            hasErrors = true;
+          });
+        } catch (err) {
+          console.error(`ERROR: ${key} — failed to parse detail ${entry.detail}: ${err.message}`);
+          hasErrors = true;
         }
       }
     }

@@ -77,5 +77,14 @@ if (test('codex-delegate documents background rescue as a manual path only', () 
   expectIncludes(codexDelegateMd, 'Background mode is manual-only');
 })) passed++; else failed++;
 
+if (test('plan and codex-delegate document the richer completion contract', () => {
+  expectIncludes(planMd, 'EVIDENCE');
+  expectIncludes(planMd, 'FALSE NORMAL CHECKS');
+  expectIncludes(planMd, 'NEXT ACTION');
+  expectIncludes(codexDelegateMd, 'EVIDENCE');
+  expectIncludes(codexDelegateMd, 'FALSE NORMAL CHECKS');
+  expectIncludes(codexDelegateMd, 'NEXT ACTION');
+})) passed++; else failed++;
+
 console.log(`\n  ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

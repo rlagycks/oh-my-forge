@@ -88,6 +88,10 @@ Return your result in the following structure:
   RESULT: DONE | BLOCKED | PARTIAL
   FILES CHANGED: <list>
   TESTS: PASS | FAIL | SKIPPED
+  EVIDENCE: <proof item 1> | <proof item 2>
+  FALSE NORMAL CHECKS: <what looked healthy but was verified>
+  OPEN RISKS: <risk 1> | <risk 2> | none
+  NEXT ACTION: <clear next operator action>
   SUMMARY: <one paragraph>
 ```
 
@@ -120,6 +124,7 @@ Background mode is manual-only. If you explicitly want queued background work, c
 After `/codex:rescue` or `codex` completes, inspect the output with `parseCodexResult`:
 
 - If the output is empty, or contains no `RESULT:` line → output `CODEX_DELEGATION_FAILED: rescue returned no result` and return `RESULT: BLOCKED` immediately.
+- If `RESULT:` exists but `EVIDENCE`, `FALSE NORMAL CHECKS`, or `NEXT ACTION` are missing, the runtime fills safe defaults so the completion contract stays explicit.
 - Do NOT proceed to code review or commit if Codex did not confirm execution.
 - Surface the failure clearly so the caller (plan.md Step 4 or the user) can re-delegate with a clearer BRIEF.
 

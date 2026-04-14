@@ -68,6 +68,11 @@ function uniqueStrings(values) {
   return Array.from(new Set((values || []).filter(value => typeof value === 'string' && value.trim().length > 0)));
 }
 
+function normalizeChecklist(values, fallback = []) {
+  const normalized = uniqueStrings(values);
+  return normalized.length > 0 ? normalized : uniqueStrings(fallback);
+}
+
 function normalizeProjectFile(filePath, routingRoot) {
   const resolvedRoot = path.resolve(routingRoot || process.cwd());
   const resolvedFile = path.isAbsolute(filePath)
@@ -109,6 +114,55 @@ function normalizeEndpoints(endpoints) {
   }));
 }
 
+function splitChecklist(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed || /^none$/i.test(trimmed)) {
+    return [];
+  }
+
+  return uniqueStrings(trimmed.split('|').map(part => part.trim()));
+}
+
+function defaultCompletionChecks(options = {}) {
+  return [
+    'Report concrete evidence tied to the changed files.',
+    'State what was checked to avoid false-normal completion.',
+    options.write === false
+      ? 'Give the next reader action if the task is blocked or partial.'
+      : 'Give the next operator action if the task is blocked or partial.',
+  ];
+}
+
+function buildContractFields(entry = {}, profileName = 'implement') {
+  const profile = entry.retrievalProfiles && typeof entry.retrievalProfiles === 'object'
+    ? entry.retrievalProfiles[profileName]
+    : null;
+  const include = Array.isArray(profile?.include) ? profile.include : [];
+  const useProfile = include.length > 0;
+  const shouldInclude = field => !useProfile || include.includes(field);
+  const maxFailurePatterns = Number.isInteger(profile?.maxFailurePatterns) ? profile.maxFailurePatterns : null;
+  const failurePatterns = Array.isArray(entry.failurePatterns) ? entry.failurePatterns : [];
+  const failureNotes = shouldInclude('failurePatterns')
+    ? failurePatterns
+      .slice(0, maxFailurePatterns === null ? failurePatterns.length : maxFailurePatterns)
+      .map(pattern => `${pattern.symptom} -> ${pattern.nextSuspicion}`)
+    : [];
+
+  return {
+    successCriteria: normalizeChecklist(
+      shouldInclude('executionContract.success') ? entry.executionContract?.success : []
+    ),
+    notDo: normalizeChecklist([
+      ...(shouldInclude('executionContract.notDo') ? entry.executionContract?.notDo || [] : []),
+      ...failureNotes,
+    ]),
+    completionChecks: normalizeChecklist([
+      ...(shouldInclude('completionContract.requiredEvidence') ? entry.completionContract?.requiredEvidence || [] : []),
+      ...(shouldInclude('completionContract.falseNormalChecks') ? entry.completionContract?.falseNormalChecks || [] : []),
+    ]),
+  };
+}
+
 function validateWith(validator, payload) {
   const valid = validator(payload);
   return {
@@ -143,8 +197,15 @@ function assertValidResult(payload, label) {
 function baseRequest(options = {}) {
   const kind = options.kind || 'fallback';
   const defaultSource = kind === 'domain' ? 'manual-delegate' : 'manual-rescue';
+  const successCriteria = normalizeChecklist(options.successCriteria, [
+    options.summary
+      ? `Finish the scoped work for ${options.summary}.`
+      : `Complete task: ${options.task}`,
+  ]);
+  const completionChecks = normalizeChecklist(options.completionChecks, defaultCompletionChecks(options));
+  const notDo = uniqueStrings(options.notDo);
   return {
-    schemaVersion: 'ecc.codex.handoff.request.v1',
+    schemaVersion: options.schemaVersion || 'ecc.codex.handoff.request.v2',
     state: options.state || 'ROUTED',
     engine: options.engine || 'codex',
     source: options.source || defaultSource,
@@ -153,9 +214,15 @@ function baseRequest(options = {}) {
     routingRoot: path.resolve(options.routingRoot || process.cwd()),
     planFile: options.planFile,
     task: options.task,
+    problemOneLine: typeof options.problemOneLine === 'string' && options.problemOneLine.trim().length > 0
+      ? options.problemOneLine.trim()
+      : options.task,
+    successCriteria,
+    completionChecks,
     files: normalizeFiles(options.files, options.routingRoot || process.cwd()),
     ...(options.featureName ? { featureName: options.featureName } : {}),
     ...(options.summary ? { summary: options.summary } : {}),
+    ...(notDo.length > 0 ? { notDo } : {}),
     ...(normalizeEndpoints(options.endpoints).length > 0 ? { endpoints: normalizeEndpoints(options.endpoints) } : {}),
     ...(normalizeModels(options.models).length > 0 ? { models: normalizeModels(options.models) } : {}),
     ...(uniqueStrings(options.symbols).length > 0 ? { symbols: uniqueStrings(options.symbols) } : {}),
@@ -185,6 +252,11 @@ function createFallbackRescue(options = {}) {
 
 function buildBrief(request) {
   assertValidHandoff(request, 'buildBrief');
+  const successCriteria = normalizeChecklist(request.successCriteria, [
+    request.summary || request.task,
+  ]);
+  const notDo = normalizeChecklist(request.notDo, request.constraints || []);
+  const completionChecks = normalizeChecklist(request.completionChecks, defaultCompletionChecks(request));
 
   const lines = [
     'BRIEF',
@@ -193,6 +265,10 @@ function buildBrief(request) {
     `SOURCE    : ${request.source}`,
     `WRITE     : ${request.write ? 'true' : 'false'}`,
     `TASK      : ${request.task}`,
+    `PROBLEM   : ${request.problemOneLine || request.task}`,
+    `SUCCESS   : ${successCriteria.join(' | ')}`,
+    `NOT DO    : ${notDo.join(' | ') || 'None'}`,
+    `CHECKS    : ${completionChecks.join(' | ')}`,
     `FILES     : ${request.files.join(', ')}`,
     `ENDPOINTS : ${(request.endpoints || []).join(', ') || 'N/A'}`,
     `MODELS    : ${(request.models || []).join(', ') || 'N/A'}`,
@@ -200,7 +276,7 @@ function buildBrief(request) {
     `CONSTRAINTS: ${(request.constraints || []).join(' | ') || 'None'}`,
     `DEPENDS ON: ${(request.dependsOn || []).join(', ') || 'none'}`,
     `PLAN FILE : ${request.planFile}`,
-    'HANDOFF   : Return: RESULT / FILES CHANGED / TESTS / SUMMARY',
+    'HANDOFF   : Return: RESULT / FILES CHANGED / TESTS / EVIDENCE / FALSE NORMAL CHECKS / OPEN RISKS / NEXT ACTION / SUMMARY',
   ];
 
   return lines.join('\n');
@@ -331,16 +407,28 @@ function parseCodexResult(output) {
   const resultMatch = rawOutput.match(/^RESULT:\s*(DONE|BLOCKED|PARTIAL)\s*$/m);
   const filesMatch = rawOutput.match(/^FILES CHANGED:\s*(.*)$/m);
   const testsMatch = rawOutput.match(/^TESTS:\s*(PASS|FAIL|SKIPPED)\s*$/m);
+  const evidenceMatch = rawOutput.match(/^EVIDENCE:\s*(.*)$/m);
+  const falseNormalMatch = rawOutput.match(/^FALSE NORMAL CHECKS:\s*(.*)$/m);
+  const openRisksMatch = rawOutput.match(/^OPEN RISKS:\s*(.*)$/m);
+  const nextActionMatch = rawOutput.match(/^NEXT ACTION:\s*(.*)$/m);
   const summaryMatch = rawOutput.match(/^SUMMARY:\s*(.*)$/m);
 
   if (!resultMatch) {
     const blocked = {
-      schemaVersion: 'ecc.codex.handoff.result.v1',
+      schemaVersion: 'ecc.codex.handoff.result.v2',
       state: 'BLOCKED',
       valid: false,
       result: 'BLOCKED',
       filesChanged: [],
       tests: testsMatch ? testsMatch[1] : 'SKIPPED',
+      evidence: normalizeChecklist(splitChecklist(evidenceMatch ? evidenceMatch[1] : ''), [
+        'Codex output did not contain a RESULT line.',
+      ]),
+      falseNormalChecks: normalizeChecklist(splitChecklist(falseNormalMatch ? falseNormalMatch[1] : ''), [
+        'Rejected completion because the RESULT line was missing.',
+      ]),
+      openRisks: splitChecklist(openRisksMatch ? openRisksMatch[1] : ''),
+      nextAction: nextActionMatch ? nextActionMatch[1].trim() : 'Inspect the blocked handoff output and re-run with a clearer contract.',
       summary: 'Codex rescue returned no RESULT line.',
       error: 'Codex rescue returned no RESULT line.',
       rawOutput,
@@ -350,12 +438,24 @@ function parseCodexResult(output) {
   }
 
   const result = {
-    schemaVersion: 'ecc.codex.handoff.result.v1',
+    schemaVersion: 'ecc.codex.handoff.result.v2',
     state: resultStateFor(resultMatch[1]),
     valid: true,
     result: resultMatch[1],
     filesChanged: splitFilesChanged(filesMatch ? filesMatch[1] : ''),
     tests: testsMatch ? testsMatch[1] : 'SKIPPED',
+    evidence: normalizeChecklist(splitChecklist(evidenceMatch ? evidenceMatch[1] : ''), [
+      `Observed result ${resultMatch[1]} with tests=${testsMatch ? testsMatch[1] : 'SKIPPED'}.`,
+    ]),
+    falseNormalChecks: normalizeChecklist(splitChecklist(falseNormalMatch ? falseNormalMatch[1] : ''), [
+      'Checked the completion status against explicit result and test output.',
+    ]),
+    openRisks: splitChecklist(openRisksMatch ? openRisksMatch[1] : ''),
+    nextAction: nextActionMatch
+      ? nextActionMatch[1].trim()
+      : resultMatch[1] === 'DONE'
+        ? 'Review the evidence and merge when the diff looks correct.'
+        : 'Investigate remaining gaps and continue from the latest evidence.',
     summary: summaryMatch ? summaryMatch[1] : 'No summary provided.',
     ...(rawOutput ? { rawOutput } : {}),
   };
@@ -476,17 +576,22 @@ function createPlanRoute(options = {}) {
   const handoffs = [];
   for (const domainKey of orderDomainKeys(domainGroups)) {
     const group = domainGroups.get(domainKey);
-      handoffs.push(createDomainDelegation({
-        domainId: domainKey,
-        engine,
-        source: options.source || 'plan-auto',
-        mode: options.mode,
-        routingRoot,
-        planFile: options.planFile,
+    const contractFields = buildContractFields(group.entry, 'implement');
+    handoffs.push(createDomainDelegation({
+      domainId: domainKey,
+      engine,
+      source: options.source || 'plan-auto',
+      mode: options.mode,
+      routingRoot,
+      planFile: options.planFile,
       featureName: options.featureName,
       task: options.task,
+      problemOneLine: options.task,
       files: group.files,
       summary: group.entry.summary,
+      successCriteria: contractFields.successCriteria,
+      notDo: contractFields.notDo,
+      completionChecks: contractFields.completionChecks,
       endpoints: group.entry.endpoints,
       models: group.entry.models,
       symbols: group.entry.symbols,
@@ -634,6 +739,7 @@ function runCli(argv = process.argv.slice(2)) {
 }
 
 module.exports = {
+  buildContractFields,
   buildBrief,
   buildCompanionCommand,
   dispatchHandoff,

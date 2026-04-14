@@ -153,6 +153,10 @@ This runtime owns:
 - `parseCodexResult` — reject Codex output that does not contain `RESULT:`
 - `formatImplementationSummary` — produce the final status report
 
+The shared handoff contract also carries:
+- `problemOneLine`, `successCriteria`, `completionChecks`
+- result-side `EVIDENCE`, `FALSE NORMAL CHECKS`, `OPEN RISKS`, `NEXT ACTION`
+
 For routing, treat `process.cwd()` as the active project root.
 
 - Do NOT use `CLAUDE_PLUGIN_ROOT` to decide whether the current project has an ontology.
@@ -193,6 +197,7 @@ node "$PLUGIN_ROOT/scripts/lib/codex-handoff.js" dispatch \
 - dispatch adds `--write` from the validated request artifact; do not craft or run a read-only Codex implementation handoff
 - do NOT call `codex-companion.mjs task ...` directly from this flow
 - if the default companion resolution is wrong in your environment, override it with `--companion-path`
+- do NOT treat `TESTS: PASS` alone as completion; require the result-side `EVIDENCE`, `FALSE NORMAL CHECKS`, and `NEXT ACTION`
 
 For matched domains, respect `dependsOn` order from `createPlanRoute`. Files outside any matched domain must go through fallback rescue rather than a domain-less `/codex-delegate`.
 
