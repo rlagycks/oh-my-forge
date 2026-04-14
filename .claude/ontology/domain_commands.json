@@ -5,7 +5,7 @@
     "commands/",
     "COMMANDS-QUICK-REF.md"
   ],
-  "summary": "73개 슬래시 커맨드 라이브러리. /command-name 형식으로 사용자가 호출. Skill 툴 또는 Claude Code CLI의 슬래시 커맨드로 실행. 각 커맨드는 스킬을 풀어 프롬프트로 확장함.",
+  "summary": "76개 슬래시 커맨드 라이브러리. /command-name 형식으로 사용자가 호출. Skill 툴 또는 Claude Code CLI의 슬래시 커맨드로 실행. 각 커맨드는 스킬을 풀어 프롬프트로 확장함.",
   "models": [
     {
       "name": "CommandFile",
