@@ -271,13 +271,13 @@ Inside any Claude Code session, run:
 
 Skills, commands, agents, and hooks are available immediately. No cloning or build step required.
 
-Installs access to 36 agents, 144 skills, and 75 commands.
+Installs access to 36 agents, 144 skills, and 76 commands.
 
 | Category | Count |
 |----------|-------|
 | Agents | 36 agents |
 | Skills | 144 skills |
-| Commands | 75 commands |
+| Commands | 76 commands |
 
 ### Option 2 — Manual install (for contributors or local customization)
 

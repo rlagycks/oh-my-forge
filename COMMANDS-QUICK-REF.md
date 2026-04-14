@@ -1,6 +1,6 @@
 # Commands Quick Reference
 
-> 59 slash commands installed globally. Type `/` in any Claude Code session to invoke.
+> Selected slash commands installed globally. Type `/` in any Claude Code session to invoke.
 
 ---
 
@@ -62,6 +62,7 @@
 | Command | What it does |
 |---------|-------------|
 | `/plan` | Implementation plan with risk assessment — auto-routes to `/codex-delegate` or `/claude-implement` based on engine availability |
+| `/design-contract` | Translate PRDs, API specs, or feature docs into an enforceable execution contract with verification points and handoff format |
 | `/claude-implement <domain> <task>` | Ontology-guided implementation by Claude directly — no Codex CLI required |
 | `/multi-plan` | Multi-model collaborative planning |
 | `/multi-workflow` | Multi-model collaborative development |
@@ -149,6 +150,7 @@
 
 ```
 Starting a new feature?         → /plan first, then /tdd
+Need a tighter execution contract from docs? → /design-contract
 Code just written?              → /code-review
 Build broken?                   → /build-fix
 Need live docs?                 → /docs <library>

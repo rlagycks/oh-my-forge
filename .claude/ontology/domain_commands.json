@@ -23,7 +23,7 @@
     { "group": "세션 / 메모리", "commands": ["save-session", "resume-session", "sessions", "checkpoint", "learn", "learn-eval", "instinct-import", "instinct-export", "instinct-status"] },
     { "group": "오케스트레이션", "commands": ["orchestrate", "devfleet", "multi-plan", "multi-workflow", "multi-execute", "multi-frontend", "multi-backend", "loop-start", "loop-status", "aside"] },
     { "group": "GAN 하네스", "commands": ["gan-design", "gan-build"] },
-    { "group": "문서 / 분석", "commands": ["docs", "update-docs", "update-codemaps", "prp-prd", "prp-plan", "prp-implement", "prp-pr", "prp-commit", "projects"] },
+    { "group": "문서 / 분석", "commands": ["docs", "design-contract", "update-docs", "update-codemaps", "prp-prd", "prp-plan", "prp-implement", "prp-pr", "prp-commit", "projects"] },
     { "group": "비용 / 모델", "commands": ["context-budget", "model-route", "pm2"] },
     { "group": "기타 유틸리티", "commands": ["claw", "eval", "evolve", "aside", "error-capture", "promote", "codex-delegate", "skill-create", "skill-health", "rules-distill", "security-scan", "database-migration", "add-language-rules"] }
   ],
