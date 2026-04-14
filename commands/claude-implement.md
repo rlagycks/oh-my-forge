@@ -107,6 +107,10 @@ Using the BRIEF as scope boundaries:
 RESULT: DONE | BLOCKED | PARTIAL
 FILES CHANGED: <list of files modified>
 TESTS: PASS | FAIL | SKIPPED
+EVIDENCE: <proof item 1> | <proof item 2>
+FALSE NORMAL CHECKS: <what looked healthy but was verified>
+OPEN RISKS: <risk 1> | <risk 2> | none
+NEXT ACTION: <clear next operator action>
 SUMMARY: <one paragraph describing what was implemented>
 ```
 

@@ -46,6 +46,31 @@ function loadDomainFile(domainFilePath) {
   }
 }
 
+function uniqueStrings(values) {
+  return Array.from(new Set((values || []).filter(value => typeof value === 'string' && value.trim().length > 0)));
+}
+
+function mergeEntryWithDetail(entry, detailData = {}) {
+  if (!detailData || typeof detailData !== 'object') {
+    return entry;
+  }
+
+  return {
+    ...entry,
+    ...detailData,
+    files: entry.files,
+    spec: entry.spec,
+    detail: entry.detail,
+    summary: entry.summary || detailData.summary,
+    owner: entry.owner || detailData.owner,
+    codexWorkerHint: entry.codexWorkerHint || detailData.codexWorkerHint,
+    riskLevel: entry.riskLevel || detailData.riskLevel,
+    constraints: uniqueStrings([...(entry.constraints || []), ...(detailData.constraints || [])]),
+    dependsOn: uniqueStrings([...(entry.dependsOn || []), ...(detailData.dependsOn || [])]),
+    symbols: uniqueStrings([...(entry.symbols || []), ...(detailData.symbols || [])]),
+  };
+}
+
 function domainSlug(domainKey) {
   return String(domainKey || '').replace(/^domain_/, '');
 }
@@ -70,7 +95,18 @@ function loadOntologyMaps(ontologyRoot) {
           const domainData = loadDomainFile(absPath) || {};
           return [domainKey, domainData];
         })
-      : Object.entries(content).filter(([key]) => !key.startsWith('$'));
+      : Object.entries(content)
+        .filter(([key]) => !key.startsWith('$'))
+        .map(([domainKey, entry]) => {
+          if (!entry || typeof entry !== 'object' || !entry.detail) {
+            return [domainKey, entry];
+          }
+
+          const detailPath = path.isAbsolute(entry.detail)
+            ? entry.detail
+            : path.join(ontologyRoot, entry.detail);
+          return [domainKey, mergeEntryWithDetail(entry, loadDomainFile(detailPath))];
+        });
 
     for (const [domainKey, entry] of entries) {
       if (!entry || typeof entry !== 'object') continue;
@@ -129,4 +165,5 @@ module.exports = {
   resolveProjectOntologyRoot,
   loadOntologyMaps,
   matchFileToDomain,
+  uniqueStrings,
 };

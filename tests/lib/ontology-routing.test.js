@@ -46,6 +46,35 @@ function makeFixture() {
   fs.writeFileSync(path.join(projectRoot, 'src', 'nested.js'), 'module.exports = 2;\n', 'utf8');
   fs.writeFileSync(path.join(projectRoot, 'services', 'inventory', 'service.js'), 'module.exports = 3;\n', 'utf8');
   fs.writeFileSync(path.join(outsideRoot, 'other.js'), 'module.exports = 4;\n', 'utf8');
+  writeJson(path.join(projectRoot, '.claude', 'ontology', 'domain_exact.json'), {
+    domain: 'domain_exact',
+    version: '1.0',
+    executionContract: {
+      mission: 'Handle exact file changes',
+      success: ['Patch tracked.js safely'],
+      notDo: ['Do not rewrite unrelated files'],
+    },
+    completionContract: {
+      requiredEvidence: ['test proof'],
+      falseNormalChecks: ['avoid summary-only completion'],
+    },
+    failurePatterns: [
+      {
+        id: 'exact-guard',
+        symptom: 'guard bypass',
+        looksNormalIf: 'diff is small',
+        actuallyMeans: 'tracked path was not validated',
+        verifyWith: ['inspect matched domain'],
+        nextSuspicion: 'broken routing root',
+      },
+    ],
+    retrievalProfiles: {
+      implement: {
+        include: ['summary', 'executionContract.success', 'failurePatterns'],
+        maxFailurePatterns: 1,
+      },
+    },
+  });
 
   writeJson(path.join(projectRoot, '.claude', 'ontology', 'index.json'), {
     domain_exact: {
@@ -53,6 +82,7 @@ function makeFixture() {
       summary: 'exact',
       owner: 'test',
       constraints: [],
+      detail: '.claude/ontology/domain_exact.json',
     },
     domain_src: {
       files: ['src/'],
@@ -135,6 +165,22 @@ if (test('matchFileToDomain supports exact file, directory prefix, and slug matc
       fileMap: maps.fileMap,
     });
     assert.strictEqual(slugMatch.domainKey, 'domain_inventory');
+  } finally {
+    fs.rmSync(fixture.root, { recursive: true, force: true });
+  }
+})) passed++; else failed++;
+
+if (test('loadOntologyMaps merges detail metadata into flat index entries', () => {
+  const fixture = makeFixture();
+  try {
+    const maps = loadOntologyMaps(fixture.projectRoot);
+    const exact = maps.domainMap.domain_exact;
+
+    assert.ok(exact.executionContract, JSON.stringify(exact, null, 2));
+    assert.deepStrictEqual(exact.executionContract.success, ['Patch tracked.js safely']);
+    assert.ok(Array.isArray(exact.failurePatterns));
+    assert.strictEqual(exact.failurePatterns[0].id, 'exact-guard');
+    assert.ok(exact.retrievalProfiles.implement);
   } finally {
     fs.rmSync(fixture.root, { recursive: true, force: true });
   }

@@ -102,11 +102,27 @@ function listDomainFiles() {
  * @param {string[]} [opts.files] - affected file paths
  * @param {string} [opts.ref] - PR/commit/issue reference
  * @param {string} [opts.prevention] - keyword/pattern to auto-inject into domain constraints[]
+ * @param {string[]} [opts.evidence] - concrete proof captured while resolving the issue
+ * @param {string[]} [opts.falseNormalSignals] - signals that looked healthy but were misleading
+ * @param {string[]} [opts.verifyWith] - explicit follow-up checks for re-validation
+ * @param {string} [opts.nextSuspicion] - what to suspect first if the issue recurs
  *   When provided for bug-fix or constraint types, appends a constraint entry:
  *   "[prevention] <summary>|pattern:<prevention>" — picked up by constraint-guard.js
  * @returns {object} the created decision entry
  */
-function addDecision({ domain, type, summary, why, files = [], ref = '', prevention = '' }) {
+function addDecision({
+  domain,
+  type,
+  summary,
+  why,
+  files = [],
+  ref = '',
+  prevention = '',
+  evidence = [],
+  falseNormalSignals = [],
+  verifyWith = [],
+  nextSuspicion = '',
+}) {
   const VALID_TYPES = ['design', 'bug-fix', 'refactor', 'tool-pattern', 'constraint'];
   if (!domain) throw new Error('--domain is required');
   if (!VALID_TYPES.includes(type)) throw new Error(`--type must be one of: ${VALID_TYPES.join(', ')}`);
@@ -122,7 +138,11 @@ function addDecision({ domain, type, summary, why, files = [], ref = '', prevent
     why,
     ...(files.length ? { files } : {}),
     ...(ref ? { ref } : {}),
-    ...(prevention ? { prevention } : {})
+    ...(prevention ? { prevention } : {}),
+    ...(evidence.length ? { evidence } : {}),
+    ...(falseNormalSignals.length ? { falseNormalSignals } : {}),
+    ...(verifyWith.length ? { verifyWith } : {}),
+    ...(nextSuspicion ? { nextSuspicion } : {})
   };
 
   // Write into domain_*.json decisions array (best-effort; falls back to global log only)
@@ -184,7 +204,12 @@ function queryDecisions({ domain, type, file, since, q } = {}) {
   if (q) {
     const lq = q.toLowerCase();
     entries = entries.filter(e =>
-      e.summary.toLowerCase().includes(lq) || e.why.toLowerCase().includes(lq)
+      e.summary.toLowerCase().includes(lq) ||
+      e.why.toLowerCase().includes(lq) ||
+      (e.nextSuspicion || '').toLowerCase().includes(lq) ||
+      (Array.isArray(e.evidence) ? e.evidence.join(' ').toLowerCase().includes(lq) : false) ||
+      (Array.isArray(e.falseNormalSignals) ? e.falseNormalSignals.join(' ').toLowerCase().includes(lq) : false) ||
+      (Array.isArray(e.verifyWith) ? e.verifyWith.join(' ').toLowerCase().includes(lq) : false)
     );
   }
 
@@ -239,6 +264,10 @@ function cli(argv) {
       console.log(`  WHY:  ${e.why}`);
       if (e.files && e.files.length) console.log(`  FILES: ${e.files.join(', ')}`);
       if (e.ref) console.log(`  REF:  ${e.ref}`);
+      if (e.evidence && e.evidence.length) console.log(`  EVIDENCE: ${e.evidence.join(' | ')}`);
+      if (e.falseNormalSignals && e.falseNormalSignals.length) console.log(`  FALSE NORMAL: ${e.falseNormalSignals.join(' | ')}`);
+      if (e.verifyWith && e.verifyWith.length) console.log(`  VERIFY WITH: ${e.verifyWith.join(' | ')}`);
+      if (e.nextSuspicion) console.log(`  NEXT SUSPICION: ${e.nextSuspicion}`);
     }
     console.log(`\n${results.length} decision(s) found.`);
     return;

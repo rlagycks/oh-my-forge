@@ -33,6 +33,73 @@
     "커맨드는 스킬 프롬프트를 확장하는 래퍼 — 직접 코드 실행 금지",
     "oh-my-forge: 네임스페이스 접두사로 마켓플레이스 등록 (예: oh-my-forge:tdd)"
   ],
+  "executionContract": {
+    "mission": "커맨드는 실행 메커니즘을 설명하는 대신, 런타임이 강제할 계약과 흐름을 문서화한다.",
+    "notDo": [
+      "문서만 수정해서 런타임 계약과 실제 동작을 어긋나게 만들지 않는다.",
+      "무성 실패를 숨기는 fallback 지시를 넣지 않는다."
+    ],
+    "success": [
+      "커맨드 문서와 런타임 schema가 같은 handoff/completion 형식을 기대한다.",
+      "실패 시 다음 액션과 증거 요구가 명시된다."
+    ],
+    "blockOn": [
+      "도메인 없는 위임이나 schema 밖 출력 형식은 완료 금지"
+    ]
+  },
+  "completionContract": {
+    "requiredEvidence": [
+      "결과 보고에 evidence, false-normal checks, next action이 포함돼야 한다."
+    ],
+    "falseNormalChecks": [
+      "테스트 PASS 한 줄만으로 완료를 주장하지 않는다.",
+      "요약이 멀쩡해 보여도 RESULT와 증거가 없으면 BLOCKED로 본다."
+    ],
+    "handoffTemplate": [
+      "problemOneLine",
+      "successCriteria",
+      "evidence",
+      "falseNormalChecks",
+      "nextAction"
+    ]
+  },
+  "failurePatterns": [
+    {
+      "id": "command-silent-fallback",
+      "symptom": "문서상으로는 위임이 됐는데 실제 구현은 Claude가 직접 수행한다",
+      "looksNormalIf": "요약 문장이 자연스럽고 작업은 진행된다",
+      "actuallyMeans": "handoff runtime 또는 companion 호출이 실패했는데 문서 지시로 덮였다",
+      "verifyWith": [
+        "request/result schema 검증",
+        "dispatch output에 RESULT/EVIDENCE 존재 여부 확인"
+      ],
+      "nextSuspicion": "문서와 런타임 handoff 계약 불일치"
+    }
+  ],
+  "retrievalProfiles": {
+    "implement": {
+      "include": [
+        "summary",
+        "constraints",
+        "executionContract.success",
+        "executionContract.notDo",
+        "completionContract.requiredEvidence",
+        "completionContract.falseNormalChecks",
+        "failurePatterns"
+      ],
+      "maxFailurePatterns": 1,
+      "maxDecisions": 2
+    },
+    "handoff": {
+      "include": [
+        "executionContract.success",
+        "completionContract.handoffTemplate",
+        "completionContract.falseNormalChecks"
+      ],
+      "maxFailurePatterns": 1,
+      "maxDecisions": 1
+    }
+  },
   "dependsOn": ["domain_common", "domain_skills"],
   "decisions": [
     {

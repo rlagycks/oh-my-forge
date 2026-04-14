@@ -202,5 +202,32 @@ run('addDecision: prevention not duplicated on re-add', () => {
   assert.strictEqual(injected.length, 1, 'duplicate prevention constraint should not be added');
 });
 
+run('addDecision: stores failure-trace metadata and makes it searchable', () => {
+  const { addDecision, queryDecisions } = require('../../scripts/lib/decisions');
+  addDecision({
+    domain: 'domain_commands',
+    type: 'bug-fix',
+    summary: 'silent completion blocked',
+    why: 'result summary looked healthy but evidence was missing',
+    evidence: ['missing test output'],
+    falseNormalSignals: ['summary claimed done without proof'],
+    verifyWith: ['rerun targeted tests'],
+    nextSuspicion: 'parseCodexResult fallback path',
+  });
+
+  const domainFile = path.join(tmpRoot, '.claude', 'ontology', 'domain_commands.json');
+  const domainData = JSON.parse(fs.readFileSync(domainFile, 'utf8'));
+  const [entry] = domainData.decisions;
+
+  assert.deepStrictEqual(entry.evidence, ['missing test output']);
+  assert.deepStrictEqual(entry.falseNormalSignals, ['summary claimed done without proof']);
+  assert.deepStrictEqual(entry.verifyWith, ['rerun targeted tests']);
+  assert.strictEqual(entry.nextSuspicion, 'parseCodexResult fallback path');
+
+  const results = queryDecisions({ q: 'fallback path' });
+  assert.strictEqual(results.length, 1);
+  assert.strictEqual(results[0].summary, 'silent completion blocked');
+});
+
 console.log(`\n${passed + failed} tests: ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

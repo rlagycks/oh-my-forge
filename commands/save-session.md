@@ -107,6 +107,9 @@ Be specific: "threw X error because Y" is useful. "didn't work" is not.]
 - **[approach tried]** — failed because: [exact reason / error message]
 - **[approach tried]** — failed because: [exact reason / error message]
 
+Also note any **false-normal signal** that looked healthy at first but turned out to be misleading:
+- **[signal]** — looked healthy because: [why], actually meant: [what it hid]
+
 If nothing failed: "No failed approaches yet."
 
 ---
@@ -165,6 +168,8 @@ If none: "No active blockers."
 
 [If known: The single most important thing to do when resuming. Be precise
 enough that resuming requires zero thinking about where to start.]
+
+[Optional but recommended: add "Next Suspicion" — the first place to look if the current assumption is wrong.]
 
 [If not known: "Next step not determined — review 'What Has NOT Been Tried Yet'
 and 'Blockers' sections to decide on direction before starting."]

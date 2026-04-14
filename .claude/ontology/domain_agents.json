@@ -63,5 +63,50 @@
     "코드 작성 에이전트는 Write/Edit 포함, 리서치 에이전트는 제외",
     "독립 작업은 병렬 Agent 호출 — 순차 실행 금지"
   ],
+  "executionContract": {
+    "mission": "에이전트는 단일 책임을 가진 실행 계약을 명시하고, 그 계약 밖의 판단은 넘기지 않는다.",
+    "notDo": [
+      "역할이 다른 판단을 자기 임무처럼 흡수하지 않는다.",
+      "증거 없이 완료를 주장하지 않는다."
+    ],
+    "success": [
+      "핵심 에이전트는 Mission/Not Do/Success/Decision Policy/Execution Policy/Style 섹션을 모두 가진다.",
+      "다음 호출자가 에이전트의 범위와 승인 경계를 바로 이해할 수 있다."
+    ],
+    "approvalBoundary": [
+      "새로운 전역 정책이나 역할 확대는 사람 승인 필요"
+    ],
+    "blockOn": [
+      "핵심 계약 섹션 누락 시 validator가 실패한다."
+    ]
+  },
+  "completionContract": {
+    "requiredEvidence": [
+      "에이전트 목적, 비목적, 성공 기준이 본문 섹션으로 남아 있어야 한다."
+    ],
+    "falseNormalChecks": [
+      "description만 좋아 보이고 승인 경계가 비어 있지 않은지 확인한다.",
+      "역할 설명이 장문이지만 실제 실행 정책이 없는 상태를 완료로 취급하지 않는다."
+    ],
+    "handoffTemplate": [
+      "mission",
+      "decisionBoundary",
+      "executionCheckpoints",
+      "style"
+    ]
+  },
+  "retrievalProfiles": {
+    "implement": {
+      "include": [
+        "summary",
+        "constraints",
+        "executionContract.success",
+        "executionContract.notDo",
+        "completionContract.requiredEvidence"
+      ],
+      "maxFailurePatterns": 0,
+      "maxDecisions": 1
+    }
+  },
   "dependsOn": ["domain_common"]
 }

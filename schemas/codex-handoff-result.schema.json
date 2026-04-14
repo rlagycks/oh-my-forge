@@ -14,7 +14,10 @@
   ],
   "properties": {
     "schemaVersion": {
-      "const": "ecc.codex.handoff.result.v1"
+      "enum": [
+        "ecc.codex.handoff.result.v1",
+        "ecc.codex.handoff.result.v2"
+      ]
     },
     "state": {
       "enum": ["COMPLETED", "BLOCKED", "PARTIAL"]
@@ -40,6 +43,31 @@
       "type": "string",
       "minLength": 1
     },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "falseNormalChecks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "openRisks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "nextAction": {
+      "type": "string",
+      "minLength": 1
+    },
     "error": {
       "type": "string",
       "minLength": 1
@@ -47,5 +75,24 @@
     "rawOutput": {
       "type": "string"
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "const": "ecc.codex.handoff.result.v2"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "evidence",
+          "falseNormalChecks",
+          "openRisks",
+          "nextAction"
+        ]
+      }
+    }
+  ]
 }

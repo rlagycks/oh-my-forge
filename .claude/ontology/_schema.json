@@ -67,6 +67,60 @@
           "items": { "type": "string" },
           "description": "Human-readable constraints for this domain. Each item may include machine-checkable violation patterns using the |pattern: suffix. Format: 'constraint description|pattern:keyword1|pattern:keyword2'. The text before the first |pattern: is shown to the agent; each |pattern:X keyword is checked against proposed file content by constraint-guard.js (PreToolUse hook). Example: 'No network calls in blocking hooks — 200ms limit|pattern:require(\"node-fetch\")|pattern:require(\"axios\")'."
         },
+        "executionContract": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mission": { "type": "string" },
+            "notDo": { "type": "array", "items": { "type": "string" } },
+            "success": { "type": "array", "items": { "type": "string" } },
+            "approvalBoundary": { "type": "array", "items": { "type": "string" } },
+            "blockOn": { "type": "array", "items": { "type": "string" } }
+          },
+          "description": "Execution contract distilled from the source docs for this domain."
+        },
+        "completionContract": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requiredEvidence": { "type": "array", "items": { "type": "string" } },
+            "falseNormalChecks": { "type": "array", "items": { "type": "string" } },
+            "handoffTemplate": { "type": "array", "items": { "type": "string" } }
+          },
+          "description": "Completion and handoff requirements that should be enforced for this domain."
+        },
+        "failurePatterns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "symptom", "looksNormalIf", "actuallyMeans", "verifyWith", "nextSuspicion"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "symptom": { "type": "string" },
+              "looksNormalIf": { "type": "string" },
+              "actuallyMeans": { "type": "string" },
+              "verifyWith": { "type": "array", "items": { "type": "string" } },
+              "nextSuspicion": { "type": "string" },
+              "prevention": { "type": "string" }
+            }
+          },
+          "description": "Promoted failure signatures that should influence future work in this domain."
+        },
+        "retrievalProfiles": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["include"],
+            "additionalProperties": false,
+            "properties": {
+              "include": { "type": "array", "items": { "type": "string" } },
+              "maxFailurePatterns": { "type": "integer", "minimum": 0 },
+              "maxDecisions": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "description": "Profile-specific include lists to keep ontology retrieval minimal and context-aware."
+        },
         "decisions": {
           "type": "array",
           "items": {
@@ -92,6 +146,25 @@
               "prevention": {
                 "type": "string",
                 "description": "Keyword/pattern to auto-inject into domain constraints[] for constraint-guard.js enforcement. When provided with type=bug-fix or type=constraint, decisions.js appends '[prevention] <summary>|pattern:<prevention>' to the domain's constraints[] so the same mistake is blocked in future sessions."
+              },
+              "evidence": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Concrete proof captured while resolving or validating the issue."
+              },
+              "falseNormalSignals": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Signals that looked healthy but turned out to be misleading."
+              },
+              "verifyWith": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Checks to rerun first if the problem recurs."
+              },
+              "nextSuspicion": {
+                "type": "string",
+                "description": "What to suspect first if the same pattern appears again."
               },
               "domain": { "type": "string", "description": "Domain key — populated automatically by addDecision()" }
             }
