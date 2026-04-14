@@ -237,7 +237,7 @@ async function main() {
         // Migration path for files created before summary markers existed.
         updatedContent = updatedContent.replace(
           /## (?:Session Summary|Current State)[\s\S]*?$/,
-          `${summaryBlock}\n\n### Notes for Next Session\n-\n\n### Context to Load\n\`\`\`\n[relevant files]\n\`\`\`\n`
+          `${summaryBlock}\n\n${buildFollowUpTemplate()}\n`
         );
       }
     }
@@ -250,8 +250,8 @@ async function main() {
   } else {
     // Create new session file
     const summarySection = summary
-      ? `${buildSummaryBlock(summary)}\n\n### Notes for Next Session\n-\n\n### Context to Load\n\`\`\`\n[relevant files]\n\`\`\``
-      : `## Current State\n\n[Session context goes here]\n\n### Completed\n- [ ]\n\n### In Progress\n- [ ]\n\n### Notes for Next Session\n-\n\n### Context to Load\n\`\`\`\n[relevant files]\n\`\`\``;
+      ? `${buildSummaryBlock(summary)}\n\n${buildFollowUpTemplate()}`
+      : `## Current State\n\n[Session context goes here]\n\n### Completed\n- [ ]\n\n### In Progress\n- [ ]\n\n${buildFollowUpTemplate()}`;
 
     const template = `${buildSessionHeader(today, currentTime, sessionMetadata)}${SESSION_SEPARATOR}${summarySection}
 `;
@@ -294,6 +294,26 @@ function buildSummarySection(summary) {
 
 function buildSummaryBlock(summary) {
   return `${SUMMARY_START_MARKER}\n${buildSummarySection(summary).trim()}\n${SUMMARY_END_MARKER}`;
+}
+
+function buildFollowUpTemplate() {
+  return [
+    '### Failure Trace',
+    '- Failed hypotheses:',
+    '- False-normal signals:',
+    '- Evidence still missing:',
+    '',
+    '### Next Suspicion',
+    '-',
+    '',
+    '### Next Action',
+    '-',
+    '',
+    '### Context to Load',
+    '```',
+    '[relevant files]',
+    '```',
+  ].join('\n');
 }
 
 function escapeRegExp(value) {
