@@ -16,6 +16,8 @@
 - 에이전트 파일 위치: 배포용은 `agents/`, 내부용은 `.agents/` (혼용 금지)
 - 에이전트는 단일 책임 원칙 — 여러 역할을 하나의 에이전트에 합치지 말 것
 - 파일명은 lowercase-hyphen (예: `code-reviewer.md`, `tdd-guide.md`)
+- 핵심 에이전트는 본문에 `## Mission`, `## Not Do`, `## Success`, `## Decision Policy`, `## Execution Policy`, `## Style` 섹션 필수
+- 핵심 에이전트 계약은 `scripts/ci/validate-agents.js`가 lint로 강제, 나머지 에이전트는 점진 rollout 동안 경고로 추적
 
 ## 관련 도메인
 
