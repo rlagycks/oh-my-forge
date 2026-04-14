@@ -50,13 +50,43 @@ function makeFixture() {
 
   fs.writeFileSync(trackedFile, 'module.exports = 1;\n', 'utf8');
 
+  writeJson(path.join(projectRoot, '.claude', 'ontology', 'domain_project.json'), {
+    domain: 'domain_project',
+    version: '1.0',
+    constraints: ['Project forbids fetch|pattern:fetch('],
+    completionContract: {
+      falseNormalChecks: ['A matched domain without the fetch guard is not done'],
+    },
+    failurePatterns: [
+      {
+        id: 'fetch-guard-miss',
+        symptom: 'fetch call lands without the guard firing',
+        looksNormalIf: 'the edit succeeds and stderr stays quiet',
+        actuallyMeans: 'the project routing or guard wiring regressed',
+        verifyWith: ['inspect matched domain', 'check guard stderr'],
+        nextSuspicion: 'project ontology packet did not load',
+      },
+    ],
+    retrievalProfiles: {
+      context: {
+        include: [
+          'summary',
+          'completionContract.falseNormalChecks',
+          'failurePatterns',
+        ],
+        maxFailurePatterns: 1,
+        maxDecisions: 0,
+      },
+    },
+  });
+
   writeJson(path.join(projectRoot, '.claude', 'ontology', 'index.json'), {
     domain_project: {
       summary: 'project-owned domain',
       owner: 'project',
       files: ['src/tracked.js'],
       spec: 'docs/features/project.md',
-      constraints: ['Project forbids fetch|pattern:fetch('],
+      detail: '.claude/ontology/domain_project.json',
     },
   });
 
@@ -170,6 +200,11 @@ if (test('domain-context-inject uses the project ontology even when CLAUDE_PLUGI
     });
     assert.ok(stderr.includes('[DOMAIN] domain_project'), stderr);
     assert.ok(!stderr.includes('domain_plugin'), stderr);
+    assert.ok(stderr.includes('False-Normal Checks:'), stderr);
+    assert.ok(stderr.includes('Watch For:'), stderr);
+    assert.ok(stderr.includes('fetch call lands without the guard firing'), stderr);
+    assert.ok(!stderr.includes('Constraints:'), stderr);
+    assert.ok(!stderr.includes('Spec:'), stderr);
   } finally {
     process.chdir(originalCwd);
     delete process.env.CLAUDE_PLUGIN_ROOT;

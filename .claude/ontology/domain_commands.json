@@ -77,6 +77,18 @@
     }
   ],
   "retrievalProfiles": {
+    "context": {
+      "include": [
+        "summary",
+        "spec",
+        "constraints",
+        "completionContract.falseNormalChecks",
+        "failurePatterns",
+        "dependsOn"
+      ],
+      "maxFailurePatterns": 1,
+      "maxDecisions": 1
+    },
     "implement": {
       "include": [
         "summary",

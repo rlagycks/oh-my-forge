@@ -13,6 +13,10 @@ const {
   matchFileToDomain,
   uniqueStrings,
 } = require('./ontology-routing');
+const {
+  buildContractFieldsFromPacket,
+  buildDomainPacket,
+} = require('./ontology-packet');
 
 const REQUEST_SCHEMA_PATH = path.join(__dirname, '..', '..', 'schemas', 'codex-handoff-request.schema.json');
 const RESULT_SCHEMA_PATH = path.join(__dirname, '..', '..', 'schemas', 'codex-handoff-result.schema.json');
@@ -131,32 +135,13 @@ function defaultCompletionChecks(options = {}) {
 }
 
 function buildContractFields(entry = {}, profileName = 'implement') {
-  const profile = entry.retrievalProfiles && typeof entry.retrievalProfiles === 'object'
-    ? entry.retrievalProfiles[profileName]
-    : null;
-  const include = Array.isArray(profile?.include) ? profile.include : [];
-  const useProfile = include.length > 0;
-  const shouldInclude = field => !useProfile || include.includes(field);
-  const maxFailurePatterns = Number.isInteger(profile?.maxFailurePatterns) ? profile.maxFailurePatterns : null;
-  const failurePatterns = Array.isArray(entry.failurePatterns) ? entry.failurePatterns : [];
-  const failureNotes = shouldInclude('failurePatterns')
-    ? failurePatterns
-      .slice(0, maxFailurePatterns === null ? failurePatterns.length : maxFailurePatterns)
-      .map(pattern => `${pattern.symptom} -> ${pattern.nextSuspicion}`)
-    : [];
+  const packet = buildDomainPacket(entry, profileName);
+  const fields = buildContractFieldsFromPacket(packet);
 
   return {
-    successCriteria: normalizeChecklist(
-      shouldInclude('executionContract.success') ? entry.executionContract?.success : []
-    ),
-    notDo: normalizeChecklist([
-      ...(shouldInclude('executionContract.notDo') ? entry.executionContract?.notDo || [] : []),
-      ...failureNotes,
-    ]),
-    completionChecks: normalizeChecklist([
-      ...(shouldInclude('completionContract.requiredEvidence') ? entry.completionContract?.requiredEvidence || [] : []),
-      ...(shouldInclude('completionContract.falseNormalChecks') ? entry.completionContract?.falseNormalChecks || [] : []),
-    ]),
+    successCriteria: normalizeChecklist(fields.successCriteria),
+    notDo: normalizeChecklist(fields.notDo),
+    completionChecks: normalizeChecklist(fields.completionChecks),
   };
 }
 

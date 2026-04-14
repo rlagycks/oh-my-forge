@@ -73,6 +73,7 @@
       "scripts/hooks/pre-write-edit-codex-guard.js",
       "scripts/hooks/qa-context-inject.js",
       "scripts/lib/implementation-engine.js",
+      "scripts/lib/ontology-packet.js",
       "scripts/lib/ontology-routing.js",
       "scripts/lib/hook-flags.js"
     ],
