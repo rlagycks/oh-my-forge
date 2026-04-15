@@ -2,6 +2,13 @@
 
 const fs = require('fs');
 const path = require('path');
+const {
+  buildOntologyDetailFragment,
+  inferDomainFromDetailPath,
+  mergeOntologyDetail,
+  parseDesignContract,
+  readContractFile,
+} = require('./design-contract');
 
 // ─── filesystem helpers ──────────────────────────────────────────────────────
 
@@ -83,6 +90,47 @@ function queryFile(filePath) {
   throw new Error('domain not found');
 }
 
+function resolveWorkingPath(filePath) {
+  return path.isAbsolute(filePath) ? filePath : path.join(process.cwd(), filePath);
+}
+
+function readJsonFile(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
+function promoteContract(options = {}) {
+  if (!options.contractFile) {
+    throw new Error('promote-contract requires --contract-file <path>');
+  }
+
+  const contractFile = resolveWorkingPath(options.contractFile);
+  const contract = parseDesignContract(readContractFile(contractFile));
+  const detailFile = options.detailFile ? resolveWorkingPath(options.detailFile) : '';
+  const domain = options.domain || inferDomainFromDetailPath(detailFile);
+  const fragment = buildOntologyDetailFragment(contract, {
+    contractFile: options.contractFile,
+    source: options.source || options.contractFile,
+    summary: options.summary,
+    domain,
+    version: options.version || '',
+  });
+
+  const existing = detailFile && fs.existsSync(detailFile)
+    ? readJsonFile(detailFile)
+    : {};
+  const merged = detailFile ? mergeOntologyDetail(existing, fragment) : fragment;
+
+  if (options.write) {
+    if (!detailFile) {
+      throw new Error('promote-contract --write requires --detail-file <path>');
+    }
+    fs.mkdirSync(path.dirname(detailFile), { recursive: true });
+    fs.writeFileSync(detailFile, JSON.stringify(merged, null, 2) + '\n', 'utf8');
+  }
+
+  return merged;
+}
+
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
 function cli(argv) {
@@ -123,7 +171,22 @@ function cli(argv) {
       return;
     }
 
-    throw new Error('Usage: ontology.js <keys|summary|query> [--flag value ...]');
+    if (cmd === 'promote-contract') {
+      const opts = parseFlags(rest);
+      const result = promoteContract({
+        contractFile: opts['contract-file'],
+        detailFile: opts['detail-file'],
+        domain: opts.domain,
+        source: opts.source,
+        summary: opts.summary,
+        version: opts.version,
+        write: Boolean(opts.write),
+      });
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    throw new Error('Usage: ontology.js <keys|summary|query|promote-contract> [--flag value ...]');
   } catch (err) {
     console.error(err.message || err);
     process.exit(1);
@@ -146,7 +209,8 @@ module.exports = {
   queryDomain,
   queryFile,
   listKeys,
-  listSummary
+  listSummary,
+  promoteContract,
 };
 
 if (require.main === module) {
