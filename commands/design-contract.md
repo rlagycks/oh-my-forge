@@ -128,6 +128,16 @@ Keep it compact. This command is successful when it removes ambiguity, not when 
 
 - Use `/plan` after this when you want phased implementation work.
 - Use `/ontology-extract` when the source docs should become machine-readable ontology detail.
+- To promote a saved design contract into ontology detail JSON, run:
+
+```bash
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+node "$PLUGIN_ROOT/scripts/lib/ontology.js" promote-contract \
+  --contract-file "<design-contract.md>" \
+  --detail-file ".claude/ontology/domain_<name>.json" \
+  --write
+```
+
 - Use `/prp-plan` when you need a larger artifact-producing implementation plan rather than a compact execution contract.
 
 ## Output Quality Bar

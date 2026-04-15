@@ -48,10 +48,11 @@
     ]
   },
   "domain_commands": {
-    "summary": "슬래시 커맨드 73종 — /command-name 형식으로 Skill 툴 호출",
+    "summary": "슬래시 커맨드 76종 및 관련 실행 계약 유틸리티 — /command-name 형식으로 Skill 툴 호출",
     "files": [
       "commands/",
-      "COMMANDS-QUICK-REF.md"
+      "COMMANDS-QUICK-REF.md",
+      "scripts/lib/design-contract.js"
     ],
     "spec": "docs/features/commands.md",
     "detail": ".claude/ontology/domain_commands.json",

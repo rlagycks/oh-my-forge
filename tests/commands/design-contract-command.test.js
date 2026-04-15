@@ -49,6 +49,7 @@ if (test('design-contract links to adjacent commands in the workflow', () => {
   expectIncludes(commandMd, '`/plan`');
   expectIncludes(commandMd, '`/ontology-extract`');
   expectIncludes(commandMd, '`/prp-plan`');
+  expectIncludes(commandMd, 'promote-contract');
 })) passed++; else failed++;
 
 if (test('quick reference includes the design-contract command', () => {

@@ -29,6 +29,16 @@ MD 문서(기획서, API 명세 등)를 분석하여 도메인별 JSON 온톨로
 
 이 커맨드는 **외부 문서(기획서, API 명세 등)에서 `domain_*.json` 상세 파일을 생성**한다.
 
+이미 `/design-contract`로 실행 계약 마크다운이 정리돼 있다면, 전체 재추출 대신 아래 경로를 우선 고려한다:
+
+```bash
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+node "$PLUGIN_ROOT/scripts/lib/ontology.js" promote-contract \
+  --contract-file "<design-contract.md>" \
+  --detail-file ".claude/ontology/domain_<name>.json" \
+  --write
+```
+
 `.claude/ontology/index.json`이 존재하면 형식을 확인한다:
 
 **정상 형식 (GPS 라우팅 인덱스)**: `$schema` 키 + `domain_*` 키에 `files[]`, `spec`, `codexWorkerHint` 포함.
