@@ -319,6 +319,127 @@ function testStateFileHasDomainsKey() {
 // Run all tests
 // ---------------------------------------------------------------------------
 
+function testRedirectionOutputNotTreatedAsPositional() {
+  const sessionId = 'test-redir-out-' + Date.now();
+  cleanState(sessionId);
+
+  const requestFile = makeRequestFile(createDomainDelegation({
+    source: 'plan-auto',
+    domainId: 'domain_redir_out',
+    engine: 'codex',
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    task: 'Redirection output test',
+    files: ['scripts/hooks/pre-bash-codex-guard.js'],
+  }));
+
+  try {
+    const cmd = fakeDispatchCmd(requestFile) + ' > /tmp/codex-out.txt';
+    const result = runWithSession(sessionId, cmd);
+    assert.ok(typeof result === 'string',
+      'Redirection output target should not be treated as a positional argument');
+    console.log('  PASS testRedirectionOutputNotTreatedAsPositional');
+  } finally {
+    try { fs.unlinkSync(requestFile); } catch {}
+    cleanState(sessionId);
+  }
+}
+
+function testRedirectionInputNotTreatedAsPositional() {
+  const sessionId = 'test-redir-in-' + Date.now();
+  cleanState(sessionId);
+
+  const requestFile = makeRequestFile(createDomainDelegation({
+    source: 'plan-auto',
+    domainId: 'domain_redir_in',
+    engine: 'codex',
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    task: 'Redirection input test',
+    files: ['scripts/hooks/pre-bash-codex-guard.js'],
+  }));
+
+  try {
+    const cmd = fakeDispatchCmd(requestFile) + ' < /tmp/codex-in.txt';
+    const result = runWithSession(sessionId, cmd);
+    assert.ok(typeof result === 'string',
+      'Redirection input target should not be treated as a positional argument');
+    console.log('  PASS testRedirectionInputNotTreatedAsPositional');
+  } finally {
+    try { fs.unlinkSync(requestFile); } catch {}
+    cleanState(sessionId);
+  }
+}
+
+function testSingleQuotedRequestFileValidated() {
+  // A path wrapped in single quotes should still be validated, not skipped as
+  // if it contained a shell variable.
+  const sessionId = 'test-single-quoted-' + Date.now();
+  cleanState(sessionId);
+
+  const requestFile = makeRequestFile(createDomainDelegation({
+    source: 'plan-auto',
+    domainId: 'domain_sq_test',
+    engine: 'codex',
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    task: 'Single-quoted path test',
+    files: ['scripts/hooks/pre-bash-codex-guard.js'],
+  }));
+
+  try {
+    // Replace the unquoted path with a single-quoted path in the dispatch command
+    const cmd = fakeDispatchCmd(requestFile).replace(
+      '--request-file ' + requestFile,
+      "--request-file '" + requestFile + "'"
+    );
+    const result = runWithSession(sessionId, cmd);
+    assert.ok(typeof result === 'string',
+      'Single-quoted request file path should be validated and allowed');
+    console.log('  PASS testSingleQuotedRequestFileValidated');
+  } finally {
+    try { fs.unlinkSync(requestFile); } catch {}
+    cleanState(sessionId);
+  }
+}
+
+function testSingleQuotedPathWithDollarValidated() {
+  // A single-quoted path containing a literal $ must still be validated.
+  // The guard must NOT skip validation because the $ is inside single quotes
+  // and is therefore a literal character, not a shell variable reference.
+  const sessionId = 'test-sq-dollar-' + Date.now();
+  cleanState(sessionId);
+
+  const tmpDir = os.tmpdir();
+  const literalDollarPath = path.join(tmpDir, 'request$sqtest-' + Date.now() + '.json');
+  const payload = createDomainDelegation({
+    source: 'plan-auto',
+    domainId: 'domain_dollar_sq',
+    engine: 'codex',
+    routingRoot: '/repo',
+    planFile: '/repo/.claude/plans/retry.md',
+    task: 'Dollar-in-path single-quote test',
+    files: ['scripts/hooks/pre-bash-codex-guard.js'],
+  });
+  fs.writeFileSync(literalDollarPath, JSON.stringify(payload, null, 2), 'utf8');
+
+  try {
+    const base = fakeDispatchCmd(literalDollarPath);
+    // Wrap path in single quotes — $ must be treated as literal by the guard
+    const cmd = base.replace(
+      '--request-file ' + literalDollarPath,
+      "--request-file '" + literalDollarPath + "'"
+    );
+    const result = runWithSession(sessionId, cmd);
+    assert.ok(typeof result === 'string',
+      'Single-quoted path with literal $ should be validated (not skipped as shell var)');
+    console.log('  PASS testSingleQuotedPathWithDollarValidated');
+  } finally {
+    try { fs.unlinkSync(literalDollarPath); } catch {}
+    cleanState(sessionId);
+  }
+}
+
 const tests = [
   testNonCodexCommandPassThrough,
   testPromptFileDomainCallAllowed,
@@ -330,6 +451,10 @@ const tests = [
   testManualBackgroundDispatchAllowed,
   testPlanAutoBackgroundDispatchBlocked,
   testStateFileHasDomainsKey,
+  testRedirectionOutputNotTreatedAsPositional,
+  testRedirectionInputNotTreatedAsPositional,
+  testSingleQuotedRequestFileValidated,
+  testSingleQuotedPathWithDollarValidated,
 ];
 
 let passed = 0;

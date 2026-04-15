@@ -70,9 +70,14 @@ const DISPATCH_VALUE_FLAGS = new Set([
  */
 function tokenise(cmd) {
   const tokens = [];
+  const singleQuotedIndices = new Set();
   let current = '';
   let inSingle = false;
   let inDouble = false;
+  // True while the current token has been built exclusively from single-quoted
+  // characters (no unquoted chars, no double-quoted chars seen yet).
+  let currentEntirelySingleQuoted = true;
+  let currentHasContent = false;
 
   for (let i = 0; i < cmd.length; i++) {
     const ch = cmd[i];
@@ -83,16 +88,44 @@ function tokenise(cmd) {
       continue;
     }
 
-    if (ch === "'" && !inDouble) { inSingle = !inSingle; continue; }
-    if (ch === '"' && !inSingle) { inDouble = !inDouble; continue; }
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+      currentHasContent = true;
+      continue;
+    }
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+      currentEntirelySingleQuoted = false; // double-quoted context
+      currentHasContent = true;
+      continue;
+    }
     if ((ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') && !inSingle && !inDouble) {
-      if (current.length) { tokens.push(current); current = ''; }
+      if (current.length) {
+        if (currentEntirelySingleQuoted && currentHasContent) {
+          singleQuotedIndices.add(tokens.length);
+        }
+        tokens.push(current);
+        current = '';
+        currentEntirelySingleQuoted = true;
+        currentHasContent = false;
+      } else if (currentHasContent) {
+        // Empty quoted string (e.g. '') — reset without pushing a token
+        currentEntirelySingleQuoted = true;
+        currentHasContent = false;
+      }
     } else {
+      if (!inSingle) currentEntirelySingleQuoted = false; // unquoted char
       current += ch;
+      currentHasContent = true;
     }
   }
-  if (current.length) tokens.push(current);
-  return tokens;
+  if (current.length) {
+    if (currentEntirelySingleQuoted && currentHasContent) {
+      singleQuotedIndices.add(tokens.length);
+    }
+    tokens.push(current);
+  }
+  return { tokens, singleQuotedIndices };
 }
 
 /**
@@ -109,10 +142,26 @@ function isShellRedirection(tok) {
 }
 
 /**
+ * Returns true if this redirection token still needs a separate target token.
+ * Pure operators like `>`, `>>`, `<`, `<<`, `&>`, `2>`, `0<` are followed by
+ * the target as the next token.  Self-contained forms like `2>&1` or
+ * `1>/dev/null` already embed the target, so no extra skip is needed.
+ */
+function redirectionNeedsTarget(tok) {
+  // Pure operators: >, >>, <, <<, &>, &>>
+  if (/^(?:>{1,2}|<{1,2}|&>{1,2})$/.test(tok)) return true;
+  // fd-prefixed operator without embedded target: "2>" or "0<" alone
+  if (/^\d+>{1,2}$/.test(tok)) return true;
+  if (/^\d+<{1,2}$/.test(tok)) return true;
+  return false;
+}
+
+/**
  * Returns true if a string contains an unquoted shell variable reference.
  * Catches $VAR, ${VAR}, ${VAR:-default}, $(cmd), etc.
  */
-function containsShellVariable(str) {
+function containsShellVariable(str, singleQuoted = false) {
+  if (singleQuoted) return false;
   return /\$/.test(str);
 }
 
@@ -142,13 +191,16 @@ function isCodexDispatchCall(command) {
  * Returns null if parsing fails.
  */
 function parseCall(command, subcommand, valueFlags = new Set()) {
-  const tokens = tokenise(command);
+  const { tokens, singleQuotedIndices } = tokenise(command);
 
   const subcommandIdx = tokens.findIndex(t => t === subcommand);
   if (subcommandIdx === -1) return null;
 
   const prefix = tokens.slice(0, subcommandIdx + 1).join(' ');
   const rest = tokens.slice(subcommandIdx + 1);
+  // restOffset maps rest[j] back to its index in the original tokens array,
+  // allowing singleQuotedIndices lookups for flag values.
+  const restOffset = subcommandIdx + 1;
 
   const flags = [];
   let inlinePrompt = null;
@@ -163,21 +215,32 @@ function parseCall(command, subcommand, valueFlags = new Set()) {
       if (eqIdx !== -1) {
         const key = tok.slice(2, eqIdx);
         const value = tok.slice(eqIdx + 1);
-        flags.push({ key, value, raw: tok });
+        // For --key=value the value is embedded in the same token;
+        // its quoting context cannot be cheaply recovered, so be conservative.
+        flags.push({ key, value, raw: tok, singleQuoted: false });
         i++;
       } else {
         const key = tok.slice(2);
-        if (valueFlags.has(key) && i + 1 < rest.length && !rest[i + 1].startsWith('--')) {
-          flags.push({ key, value: rest[i + 1], raw: `${tok} ${rest[i + 1]}` });
+        const nextTok = rest[i + 1];
+        // Guard: never consume a redirection operator as a flag value
+        if (valueFlags.has(key) && i + 1 < rest.length &&
+            !nextTok.startsWith('--') && !isShellRedirection(nextTok)) {
+          const valTokenIdx = restOffset + i + 1;
+          flags.push({ key, value: nextTok, raw: `${tok} ${nextTok}`,
+            singleQuoted: singleQuotedIndices.has(valTokenIdx) });
           i += 2;
         } else {
-          flags.push({ key, value: null, raw: tok });
+          flags.push({ key, value: null, raw: tok, singleQuoted: false });
           i++;
         }
       }
     } else if (isShellRedirection(tok)) {
-      // Shell redirection operator or target — skip silently
       i++;
+      // Pure operators (>, >>, <, <<, 2>, …) are followed by a separate target
+      // token — skip it too so it is never mistaken for a positional argument.
+      if (redirectionNeedsTarget(tok) && i < rest.length) {
+        i++;
+      }
     } else {
       // Positional argument — the task prompt
       if (inlinePrompt === null) {
@@ -254,7 +317,7 @@ function run(rawInput) {
 
     // Skip file validation when the path contains unexpanded shell variables —
     // the shell will expand them at execution time; we cannot read them now.
-    if (!containsShellVariable(requestFileFlag.value)) {
+    if (!containsShellVariable(requestFileFlag.value, requestFileFlag.singleQuoted)) {
       const payload = readRequestFile(requestFileFlag.value);
       if (payload.error) {
         return block([payload.error]);
