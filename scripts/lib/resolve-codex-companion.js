@@ -26,12 +26,26 @@ function collectAutoCandidates(options = {}) {
   const candidates = [
     path.join(eccRoot, 'scripts', 'codex-companion.mjs'),
     path.join(eccRoot, 'scripts', 'codex', 'codex-companion.mjs'),
+    // codex-plugin-cc (legacy plugin name)
     path.join(claudeDir, 'plugins', 'codex-plugin-cc', 'scripts', 'codex-companion.mjs'),
     path.join(claudeDir, 'plugins', 'codex-plugin-cc@codex-plugin-cc', 'scripts', 'codex-companion.mjs'),
     path.join(claudeDir, 'plugins', 'marketplace', 'codex-plugin-cc', 'scripts', 'codex-companion.mjs'),
     path.join(claudeDir, 'plugins', 'marketplace', 'codex-plugin-cc@codex-plugin-cc', 'scripts', 'codex-companion.mjs'),
   ];
 
+  // openai-codex marketplace installs: ~/.claude/plugins/marketplaces/openai-codex/plugins/<name>/scripts/
+  const openaiMarketplaceBase = path.join(claudeDir, 'plugins', 'marketplaces', 'openai-codex', 'plugins');
+  try {
+    const pluginEntries = fs.readdirSync(openaiMarketplaceBase, { withFileTypes: true });
+    for (const pluginEntry of pluginEntries) {
+      if (!pluginEntry.isDirectory()) continue;
+      candidates.push(path.join(openaiMarketplaceBase, pluginEntry.name, 'scripts', 'codex-companion.mjs'));
+    }
+  } catch {
+    // optional location
+  }
+
+  // codex-plugin-cc cache: ~/.claude/plugins/cache/codex-plugin-cc/<org>/<version>/scripts/
   const cacheBase = path.join(claudeDir, 'plugins', 'cache', 'codex-plugin-cc');
   try {
     const orgEntries = fs.readdirSync(cacheBase, { withFileTypes: true });
@@ -48,6 +62,28 @@ function collectAutoCandidates(options = {}) {
       for (const versionEntry of versionEntries) {
         if (!versionEntry.isDirectory()) continue;
         candidates.push(path.join(orgPath, versionEntry.name, 'scripts', 'codex-companion.mjs'));
+      }
+    }
+  } catch {
+    // optional cache location
+  }
+
+  // openai-codex cache: ~/.claude/plugins/cache/openai-codex/<plugin>/<version>/scripts/
+  const openaiCacheBase = path.join(claudeDir, 'plugins', 'cache', 'openai-codex');
+  try {
+    const pluginEntries = fs.readdirSync(openaiCacheBase, { withFileTypes: true });
+    for (const pluginEntry of pluginEntries) {
+      if (!pluginEntry.isDirectory()) continue;
+      const pluginPath = path.join(openaiCacheBase, pluginEntry.name);
+      let versionEntries = [];
+      try {
+        versionEntries = fs.readdirSync(pluginPath, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const versionEntry of versionEntries) {
+        if (!versionEntry.isDirectory()) continue;
+        candidates.push(path.join(pluginPath, versionEntry.name, 'scripts', 'codex-companion.mjs'));
       }
     }
   } catch {

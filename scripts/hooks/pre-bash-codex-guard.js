@@ -65,7 +65,8 @@ const DISPATCH_VALUE_FLAGS = new Set([
 
 /**
  * Minimal argv tokeniser — handles quoted strings and --flag=value forms.
- * Returns array of tokens preserving quotes stripped.
+ * Also handles \\<newline> continuations and treats bare newlines as whitespace.
+ * Returns array of tokens with quotes stripped.
  */
 function tokenise(cmd) {
   const tokens = [];
@@ -75,9 +76,16 @@ function tokenise(cmd) {
 
   for (let i = 0; i < cmd.length; i++) {
     const ch = cmd[i];
+
+    // Backslash-newline continuation: collapse to nothing (join lines)
+    if (ch === '\\' && !inSingle && !inDouble && cmd[i + 1] === '\n') {
+      i++; // skip the newline
+      continue;
+    }
+
     if (ch === "'" && !inDouble) { inSingle = !inSingle; continue; }
     if (ch === '"' && !inSingle) { inDouble = !inDouble; continue; }
-    if ((ch === ' ' || ch === '\t') && !inSingle && !inDouble) {
+    if ((ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') && !inSingle && !inDouble) {
       if (current.length) { tokens.push(current); current = ''; }
     } else {
       current += ch;
@@ -85,6 +93,27 @@ function tokenise(cmd) {
   }
   if (current.length) tokens.push(current);
   return tokens;
+}
+
+/**
+ * Returns true if a token looks like a shell redirection operator or target.
+ * Examples: `>`, `>>`, `<`, `<<`, `2>&1`, `1>/dev/null`, `2>>file`, `&>file`
+ */
+function isShellRedirection(tok) {
+  // Pure operators: >, >>, <, <<, &>, &>>
+  if (/^(?:>{1,2}|<{1,2}|&>{1,2})$/.test(tok)) return true;
+  // fd-qualified: 2>&1, 1>/dev/null, 2>>/tmp/log, 0</dev/null
+  if (/^\d+>{1,2}(&\d*)?/.test(tok)) return true;
+  if (/^\d+<{1,2}/.test(tok)) return true;
+  return false;
+}
+
+/**
+ * Returns true if a string contains an unquoted shell variable reference.
+ * Catches $VAR, ${VAR}, ${VAR:-default}, $(cmd), etc.
+ */
+function containsShellVariable(str) {
+  return /\$/.test(str);
 }
 
 /**
@@ -146,6 +175,9 @@ function parseCall(command, subcommand, valueFlags = new Set()) {
           i++;
         }
       }
+    } else if (isShellRedirection(tok)) {
+      // Shell redirection operator or target — skip silently
+      i++;
     } else {
       // Positional argument — the task prompt
       if (inlinePrompt === null) {
@@ -220,33 +252,37 @@ function run(rawInput) {
       ]);
     }
 
-    const payload = readRequestFile(requestFileFlag.value);
-    if (payload.error) {
-      return block([payload.error]);
-    }
+    // Skip file validation when the path contains unexpanded shell variables —
+    // the shell will expand them at execution time; we cannot read them now.
+    if (!containsShellVariable(requestFileFlag.value)) {
+      const payload = readRequestFile(requestFileFlag.value);
+      if (payload.error) {
+        return block([payload.error]);
+      }
 
-    const validation = validateHandoff(payload);
-    if (!validation.valid) {
-      return block([
-        `Invalid codex handoff request: ${validation.error}`,
-        'Fix the request artifact before dispatching Codex.',
-      ]);
-    }
-
-    if (payload.source === 'plan-auto') {
-      const domainKey = payload.kind === 'domain' ? payload.domainId : '_default';
-      const state = loadState();
-      if ((state.domains[domainKey] || 0) >= 1) {
+      const validation = validateHandoff(payload);
+      if (!validation.valid) {
         return block([
-          `Codex dispatch for domain "${domainKey}" already invoked this session.`,
-          'A second automatic dispatch indicates the first failed or retried unexpectedly.',
-          'Fix the request or result handling before retrying.',
+          `Invalid codex handoff request: ${validation.error}`,
+          'Fix the request artifact before dispatching Codex.',
         ]);
       }
 
-      state.domains = state.domains || {};
-      state.domains[domainKey] = (state.domains[domainKey] || 0) + 1;
-      saveState(state);
+      if (payload.source === 'plan-auto') {
+        const domainKey = payload.kind === 'domain' ? payload.domainId : '_default';
+        const state = loadState();
+        if ((state.domains[domainKey] || 0) >= 1) {
+          return block([
+            `Codex dispatch for domain "${domainKey}" already invoked this session.`,
+            'A second automatic dispatch indicates the first failed or retried unexpectedly.',
+            'Fix the request or result handling before retrying.',
+          ]);
+        }
+
+        state.domains = state.domains || {};
+        state.domains[domainKey] = (state.domains[domainKey] || 0) + 1;
+        saveState(state);
+      }
     }
 
     return rawInput;

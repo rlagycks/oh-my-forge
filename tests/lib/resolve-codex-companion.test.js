@@ -96,6 +96,44 @@ if (test('collectAutoCandidates includes ECC root and codex-plugin-cc locations'
   }
 })) passed++; else failed++;
 
+if (test('resolveCodexCompanionPath auto-discovers companion from openai-codex marketplace', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'resolve-codex-companion-'));
+  try {
+    const companion = path.join(root, '.claude', 'plugins', 'marketplaces', 'openai-codex', 'plugins', 'codex', 'scripts', 'codex-companion.mjs');
+    mkdirp(path.dirname(companion));
+    fs.writeFileSync(companion, '// companion\n', 'utf8');
+
+    const resolved = resolveCodexCompanionPath({
+      homeDir: root,
+      envRoot: path.join(root, 'missing-ecc-root'),
+    });
+
+    assert.strictEqual(resolved.source, 'auto');
+    assert.strictEqual(resolved.path, path.resolve(companion));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+})) passed++; else failed++;
+
+if (test('resolveCodexCompanionPath auto-discovers companion from openai-codex cache', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'resolve-codex-companion-'));
+  try {
+    const companion = path.join(root, '.claude', 'plugins', 'cache', 'openai-codex', 'codex', '1.0.3', 'scripts', 'codex-companion.mjs');
+    mkdirp(path.dirname(companion));
+    fs.writeFileSync(companion, '// companion\n', 'utf8');
+
+    const resolved = resolveCodexCompanionPath({
+      homeDir: root,
+      envRoot: path.join(root, 'missing-ecc-root'),
+    });
+
+    assert.strictEqual(resolved.source, 'auto');
+    assert.strictEqual(resolved.path, path.resolve(companion));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+})) passed++; else failed++;
+
 if (test('resolveCodexCompanionPath auto-discovers a companion under the ECC root', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'resolve-codex-companion-'));
   try {

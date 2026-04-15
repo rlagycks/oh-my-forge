@@ -95,7 +95,7 @@ Return your result in the following structure:
   SUMMARY: <one paragraph>
 ```
 
-**If codex-plugin-cc is installed** (foreground delegation expected by the caller), write the request JSON to a temp file and dispatch it through the shared runtime:
+**If the Codex companion is available** (openai-codex plugin or legacy codex-plugin-cc; foreground delegation expected by the caller), write the request JSON to a temp file and dispatch it through the shared runtime:
 
 ```bash
 PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
