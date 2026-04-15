@@ -112,7 +112,7 @@ function promoteContract(options = {}) {
     source: options.source || options.contractFile,
     summary: options.summary,
     domain,
-    version: options.version || (detailFile ? '1.0' : ''),
+    version: options.version || '',
   });
 
   const existing = detailFile && fs.existsSync(detailFile)
