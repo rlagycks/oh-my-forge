@@ -77,6 +77,46 @@ if (test('session-end captures failure trace signals from transcript text', () =
   }
 })) passed++; else failed++;
 
+if (test('session-end keeps the latest next suspicion from the transcript', () => {
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'session-next-suspicion-'));
+  const transcriptPath = path.join(homeDir, 'transcript.jsonl');
+  fs.writeFileSync(transcriptPath, [
+    JSON.stringify({ type: 'user', content: 'Debug evolving failure traces' }),
+    JSON.stringify({
+      type: 'assistant',
+      message: {
+        content: [
+          {
+            type: 'text',
+            text: 'Next suspicion: initial parser mismatch. Command failed because the schema rejected the result.',
+          },
+        ],
+      },
+    }),
+    JSON.stringify({
+      type: 'assistant',
+      message: {
+        content: [
+          {
+            type: 'text',
+            text: 'Initial suspicion disproven. Next suspicion: latest ontology profile drift. Next suspicion: final handoff template drift.',
+          },
+        ],
+      },
+    }),
+  ].join('\n'), 'utf8');
+
+  try {
+    const result = runSessionEnd(homeDir, transcriptPath, 'trace002');
+    assert.strictEqual(result.status, 0, result.stderr);
+    const content = readOnlySessionFile(homeDir);
+    assert.ok(content.includes('Next suspicion: final handoff template drift'), content);
+    assert.ok(!content.includes('Next suspicion: initial parser mismatch'), content);
+  } finally {
+    fs.rmSync(homeDir, { recursive: true, force: true });
+  }
+})) passed++; else failed++;
+
 if (test('session-end blank template asks for failure traces before tips', () => {
   const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'session-failure-template-'));
   const transcriptPath = path.join(homeDir, 'transcript.jsonl');

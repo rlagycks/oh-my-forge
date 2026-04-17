@@ -171,9 +171,9 @@ function collectFailureTrace(entry, failureTrace) {
   const text = entryText(entry);
   if (!text) return;
 
-  const nextSuspicionMatch = text.match(/next suspicion\s*:\s*([^.\n]+)/i);
-  if (nextSuspicionMatch && !failureTrace.nextSuspicion) {
-    failureTrace.nextSuspicion = nextSuspicionMatch[1].trim();
+  const nextSuspicionMatches = text.matchAll(/next suspicion\s*:\s*([^.\n]+)/ig);
+  for (const match of nextSuspicionMatches) {
+    failureTrace.nextSuspicion = match[1].trim();
   }
 
   for (const sentence of splitTraceSentences(text)) {
