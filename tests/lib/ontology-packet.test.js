@@ -1,6 +1,8 @@
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 
 const {
   DEFAULT_RETRIEVAL_PROFILES,
@@ -94,6 +96,101 @@ if (test('buildDomainPacket keeps only the fields selected by the retrieval prof
   assert.ok(!packet.spec, JSON.stringify(packet, null, 2));
   assert.ok(!packet.constraints, JSON.stringify(packet, null, 2));
   assert.ok(!packet.executionContract.notDo, JSON.stringify(packet, null, 2));
+})) passed++; else failed++;
+
+if (test('buildDomainPacket prefers fresh active decisions over stale design residue', () => {
+  const entry = {
+    domainKey: 'domain_decay',
+    owner: 'ontology',
+    decisions: [
+      { id: 'dec-old', date: '2026-01-01', status: 'active', summary: 'old active decision' },
+      { id: 'dec-expired', date: '2026-04-16', expiresAt: '2026-04-17', summary: 'expired decision' },
+      { id: 'dec-deprecated', date: '2026-04-15', status: 'deprecated', summary: 'deprecated decision' },
+      { id: 'dec-new', date: '2026-04-18', summary: 'new active decision' },
+      { id: 'dec-mid', date: '2026-04-12', status: 'active', summary: 'mid active decision' },
+    ],
+    retrievalProfiles: {
+      implement: {
+        include: ['decisions'],
+        maxDecisions: 2,
+      },
+    },
+  };
+
+  const packet = buildDomainPacket(entry, 'implement', { now: '2026-04-18T00:00:00Z' });
+
+  assert.deepStrictEqual(packet.decisions.map(decision => decision.id), ['dec-new', 'dec-mid']);
+})) passed++; else failed++;
+
+if (test('buildDomainPacket skips expired or deprecated failure patterns before truncating', () => {
+  const makePattern = (id, overrides = {}) => ({
+    id,
+    symptom: `${id} symptom`,
+    looksNormalIf: `${id} looks normal`,
+    actuallyMeans: `${id} actual meaning`,
+    verifyWith: [`verify ${id}`],
+    nextSuspicion: `${id} suspicion`,
+    ...overrides,
+  });
+  const entry = {
+    domainKey: 'domain_decay',
+    owner: 'ontology',
+    failurePatterns: [
+      makePattern('old-active', { lastSeenAt: '2026-01-01' }),
+      makePattern('expired', { lastSeenAt: '2026-04-15', expiresAt: '2026-04-17' }),
+      makePattern('deprecated', { lastSeenAt: '2026-04-16', status: 'deprecated' }),
+      makePattern('recent-active', { lastSeenAt: '2026-04-17' }),
+      makePattern('mid-active', { lastSeenAt: '2026-04-10', status: 'active' }),
+    ],
+    retrievalProfiles: {
+      implement: {
+        include: ['failurePatterns'],
+        maxFailurePatterns: 2,
+      },
+    },
+  };
+
+  const packet = buildDomainPacket(entry, 'implement', { now: '2026-04-18T00:00:00Z' });
+
+  assert.deepStrictEqual(packet.failurePatterns.map(pattern => pattern.id), ['recent-active', 'mid-active']);
+})) passed++; else failed++;
+
+if (test('buildDomainPacket treats supersededBy presence as non-retrievable even when empty', () => {
+  const makePattern = (id, overrides = {}) => ({
+    id,
+    symptom: `${id} symptom`,
+    looksNormalIf: `${id} looks normal`,
+    actuallyMeans: `${id} actual meaning`,
+    verifyWith: [`verify ${id}`],
+    nextSuspicion: `${id} suspicion`,
+    ...overrides,
+  });
+  const entry = {
+    domainKey: 'domain_decay',
+    owner: 'ontology',
+    failurePatterns: [
+      makePattern('superseded-placeholder', { lastSeenAt: '2026-04-18', supersededBy: '' }),
+      makePattern('recent-active', { lastSeenAt: '2026-04-17' }),
+    ],
+    retrievalProfiles: {
+      implement: {
+        include: ['failurePatterns'],
+        maxFailurePatterns: 1,
+      },
+    },
+  };
+
+  const packet = buildDomainPacket(entry, 'implement', { now: '2026-04-18T00:00:00Z' });
+
+  assert.deepStrictEqual(packet.failurePatterns.map(pattern => pattern.id), ['recent-active']);
+})) passed++; else failed++;
+
+if (test('ontology schema exposes only supersededBy for replacement metadata', () => {
+  const schemaPath = path.join(__dirname, '..', '..', '.claude', 'ontology', '_schema.json');
+  const schemaText = fs.readFileSync(schemaPath, 'utf8');
+
+  assert.ok(schemaText.includes('"supersededBy"'), schemaText);
+  assert.ok(!schemaText.includes('"replacedBy"'), schemaText);
 })) passed++; else failed++;
 
 if (test('buildDomainPacket falls back to default context profile when a domain does not define one', () => {

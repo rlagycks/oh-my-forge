@@ -216,7 +216,7 @@ if (test('createPlanRoute applies ontology retrieval profiles to generated hando
   assert.ok(request, JSON.stringify(route, null, 2));
   assert.ok(request.successCriteria.some(line => line.includes('capture/inject 경계가 유지')), JSON.stringify(request, null, 2));
   assert.ok(request.notDo.some(line => line.includes('장시간 차단')), JSON.stringify(request, null, 2));
-  assert.ok(request.notDo.some(line => line.includes('guard가 작동하지 않거나')), JSON.stringify(request, null, 2));
+  assert.ok(request.notDo.some(line => line.includes('오래된 설계 결정')), JSON.stringify(request, null, 2));
   assert.ok(request.completionChecks.some(line => line.includes('훅이 조용하다고')), JSON.stringify(request, null, 2));
 })) passed++; else failed++;
 
