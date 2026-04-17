@@ -43,6 +43,9 @@ function setup() {
     '## Success',
     '- Retry attempts are idempotent.',
     '',
+    '## Not Do',
+    '- Do not redesign the whole notification pipeline.',
+    '',
     '## Inputs / Contracts',
     '- Existing webhook payload shape stays stable.',
     '',
@@ -58,6 +61,20 @@ function setup() {
     '## Handoff Format',
     '- Current State',
     '- Evidence',
+    '- Open Risks',
+    '- Next Action',
+  ].join('\n'), 'utf8');
+  fs.writeFileSync(path.join(tmpRoot, 'docs', 'contracts', 'incomplete.md'), [
+    '# Design Contract: Incomplete',
+    '',
+    '## Problem One Line',
+    '- Fix retries.',
+    '',
+    '## Mission',
+    '- Retry work.',
+    '',
+    '## Success',
+    '- Tests pass.',
   ].join('\n'), 'utf8');
 
   origCwd = process.cwd;
@@ -192,6 +209,21 @@ run('promote-contract can merge into an existing detail file and write it back',
   assert.ok(written.constraints.includes('Existing webhook payload shape stays stable.'), JSON.stringify(written, null, 2));
   assert.ok(written.executionContract.notDo.includes('Do not break auth'), JSON.stringify(written, null, 2));
   assert.ok(written.executionContract.notDo.includes('No unrelated queue refactor.'), JSON.stringify(written, null, 2));
+});
+
+run('promote-contract rejects incomplete design contracts before writing detail files', () => {
+  const detailFile = path.join(tmpRoot, '.claude', 'ontology', 'domain_incomplete.json');
+  const result = cli([
+    'promote-contract',
+    '--contract-file', 'docs/contracts/incomplete.md',
+    '--detail-file', '.claude/ontology/domain_incomplete.json',
+    '--write',
+  ]);
+
+  assert.strictEqual(result.status, 1);
+  assert.ok(result.stderr.includes('Invalid design contract'), result.stderr);
+  assert.ok(result.stderr.includes('Not Do'), result.stderr);
+  assert.ok(!fs.existsSync(detailFile), 'incomplete contract should not be written');
 });
 
 console.log(`\n${passed + failed} tests: ${passed} passed, ${failed} failed\n`);

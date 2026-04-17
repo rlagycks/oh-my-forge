@@ -7,6 +7,7 @@ const {
   inferDomainFromDetailPath,
   mergeOntologyDetail,
   parseDesignContract,
+  validateDesignContract,
 } = require('../../scripts/lib/design-contract');
 
 function test(name, fn) {
@@ -64,6 +65,23 @@ const contractMarkdown = `
 - Existing worker storage is available in production.
 `;
 
+const incompleteContractMarkdown = `
+# Design Contract: Incomplete
+
+## Problem One Line
+- Fix retries.
+
+## Mission
+- Retry work.
+
+## Success
+- Tests pass.
+
+## Handoff Format
+- Current State
+- Evidence
+`;
+
 console.log('\ndesign-contract.test.js');
 
 if (test('parseDesignContract extracts enforceable sections from markdown', () => {
@@ -88,6 +106,26 @@ if (test('parseDesignContract extracts enforceable sections from markdown', () =
     'Open Risks',
     'Next Action',
   ]);
+})) passed++; else failed++;
+
+if (test('validateDesignContract rejects contracts missing enforceable sections', () => {
+  const parsed = parseDesignContract(incompleteContractMarkdown);
+  const validation = validateDesignContract(parsed);
+
+  assert.strictEqual(validation.valid, false);
+  assert.ok(validation.errors.some(error => error.includes('Not Do')), validation.errors.join('\n'));
+  assert.ok(validation.errors.some(error => error.includes('Verification Points')), validation.errors.join('\n'));
+  assert.ok(validation.errors.some(error => error.includes('False-Normal Checks')), validation.errors.join('\n'));
+  assert.ok(validation.errors.some(error => error.includes('Expansion Forbidden')), validation.errors.join('\n'));
+  assert.ok(validation.errors.some(error => error.includes('Open Risks')), validation.errors.join('\n'));
+  assert.ok(validation.errors.some(error => error.includes('Next Action')), validation.errors.join('\n'));
+})) passed++; else failed++;
+
+if (test('validateDesignContract accepts complete execution contracts', () => {
+  const validation = validateDesignContract(parseDesignContract(contractMarkdown));
+
+  assert.strictEqual(validation.valid, true, validation.errors.join('\n'));
+  assert.deepStrictEqual(validation.errors, []);
 })) passed++; else failed++;
 
 if (test('buildOntologyDetailFragment maps design contract fields into ontology detail shape', () => {
