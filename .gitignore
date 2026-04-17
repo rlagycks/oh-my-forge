@@ -82,6 +82,7 @@ examples/sessions/*.tmp
 marketing/
 .dmux/
 .dmux-hooks/
+.claude/PRPs/
 .claude/worktrees/
 .claude/scheduled_tasks.lock
 
