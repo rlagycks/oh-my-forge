@@ -2,8 +2,7 @@
 /**
  * Validate agent markdown files:
  *  - required frontmatter exists
- *  - core agents contain the standard contract sections
- *  - non-core agents are warned so the rollout can remain incremental
+ *  - every agent contains the standard contract sections
  */
 
 'use strict';
@@ -21,15 +20,6 @@ const CONTRACT_SECTIONS = [
   'Decision Policy',
   'Execution Policy',
   'Style',
-];
-const STRICT_CONTRACT_AGENTS = [
-  'architect',
-  'planner',
-  'tdd-guide',
-  'code-reviewer',
-  'security-reviewer',
-  'loop-operator',
-  'harness-optimizer',
 ];
 
 function extractFrontmatter(content) {
@@ -61,10 +51,8 @@ function hasHeading(body, heading) {
   return pattern.test(body);
 }
 
-function validateAgentFile(filePath, options = {}) {
-  const strictContractAgents = options.strictContractAgents || STRICT_CONTRACT_AGENTS;
+function validateAgentFile(filePath) {
   const fileName = path.basename(filePath);
-  const agentName = fileName.replace(/\.md$/, '');
   const errors = [];
   const warnings = [];
 
@@ -102,11 +90,7 @@ function validateAgentFile(filePath, options = {}) {
   const missingSections = CONTRACT_SECTIONS.filter(section => !hasHeading(body, section));
   if (missingSections.length > 0) {
     const message = `${fileName} - Missing contract section(s): ${missingSections.join(', ')}`;
-    if (strictContractAgents.includes(agentName) || frontmatter.contract === 'strict') {
-      errors.push(`ERROR: ${message}`);
-    } else {
-      warnings.push(`WARN: ${message}`);
-    }
+    errors.push(`ERROR: ${message}`);
   }
 
   return { file: fileName, errors, warnings };
@@ -114,7 +98,6 @@ function validateAgentFile(filePath, options = {}) {
 
 function validateAgents(options = {}) {
   const agentDirs = options.agentDirs || DEFAULT_AGENT_DIRS;
-  const strictContractAgents = options.strictContractAgents || STRICT_CONTRACT_AGENTS;
   const errors = [];
   const warnings = [];
   let filesValidated = 0;
@@ -128,7 +111,7 @@ function validateAgents(options = {}) {
     filesValidated += files.length;
 
     for (const file of files) {
-      const result = validateAgentFile(path.join(agentDir, file), { strictContractAgents });
+      const result = validateAgentFile(path.join(agentDir, file));
       errors.push(...result.errors);
       warnings.push(...result.warnings);
     }
@@ -161,7 +144,6 @@ function runCli() {
 
 module.exports = {
   CONTRACT_SECTIONS,
-  STRICT_CONTRACT_AGENTS,
   extractFrontmatter,
   validateAgentFile,
   validateAgents,
