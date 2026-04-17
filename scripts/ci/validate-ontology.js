@@ -45,10 +45,12 @@ function validateDecayMetadata(domainKey, detailPath, itemPath, item, reportErro
     }
   }
 
-  for (const field of ['supersededBy', 'replacedBy']) {
-    if (item[field] !== undefined && typeof item[field] !== 'string') {
-      reportError(`ERROR: ${domainKey} — ${itemPath}.${field} must be a string (${detailPath})`);
-    }
+  if (item.supersededBy !== undefined && typeof item.supersededBy !== 'string') {
+    reportError(`ERROR: ${domainKey} — ${itemPath}.supersededBy must be a string (${detailPath})`);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(item, 'replacedBy')) {
+    reportError(`ERROR: ${domainKey} — ${itemPath}.replacedBy is unsupported; use supersededBy (${detailPath})`);
   }
 }
 

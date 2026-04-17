@@ -112,8 +112,7 @@
               "updatedAt": { "type": "string", "description": "ISO timestamp/date used to prioritize fresh failure patterns." },
               "createdAt": { "type": "string", "description": "ISO timestamp/date used to prioritize fresh failure patterns." },
               "expiresAt": { "type": "string", "description": "ISO timestamp/date after which this pattern is excluded from retrieval packets." },
-              "supersededBy": { "type": "string", "description": "Replacement pattern ID. Presence excludes this item from retrieval packets." },
-              "replacedBy": { "type": "string", "description": "Replacement pattern ID. Presence excludes this item from retrieval packets." }
+              "supersededBy": { "type": "string", "description": "Replacement pattern ID. Presence excludes this item from retrieval packets." }
             }
           },
           "description": "Promoted failure signatures that should influence future work in this domain."
@@ -187,7 +186,6 @@
               "lastSeenAt": { "type": "string", "description": "ISO timestamp/date used to prioritize fresh decisions." },
               "expiresAt": { "type": "string", "description": "ISO timestamp/date after which this decision is excluded from retrieval packets." },
               "supersededBy": { "type": "string", "description": "Replacement decision ID. Presence excludes this item from retrieval packets." },
-              "replacedBy": { "type": "string", "description": "Replacement decision ID. Presence excludes this item from retrieval packets." },
               "domain": { "type": "string", "description": "Domain key — populated automatically by addDecision()" }
             }
           },

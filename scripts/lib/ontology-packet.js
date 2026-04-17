@@ -125,7 +125,7 @@ function isRetrievableItem(item, nowMs) {
 
   const status = typeof item.status === 'string' ? item.status.trim().toLowerCase() : '';
   if (INACTIVE_STATUSES.has(status)) return false;
-  if (item.supersededBy || item.replacedBy) return false;
+  if (Object.prototype.hasOwnProperty.call(item, 'supersededBy')) return false;
 
   const expiresAt = parseTime(item.expiresAt);
   if (expiresAt !== null && expiresAt <= nowMs) return false;
