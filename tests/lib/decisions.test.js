@@ -4,6 +4,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { spawnSync } = require('child_process');
 
 // Patch CWD and homedir to point at a temp directory so tests are isolated
 let tmpRoot;
@@ -227,6 +228,42 @@ run('addDecision: stores failure-trace metadata and makes it searchable', () => 
   const results = queryDecisions({ q: 'fallback path' });
   assert.strictEqual(results.length, 1);
   assert.strictEqual(results[0].summary, 'silent completion blocked');
+});
+
+run('CLI add: stores failure-trace metadata flags', () => {
+  const script = path.join(__dirname, '..', '..', 'scripts', 'lib', 'decisions.js');
+  const result = spawnSync(process.execPath, [
+    script,
+    'add',
+    '--domain', 'domain_commands',
+    '--type', 'bug-fix',
+    '--summary', 'silent completion blocked',
+    '--why', 'tests looked green but handoff evidence was absent',
+    '--files', 'commands/plan.md,scripts/lib/codex-handoff.js',
+    '--evidence', 'missing test output|blocked parser result',
+    '--false-normal-signals', 'TESTS PASS without evidence|summary claimed done',
+    '--verify-with', 'node tests/lib/codex-handoff.test.js|npm test',
+    '--next-suspicion', 'parseCodexResult fallback path',
+  ], {
+    cwd: tmpRoot,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      HOME: tmpRoot,
+      USERPROFILE: tmpRoot,
+    },
+  });
+
+  assert.strictEqual(result.status, 0, result.stderr);
+
+  const domainFile = path.join(tmpRoot, '.claude', 'ontology', 'domain_commands.json');
+  const domainData = JSON.parse(fs.readFileSync(domainFile, 'utf8'));
+  const [entry] = domainData.decisions;
+
+  assert.deepStrictEqual(entry.evidence, ['missing test output', 'blocked parser result']);
+  assert.deepStrictEqual(entry.falseNormalSignals, ['TESTS PASS without evidence', 'summary claimed done']);
+  assert.deepStrictEqual(entry.verifyWith, ['node tests/lib/codex-handoff.test.js', 'npm test']);
+  assert.strictEqual(entry.nextSuspicion, 'parseCodexResult fallback path');
 });
 
 console.log(`\n${passed + failed} tests: ${passed} passed, ${failed} failed\n`);

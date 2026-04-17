@@ -98,19 +98,33 @@ If nothing is confirmed working yet: "Nothing confirmed working yet — all appr
 
 ---
 
-## What Did NOT Work (and why)
+## Failure Trace Ledger
 
-[This is the most important section. List every approach tried that failed.
-For each failure write the EXACT reason so the next session doesn't retry it.
-Be specific: "threw X error because Y" is useful. "didn't work" is not.]
+[This is the most important section. Store failure traces before lessons.
+Do not save a vague lesson like "be careful with tests" unless it includes the
+failure signal, what it hid, the evidence that exposed it, and what to suspect
+first next time.]
+
+### Failed hypotheses
 
 - **[approach tried]** — failed because: [exact reason / error message]
 - **[approach tried]** — failed because: [exact reason / error message]
 
-Also note any **false-normal signal** that looked healthy at first but turned out to be misleading:
+### False-normal signals
+
+- **[signal]** — looked healthy because: [why], actually meant: [what it hid]
 - **[signal]** — looked healthy because: [why], actually meant: [what it hid]
 
-If nothing failed: "No failed approaches yet."
+### Evidence still missing
+
+- **[claim]** — missing proof: [test/log/manual check still needed]
+- **[claim]** — missing proof: [test/log/manual check still needed]
+
+### Next suspicion
+
+[The first place to inspect if the same smell appears again.]
+
+If nothing failed: "No failure traces captured yet — do not convert this into a lesson until evidence exists."
 
 ---
 

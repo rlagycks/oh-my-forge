@@ -7,7 +7,11 @@
  *
  * CLI usage:
  *   node scripts/lib/decisions.js add --domain domain_commands --type bug-fix \
- *     --summary "..." --why "..." --files "commands/plan.md" --ref "PR #6"
+ *     --summary "..." --why "..." --files "commands/plan.md" --ref "PR #6" \
+ *     --evidence "test output|manual repro" \
+ *     --false-normal-signals "green tests without changed-path evidence" \
+ *     --verify-with "node tests/lib/example.test.js" \
+ *     --next-suspicion "first place to inspect if this recurs"
  *
  *   node scripts/lib/decisions.js query --domain domain_commands
  *   node scripts/lib/decisions.js query --type bug-fix
@@ -237,15 +241,18 @@ function cli(argv) {
 
   if (cmd === 'add') {
     const opts = parseFlags(rest);
-    const files = opts.files ? opts.files.split(',').map(f => f.trim()) : [];
     const entry = addDecision({
       domain: opts.domain,
       type: opts.type,
       summary: opts.summary,
       why: opts.why,
-      files,
+      files: splitListFlag(opts.files, ','),
       ref: opts.ref || '',
-      prevention: opts.prevention || ''
+      prevention: opts.prevention || '',
+      evidence: splitListFlag(opts.evidence),
+      falseNormalSignals: splitListFlag(opts['false-normal-signals'] || opts.falseNormalSignals),
+      verifyWith: splitListFlag(opts['verify-with'] || opts.verifyWith),
+      nextSuspicion: opts['next-suspicion'] || opts.nextSuspicion || ''
     });
     console.log('Decision recorded:', JSON.stringify(entry, null, 2));
     return;
@@ -293,6 +300,15 @@ function parseFlags(args) {
     }
   }
   return result;
+}
+
+function splitListFlag(value, preferredSeparator = '|') {
+  if (!value || typeof value !== 'string') return [];
+  const separator = value.includes(preferredSeparator) ? preferredSeparator : ',';
+  return value
+    .split(separator)
+    .map(item => item.trim())
+    .filter(Boolean);
 }
 
 module.exports = { addDecision, queryDecisions, listDomains };
