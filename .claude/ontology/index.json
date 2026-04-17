@@ -217,7 +217,8 @@
       "commands/codex-delegate.md",
       "scripts/hooks/pre-bash-codex-guard.js",
       "scripts/lib/codex-handoff.js",
-      "schemas/codex-handoff-request.schema.json"
+      "schemas/codex-handoff-request.schema.json",
+      "schemas/codex-handoff-result.schema.json"
     ],
     "spec": "docs/features/codex.md",
     "detail": ".claude/ontology/domain_codex.json",

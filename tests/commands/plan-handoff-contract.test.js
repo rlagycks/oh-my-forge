@@ -7,6 +7,7 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '../..');
 const planCommandPath = path.join(repoRoot, 'commands', 'plan.md');
 const codexDelegatePath = path.join(repoRoot, 'commands', 'codex-delegate.md');
+const orchestratePath = path.join(repoRoot, 'commands', 'orchestrate.md');
 
 function read(filePath) {
   return fs.readFileSync(filePath, 'utf8');
@@ -33,6 +34,7 @@ function expectNotIncludes(content, snippet, message) {
 
 const planMd = read(planCommandPath);
 const codexDelegateMd = read(codexDelegatePath);
+const orchestrateMd = read(orchestratePath);
 
 let passed = 0;
 let failed = 0;
@@ -80,10 +82,21 @@ if (test('codex-delegate documents background rescue as a manual path only', () 
 if (test('plan and codex-delegate document the richer completion contract', () => {
   expectIncludes(planMd, 'EVIDENCE');
   expectIncludes(planMd, 'FALSE NORMAL CHECKS');
+  expectIncludes(planMd, 'FALSE NORMAL SIGNALS');
   expectIncludes(planMd, 'NEXT ACTION');
   expectIncludes(codexDelegateMd, 'EVIDENCE');
   expectIncludes(codexDelegateMd, 'FALSE NORMAL CHECKS');
+  expectIncludes(codexDelegateMd, 'FALSE NORMAL SIGNALS');
   expectIncludes(codexDelegateMd, 'NEXT ACTION');
+})) passed++; else failed++;
+
+if (test('commands document the false-normal detector as a blocking completion gate', () => {
+  expectIncludes(planMd, 'false-normal detector');
+  expectIncludes(planMd, 'downgrades `RESULT: DONE` to `BLOCKED`');
+  expectIncludes(codexDelegateMd, 'FALSE NORMAL DETECTOR');
+  expectIncludes(codexDelegateMd, 'unresolved `FALSE NORMAL SIGNALS`');
+  expectIncludes(orchestrateMd, 'False-Normal Signals');
+  expectIncludes(orchestrateMd, 'Do not mark `SHIP`');
 })) passed++; else failed++;
 
 console.log(`\n  ${passed} passed, ${failed} failed\n`);

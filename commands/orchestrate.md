@@ -88,6 +88,9 @@ Between agents, create handoff document:
 ### False-Normal Checks
 [What looked done but still needed verification]
 
+### False-Normal Signals
+[Unresolved misleading signals; use `none` only after verification]
+
 ### Open Questions
 [Unresolved items for next agent]
 
@@ -158,6 +161,11 @@ TEST RESULTS
 ------------
 [Test pass/fail summary]
 
+FALSE-NORMAL DETECTOR
+---------------------
+Checks: [Evidence that ruled out misleading healthy signals]
+Signals: [Unresolved false-normal signals, or none]
+
 SECURITY STATUS
 ---------------
 [Security findings]
@@ -166,6 +174,8 @@ RECOMMENDATION
 --------------
 [SHIP / NEEDS WORK / BLOCKED]
 ```
+
+Do not mark `SHIP` unless evidence is present, false-normal signals are `none`, and the next action is explicit.
 
 ## Parallel Execution
 

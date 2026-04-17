@@ -151,7 +151,8 @@ if (test('buildBrief emits the shared handoff format', () => {
     assert.ok(brief.includes('SOURCE    : manual-delegate'), brief);
     assert.ok(brief.includes('WRITE     : true'), brief);
     assert.ok(brief.includes('PLAN FILE : /repo/.claude/plans/retry.md'), brief);
-    assert.ok(brief.includes('HANDOFF   : Return: RESULT / FILES CHANGED / TESTS / EVIDENCE / FALSE NORMAL CHECKS / OPEN RISKS / NEXT ACTION / SUMMARY'), brief);
+    assert.ok(brief.includes('FALSE NORMAL DETECTOR:'), brief);
+    assert.ok(brief.includes('HANDOFF   : Return: RESULT / FILES CHANGED / TESTS / EVIDENCE / FALSE NORMAL CHECKS / FALSE NORMAL SIGNALS / OPEN RISKS / NEXT ACTION / SUMMARY'), brief);
     assert.strictEqual(request.schemaVersion, 'ecc.codex.handoff.request.v2');
     assert.ok(Array.isArray(request.successCriteria) && request.successCriteria.length > 0, JSON.stringify(request));
     assert.ok(Array.isArray(request.completionChecks) && request.completionChecks.length > 0, JSON.stringify(request));
@@ -241,6 +242,7 @@ if (test('dispatchHandoff runs the companion with a generated prompt file and pa
     '  console.log("TESTS: FAIL");',
     '  console.log("EVIDENCE: prompt file missing");',
     '  console.log("FALSE NORMAL CHECKS: request never reached Codex execution");',
+    '  console.log("FALSE NORMAL SIGNALS: task was never executed");',
     '  console.log("OPEN RISKS: task not executed");',
     '  console.log("NEXT ACTION: fix prompt file generation");',
     '  console.log("SUMMARY: prompt file missing");',
@@ -252,6 +254,7 @@ if (test('dispatchHandoff runs the companion with a generated prompt file and pa
     'console.log("TESTS: PASS");',
     'console.log("EVIDENCE: updated guard path | prompt file consumed");',
     'console.log("FALSE NORMAL CHECKS: verified prompt included BRIEF and SOURCE");',
+    'console.log("FALSE NORMAL SIGNALS: none");',
     'console.log("OPEN RISKS: none");',
     'console.log("NEXT ACTION: review diff and merge");',
     'console.log(`SUMMARY: ${prompt.includes("BRIEF") && prompt.includes("SOURCE") && hasWrite ? "dispatch ok" : "prompt malformed"}`);',
@@ -289,6 +292,7 @@ if (test('dispatchHandoff resolves the companion from CODEX_COMPANION_PATH when 
     'console.log("TESTS: PASS");',
     'console.log("EVIDENCE: env override path used");',
     'console.log("FALSE NORMAL CHECKS: confirmed env path companion executed");',
+    'console.log("FALSE NORMAL SIGNALS: none");',
     'console.log("OPEN RISKS: none");',
     'console.log("NEXT ACTION: keep env override documented");',
     'console.log("SUMMARY: env path ok");',
@@ -327,6 +331,7 @@ if (test('dispatchHandoff auto-resolves the companion when no explicit path or e
     'console.log("TESTS: PASS");',
     'console.log("EVIDENCE: bounded auto discovery resolved ecc-root script");',
     'console.log("FALSE NORMAL CHECKS: confirmed auto-resolved companion actually executed");',
+    'console.log("FALSE NORMAL SIGNALS: none");',
     'console.log("OPEN RISKS: none");',
     'console.log("NEXT ACTION: keep fallback discovery bounded");',
     'console.log("SUMMARY: auto path ok");',
@@ -383,6 +388,7 @@ if (test('parseCodexResult parses successful Codex output into a schema-valid re
     'TESTS: PASS',
     'EVIDENCE: updated guard logic | added coverage',
     'FALSE NORMAL CHECKS: confirmed test pass covers changed path',
+    'FALSE NORMAL SIGNALS: none',
     'OPEN RISKS: none',
     'NEXT ACTION: request review',
     'SUMMARY: Updated the guard and added validator coverage.',
@@ -393,12 +399,54 @@ if (test('parseCodexResult parses successful Codex output into a schema-valid re
   assert.strictEqual(result.result, 'DONE');
   assert.deepStrictEqual(result.evidence, ['updated guard logic', 'added coverage']);
   assert.deepStrictEqual(result.falseNormalChecks, ['confirmed test pass covers changed path']);
+  assert.deepStrictEqual(result.falseNormalSignals, []);
   assert.deepStrictEqual(result.openRisks, []);
   assert.strictEqual(result.nextAction, 'request review');
   assert.deepStrictEqual(result.filesChanged, [
     'scripts/hooks/pre-bash-codex-guard.js',
     'tests/hooks/pre-bash-codex-guard.test.js',
   ]);
+})) passed++; else failed++;
+
+if (test('parseCodexResult blocks DONE when only tests look healthy', () => {
+  const result = parseCodexResult([
+    'RESULT: DONE',
+    'FILES CHANGED: scripts/hooks/pre-bash-codex-guard.js',
+    'TESTS: PASS',
+    'SUMMARY: tests passed',
+  ].join('\n'));
+
+  const validation = validateResult(result);
+  assert.strictEqual(validation.valid, true, validation.error);
+  assert.strictEqual(result.valid, false);
+  assert.strictEqual(result.state, 'BLOCKED');
+  assert.strictEqual(result.result, 'BLOCKED');
+  assert.ok(result.error.includes('False-normal detector'), result.error);
+  assert.ok(result.falseNormalSignals.some(signal => signal.includes('EVIDENCE')), JSON.stringify(result));
+  assert.ok(result.falseNormalSignals.some(signal => signal.includes('FALSE NORMAL CHECKS')), JSON.stringify(result));
+  assert.ok(result.falseNormalSignals.some(signal => signal.includes('NEXT ACTION')), JSON.stringify(result));
+})) passed++; else failed++;
+
+if (test('parseCodexResult blocks DONE with unresolved false-normal signals', () => {
+  const result = parseCodexResult([
+    'RESULT: DONE',
+    'FILES CHANGED: scripts/hooks/pre-bash-codex-guard.js',
+    'TESTS: PASS',
+    'EVIDENCE: updated guard logic',
+    'FALSE NORMAL CHECKS: checked the changed guard path',
+    'FALSE NORMAL SIGNALS: green tests did not exercise the dispatch path',
+    'OPEN RISKS: none',
+    'NEXT ACTION: request review',
+    'SUMMARY: Updated the guard.',
+  ].join('\n'));
+
+  const validation = validateResult(result);
+  assert.strictEqual(validation.valid, true, validation.error);
+  assert.strictEqual(result.valid, false);
+  assert.strictEqual(result.state, 'BLOCKED');
+  assert.strictEqual(result.result, 'BLOCKED');
+  assert.ok(result.falseNormalSignals.includes('green tests did not exercise the dispatch path'), JSON.stringify(result));
+  assert.ok(result.error.includes('unresolved FALSE NORMAL SIGNALS'), result.error);
 })) passed++; else failed++;
 
 if (test('parseCodexResult turns missing RESULT output into explicit BLOCKED status', () => {
