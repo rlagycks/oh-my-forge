@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 
 const {
+  mergeSourceDocs,
   resolveProjectOntologyRoot,
   loadOntologyMaps,
   matchFileToDomain,
@@ -221,6 +222,21 @@ if (test('loadOntologyMaps merges detail metadata into flat index entries', () =
   } finally {
     fs.rmSync(fixture.root, { recursive: true, force: true });
   }
+})) passed++; else failed++;
+
+if (test('mergeSourceDocs deduplicates and drops invalid doc entries', () => {
+  const merged = mergeSourceDocs({
+    apiSpec: ['docs/features/inventory/api.md', ''],
+    prd: ['docs/features/inventory/prd.md'],
+  }, {
+    apiSpec: ['docs/features/inventory/api.md', 'docs/features/inventory/api-v2.md'],
+    notes: 'not an array',
+  });
+
+  assert.deepStrictEqual(merged, {
+    apiSpec: ['docs/features/inventory/api.md', 'docs/features/inventory/api-v2.md'],
+    prd: ['docs/features/inventory/prd.md'],
+  });
 })) passed++; else failed++;
 
 console.log(`\n  ${passed} passed, ${failed} failed\n`);

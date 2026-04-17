@@ -29,8 +29,18 @@ function isStringArray(value) {
   return Array.isArray(value) && value.every(item => typeof item === 'string');
 }
 
-function validateSourceDocs(domainKey, sourceDocs, reportError) {
+function pathEscapesRoot(rootDir, targetPath) {
+  const relative = path.relative(rootDir, targetPath);
+  return relative === '' || relative.startsWith('..') || path.isAbsolute(relative);
+}
+
+function hasParentSegment(filePath) {
+  return String(filePath || '').replace(/\\/g, '/').split('/').includes('..');
+}
+
+function validateSourceDocs(domainKey, sourceDocs, reportError, options = {}) {
   if (sourceDocs === undefined) return;
+  const rootDir = path.resolve(options.root || ROOT);
 
   if (!sourceDocs || typeof sourceDocs !== 'object' || Array.isArray(sourceDocs)) {
     reportError(`ERROR: ${domainKey} — sourceDocs must be an object of doc-kind -> path[]`);
@@ -52,11 +62,19 @@ function validateSourceDocs(domainKey, sourceDocs, reportError) {
         reportError(`ERROR: ${domainKey} — sourceDocs.${kind} must use repo-relative paths: ${docPath}`);
         continue;
       }
+      if (hasParentSegment(docPath)) {
+        reportError(`ERROR: ${domainKey} — sourceDocs.${kind} must stay within the repo root: ${docPath}`);
+        continue;
+      }
       if (!docPath.endsWith('.md')) {
         reportError(`ERROR: ${domainKey} — sourceDocs.${kind} must point to markdown files: ${docPath}`);
         continue;
       }
-      const abs = path.join(ROOT, docPath);
+      const abs = path.resolve(rootDir, docPath);
+      if (pathEscapesRoot(rootDir, abs)) {
+        reportError(`ERROR: ${domainKey} — sourceDocs.${kind} must stay within the repo root: ${docPath}`);
+        continue;
+      }
       if (!fs.existsSync(abs)) {
         reportError(`ERROR: ${domainKey} — sourceDocs.${kind} path not found: ${docPath}`);
       }
@@ -299,4 +317,11 @@ function validateOntology() {
   console.log(`Validated ${domainKeys.length} ontology domain(s)`);
 }
 
-validateOntology();
+module.exports = {
+  validateOntology,
+  validateSourceDocs,
+};
+
+if (require.main === module) {
+  validateOntology();
+}

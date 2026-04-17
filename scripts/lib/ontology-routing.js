@@ -205,6 +205,7 @@ module.exports = {
   resolveProjectOntologyRoot,
   loadOntologyMaps,
   matchFileToDomain,
+  mergeSourceDocs,
   normalizeSourceDocs,
   uniqueStrings,
 };

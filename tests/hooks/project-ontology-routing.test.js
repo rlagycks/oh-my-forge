@@ -89,7 +89,7 @@ function makeFixture() {
       files: ['src/tracked.js'],
       spec: 'docs/features/project.md',
       sourceDocs: {
-        apiSpec: ['docs/features/project/api.md'],
+        apiSpec: ['docs/features/project/api.md', 'docs/features/project/api.md', ''],
       },
       detail: '.claude/ontology/domain_project.json',
     },
@@ -208,6 +208,7 @@ if (test('domain-context-inject uses the project ontology even when CLAUDE_PLUGI
     assert.ok(stderr.includes('False-Normal Checks:'), stderr);
     assert.ok(stderr.includes('Source Docs (load only if needed):'), stderr);
     assert.ok(stderr.includes('apiSpec: docs/features/project/api.md'), stderr);
+    assert.ok(!stderr.includes('apiSpec: docs/features/project/api.md, docs/features/project/api.md'), stderr);
     assert.ok(stderr.includes('Watch For:'), stderr);
     assert.ok(stderr.includes('fetch call lands without the guard firing'), stderr);
     assert.ok(!stderr.includes('Constraints:'), stderr);

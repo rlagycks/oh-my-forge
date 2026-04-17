@@ -28,6 +28,7 @@ const {
   resolveProjectOntologyRoot,
   loadOntologyMaps,
   matchFileToDomain,
+  normalizeSourceDocs,
 } = require('../lib/ontology-routing');
 const { buildDomainPacket } = require('../lib/ontology-packet');
 
@@ -58,14 +59,7 @@ function saveInjected(set) {
 }
 
 function sourceDocEntries(sourceDocs = {}) {
-  if (!sourceDocs || typeof sourceDocs !== 'object' || Array.isArray(sourceDocs)) {
-    return [];
-  }
-
-  return Object.entries(sourceDocs)
-    .filter(([, docs]) => Array.isArray(docs) && docs.length > 0)
-    .map(([kind, docs]) => [kind, docs.filter(doc => typeof doc === 'string' && doc.trim().length > 0)])
-    .filter(([, docs]) => docs.length > 0);
+  return Object.entries(normalizeSourceDocs(sourceDocs));
 }
 
 // --- Main ---
