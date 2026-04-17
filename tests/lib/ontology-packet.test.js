@@ -33,6 +33,10 @@ if (test('buildDomainPacket keeps only the fields selected by the retrieval prof
     riskLevel: 'high',
     summary: 'sample summary',
     spec: 'docs/features/sample.md',
+    sourceDocs: {
+      apiSpec: ['docs/features/sample/api.md'],
+      prd: ['docs/features/sample/prd.md'],
+    },
     constraints: ['Do not widen scope'],
     symbols: ['run'],
     executionContract: {
@@ -94,6 +98,7 @@ if (test('buildDomainPacket keeps only the fields selected by the retrieval prof
   assert.strictEqual(packet.decisions.length, 1);
   assert.strictEqual(packet.decisions[0].id, 'dec-1');
   assert.ok(!packet.spec, JSON.stringify(packet, null, 2));
+  assert.ok(!packet.sourceDocs, JSON.stringify(packet, null, 2));
   assert.ok(!packet.constraints, JSON.stringify(packet, null, 2));
   assert.ok(!packet.executionContract.notDo, JSON.stringify(packet, null, 2));
 })) passed++; else failed++;
@@ -199,6 +204,10 @@ if (test('buildDomainPacket falls back to default context profile when a domain 
     owner: 'commands',
     summary: 'default summary',
     spec: 'docs/features/default.md',
+    sourceDocs: {
+      apiSpec: ['docs/features/default/api.md'],
+      prd: ['docs/features/default/prd.md'],
+    },
     constraints: ['Keep the command compact'],
     symbols: ['createPlanRoute'],
     dependsOn: ['domain_common'],
@@ -221,11 +230,39 @@ if (test('buildDomainPacket falls back to default context profile when a domain 
 
   assert.deepStrictEqual(packet.summary, 'default summary');
   assert.deepStrictEqual(packet.spec, 'docs/features/default.md');
+  assert.deepStrictEqual(packet.sourceDocs, {
+    apiSpec: ['docs/features/default/api.md'],
+    prd: ['docs/features/default/prd.md'],
+  });
   assert.deepStrictEqual(packet.constraints, ['Keep the command compact']);
   assert.deepStrictEqual(packet.symbols, ['createPlanRoute']);
   assert.deepStrictEqual(packet.dependsOn, ['domain_common']);
   assert.strictEqual(packet.failurePatterns.length, DEFAULT_RETRIEVAL_PROFILES.context.maxFailurePatterns);
   assert.ok(!packet.executionContract, JSON.stringify(packet, null, 2));
+})) passed++; else failed++;
+
+if (test('buildDomainPacket keeps sourceDocs in context packets even with an explicit context profile', () => {
+  const entry = {
+    domainKey: 'domain_context_docs',
+    owner: 'ontology',
+    summary: 'context docs',
+    sourceDocs: {
+      apiSpec: ['docs/features/context-docs/api.md'],
+    },
+    retrievalProfiles: {
+      context: {
+        include: ['summary'],
+        maxFailurePatterns: 0,
+        maxDecisions: 0,
+      },
+    },
+  };
+
+  const packet = buildDomainPacket(entry, 'context');
+
+  assert.deepStrictEqual(packet.sourceDocs, {
+    apiSpec: ['docs/features/context-docs/api.md'],
+  });
 })) passed++; else failed++;
 
 if (test('buildContractFieldsFromPacket turns the packet into handoff checklists', () => {

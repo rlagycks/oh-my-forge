@@ -138,6 +138,9 @@ node "$PLUGIN_ROOT/scripts/lib/ontology.js" promote-contract \
   --write
 ```
 
+- Promotion records the contract as `sourceDocs.designContract`.
+  Routing and handoff can point to the enforceable contract without loading
+  the original PRD/API/spec by default.
 - Use `/prp-plan` when you need a larger artifact-producing implementation plan rather than a compact execution contract.
 
 ## Output Quality Bar

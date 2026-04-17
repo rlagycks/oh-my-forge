@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { uniqueStrings } = require('./ontology-routing');
+const { mergeSourceDocs, uniqueStrings } = require('./ontology-routing');
 
 const SECTION_ALIASES = new Map([
   ['problem one line', 'problemOneLine'],
@@ -123,6 +123,7 @@ function buildOntologyDetailFragment(contract = {}, options = {}) {
     ...(typeof options.version === 'string' && options.version.trim().length > 0 ? { version: options.version.trim() } : {}),
     ...(summary ? { summary } : {}),
     ...(sourcePath ? { source: [sourcePath] } : {}),
+    ...(sourcePath ? { sourceDocs: { designContract: [sourcePath] } } : {}),
     ...(constraints.length > 0 ? { constraints } : {}),
     executionContract: {
       ...(contract.mission ? { mission: contract.mission } : {}),
@@ -149,6 +150,10 @@ function mergeOntologyDetail(existing = {}, fragment = {}) {
 
   if (existing.source || fragment.source) {
     merged.source = mergeStringArrays(existing.source, fragment.source);
+  }
+
+  if (existing.sourceDocs || fragment.sourceDocs) {
+    merged.sourceDocs = mergeSourceDocs(existing.sourceDocs, fragment.sourceDocs);
   }
 
   if (existing.constraints || fragment.constraints) {

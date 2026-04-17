@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 
 const {
+  mergeSourceDocs,
   resolveProjectOntologyRoot,
   loadOntologyMaps,
   matchFileToDomain,
@@ -45,6 +46,11 @@ function makeFixture() {
   fs.writeFileSync(path.join(projectRoot, 'src', 'tracked.js'), 'module.exports = 1;\n', 'utf8');
   fs.writeFileSync(path.join(projectRoot, 'src', 'nested.js'), 'module.exports = 2;\n', 'utf8');
   fs.writeFileSync(path.join(projectRoot, 'services', 'inventory', 'service.js'), 'module.exports = 3;\n', 'utf8');
+  mkdirp(path.join(projectRoot, 'docs', 'features', 'inventory'));
+  mkdirp(path.join(projectRoot, 'docs', 'source'));
+  fs.writeFileSync(path.join(projectRoot, 'docs', 'features', 'inventory', 'api.md'), '# Inventory API\n', 'utf8');
+  fs.writeFileSync(path.join(projectRoot, 'docs', 'features', 'inventory', 'prd.md'), '# Inventory PRD\n', 'utf8');
+  fs.writeFileSync(path.join(projectRoot, 'docs', 'source', 'reference.md'), '# Source Reference\n', 'utf8');
   fs.writeFileSync(path.join(outsideRoot, 'other.js'), 'module.exports = 4;\n', 'utf8');
   writeJson(path.join(projectRoot, '.claude', 'ontology', 'domain_exact.json'), {
     domain: 'domain_exact',
@@ -95,6 +101,19 @@ function makeFixture() {
       summary: 'slug',
       owner: 'test',
       constraints: [],
+      sourceDocs: {
+        apiSpec: ['docs/features/inventory/api.md'],
+        prd: ['docs/features/inventory/prd.md'],
+      },
+    },
+    domain_doc_contract: {
+      files: [],
+      summary: 'source doc only',
+      owner: 'test',
+      constraints: [],
+      sourceDocs: {
+        featureDefinition: ['docs/source/reference.md'],
+      },
     },
   });
 
@@ -170,6 +189,25 @@ if (test('matchFileToDomain supports exact file, directory prefix, and slug matc
   }
 })) passed++; else failed++;
 
+if (test('sourceDocs paths are routable without loading the raw markdown content', () => {
+  const fixture = makeFixture();
+  try {
+    const ontologyRoot = fixture.projectRoot;
+    const maps = loadOntologyMaps(ontologyRoot);
+
+    const sourceDocMatch = matchFileToDomain({
+      filePath: path.join(fixture.projectRoot, 'docs', 'source', 'reference.md'),
+      ontologyRoot,
+      fileMap: maps.fileMap,
+    });
+
+    assert.strictEqual(sourceDocMatch.domainKey, 'domain_doc_contract');
+    assert.deepStrictEqual(sourceDocMatch.sourceDocs.featureDefinition, ['docs/source/reference.md']);
+  } finally {
+    fs.rmSync(fixture.root, { recursive: true, force: true });
+  }
+})) passed++; else failed++;
+
 if (test('loadOntologyMaps merges detail metadata into flat index entries', () => {
   const fixture = makeFixture();
   try {
@@ -184,6 +222,21 @@ if (test('loadOntologyMaps merges detail metadata into flat index entries', () =
   } finally {
     fs.rmSync(fixture.root, { recursive: true, force: true });
   }
+})) passed++; else failed++;
+
+if (test('mergeSourceDocs deduplicates and drops invalid doc entries', () => {
+  const merged = mergeSourceDocs({
+    apiSpec: ['docs/features/inventory/api.md', ''],
+    prd: ['docs/features/inventory/prd.md'],
+  }, {
+    apiSpec: ['docs/features/inventory/api.md', 'docs/features/inventory/api-v2.md'],
+    notes: 'not an array',
+  });
+
+  assert.deepStrictEqual(merged, {
+    apiSpec: ['docs/features/inventory/api.md', 'docs/features/inventory/api-v2.md'],
+    prd: ['docs/features/inventory/prd.md'],
+  });
 })) passed++; else failed++;
 
 console.log(`\n  ${passed} passed, ${failed} failed\n`);

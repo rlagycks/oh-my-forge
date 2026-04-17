@@ -34,5 +34,8 @@ Claude가 태스크를 받았을 때 아래 기준으로 처리 방식을 결정
 
 1. `docs/features/[domain].md` 생성 (`_template.md` 복사)
 2. `.claude/ontology/index.json`에 `domain_[name]` 키 추가
-3. 이 파일의 테이블에 행 추가
-4. `npm test` 실행 — `validate-ontology.js`가 정합성 검증
+3. PRD/API/기능정의서가 있으면 `sourceDocs`에 repo-relative `.md`
+   경로로 연결한다. 원문은 자동 로드되지 않고 routing/handoff 포인터로만
+   노출된다.
+4. 이 파일의 테이블에 행 추가
+5. `npm test` 실행 — `validate-ontology.js`가 정합성 검증

@@ -10,6 +10,11 @@
     ],
     "spec": "docs/features/common.md",
     "detail": ".claude/ontology/domain_common.json",
+    "sourceDocs": {
+      "decision": [
+        "docs/decisions/doc-architecture.md"
+      ]
+    },
     "owner": "oh-my-forge",
     "codexWorkerHint": "read-only",
     "constraints": [

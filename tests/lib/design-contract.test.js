@@ -101,6 +101,7 @@ if (test('buildOntologyDetailFragment maps design contract fields into ontology 
   assert.strictEqual(fragment.version, undefined);
   assert.strictEqual(fragment.summary, 'Prevent duplicate webhook side effects when retries happen.');
   assert.deepStrictEqual(fragment.source, ['docs/contracts/retry-safe-webhooks.md']);
+  assert.deepStrictEqual(fragment.sourceDocs.designContract, ['docs/contracts/retry-safe-webhooks.md']);
   assert.deepStrictEqual(fragment.constraints, [
     'Existing webhook payload shape stays stable.',
     'Retry metadata must persist between attempts.',
@@ -124,6 +125,9 @@ if (test('mergeOntologyDetail preserves existing metadata and unions contract fi
     summary: 'Existing summary',
     source: ['docs/api/webhooks.md'],
     constraints: ['Retry metadata must persist between attempts.'],
+    sourceDocs: {
+      apiSpec: ['docs/api/webhooks.md'],
+    },
     executionContract: {
       mission: 'Old mission',
       notDo: ['Do not break auth'],
@@ -139,6 +143,10 @@ if (test('mergeOntologyDetail preserves existing metadata and unions contract fi
     'docs/api/webhooks.md',
     'docs/contracts/retry-safe-webhooks.md',
   ]);
+  assert.deepStrictEqual(merged.sourceDocs, {
+    apiSpec: ['docs/api/webhooks.md'],
+    designContract: ['docs/contracts/retry-safe-webhooks.md'],
+  });
   assert.ok(merged.executionContract.notDo.includes('Do not break auth'), JSON.stringify(merged, null, 2));
   assert.ok(merged.executionContract.notDo.includes('No package swaps.'), JSON.stringify(merged, null, 2));
   assert.ok(merged.executionContract.success.includes('Keep webhook auth working'), JSON.stringify(merged, null, 2));

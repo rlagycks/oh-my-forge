@@ -14,7 +14,9 @@
 
 const assert = require('assert');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const { validateSourceDocs } = require('../../scripts/ci/validate-ontology');
 
 const repoRoot = path.join(__dirname, '..', '..');
 const indexPath = path.join(repoRoot, '.claude', 'ontology', 'index.json');
@@ -105,6 +107,42 @@ for (const [key, entry] of domains) {
     });
   }
 }
+
+run('sourceDocs validation accepts repo-relative markdown paths inside root', () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'source-docs-valid-'));
+  const sourcePath = path.join(tempRoot, 'docs', 'features', 'auth', 'api.md');
+  fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
+  fs.writeFileSync(sourcePath, '# Auth API\n', 'utf8');
+
+  try {
+    const errors = [];
+    validateSourceDocs('domain_auth', {
+      apiSpec: ['docs/features/auth/api.md'],
+    }, error => errors.push(error), { root: tempRoot });
+
+    assert.deepStrictEqual(errors, []);
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+run('sourceDocs validation rejects paths that escape the repository root', () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'source-docs-escape-'));
+  const repoRootFixture = path.join(tempRoot, 'repo');
+  fs.mkdirSync(repoRootFixture, { recursive: true });
+  fs.writeFileSync(path.join(tempRoot, 'outside.md'), '# Outside\n', 'utf8');
+
+  try {
+    const errors = [];
+    validateSourceDocs('domain_auth', {
+      prd: ['../outside.md'],
+    }, error => errors.push(error), { root: repoRootFixture });
+
+    assert.ok(errors.some(error => error.includes('must stay within the repo root')), errors.join('\n'));
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
 
 // No circular dependsOn (DFS)
 run('no circular dependsOn', () => {

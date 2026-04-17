@@ -29,6 +29,59 @@ function isStringArray(value) {
   return Array.isArray(value) && value.every(item => typeof item === 'string');
 }
 
+function pathEscapesRoot(rootDir, targetPath) {
+  const relative = path.relative(rootDir, targetPath);
+  return relative === '' || relative.startsWith('..') || path.isAbsolute(relative);
+}
+
+function hasParentSegment(filePath) {
+  return String(filePath || '').replace(/\\/g, '/').split('/').includes('..');
+}
+
+function validateSourceDocs(domainKey, sourceDocs, reportError, options = {}) {
+  if (sourceDocs === undefined) return;
+  const rootDir = path.resolve(options.root || ROOT);
+
+  if (!sourceDocs || typeof sourceDocs !== 'object' || Array.isArray(sourceDocs)) {
+    reportError(`ERROR: ${domainKey} — sourceDocs must be an object of doc-kind -> path[]`);
+    return;
+  }
+
+  for (const [kind, docs] of Object.entries(sourceDocs)) {
+    if (!Array.isArray(docs) || docs.length === 0) {
+      reportError(`ERROR: ${domainKey} — sourceDocs.${kind} must be a non-empty string array`);
+      continue;
+    }
+
+    for (const docPath of docs) {
+      if (typeof docPath !== 'string' || docPath.trim().length === 0) {
+        reportError(`ERROR: ${domainKey} — sourceDocs.${kind} contains a non-string path`);
+        continue;
+      }
+      if (path.isAbsolute(docPath)) {
+        reportError(`ERROR: ${domainKey} — sourceDocs.${kind} must use repo-relative paths: ${docPath}`);
+        continue;
+      }
+      if (hasParentSegment(docPath)) {
+        reportError(`ERROR: ${domainKey} — sourceDocs.${kind} must stay within the repo root: ${docPath}`);
+        continue;
+      }
+      if (!docPath.endsWith('.md')) {
+        reportError(`ERROR: ${domainKey} — sourceDocs.${kind} must point to markdown files: ${docPath}`);
+        continue;
+      }
+      const abs = path.resolve(rootDir, docPath);
+      if (pathEscapesRoot(rootDir, abs)) {
+        reportError(`ERROR: ${domainKey} — sourceDocs.${kind} must stay within the repo root: ${docPath}`);
+        continue;
+      }
+      if (!fs.existsSync(abs)) {
+        reportError(`ERROR: ${domainKey} — sourceDocs.${kind} path not found: ${docPath}`);
+      }
+    }
+  }
+}
+
 function validateDecayMetadata(domainKey, detailPath, itemPath, item, reportError) {
   if (!item || typeof item !== 'object') return;
 
@@ -55,6 +108,8 @@ function validateDecayMetadata(domainKey, detailPath, itemPath, item, reportErro
 }
 
 function validateDetailShape(domainKey, detailPath, detail, reportError) {
+  validateSourceDocs(domainKey, detail.sourceDocs, reportError);
+
   if (detail.executionContract) {
     if (typeof detail.executionContract !== 'object' || Array.isArray(detail.executionContract)) {
       reportError(`ERROR: ${domainKey} — detail.executionContract must be an object (${detailPath})`);
@@ -227,6 +282,11 @@ function validateOntology() {
       }
     }
 
+    validateSourceDocs(key, entry.sourceDocs, message => {
+      console.error(message);
+      hasErrors = true;
+    });
+
     // codexWorkerHint must be valid
     if (entry.codexWorkerHint && !VALID_WORKER_HINTS.includes(entry.codexWorkerHint)) {
       console.error(`ERROR: ${key} — invalid codexWorkerHint "${entry.codexWorkerHint}". Must be: ${VALID_WORKER_HINTS.join(' | ')}`);
@@ -257,4 +317,11 @@ function validateOntology() {
   console.log(`Validated ${domainKeys.length} ontology domain(s)`);
 }
 
-validateOntology();
+module.exports = {
+  validateOntology,
+  validateSourceDocs,
+};
+
+if (require.main === module) {
+  validateOntology();
+}
