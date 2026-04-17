@@ -126,6 +126,7 @@ function splitChecklist(value) {
 
 function defaultCompletionChecks(options = {}) {
   return [
+    'Do not claim RESULT:DONE from TESTS: PASS alone.',
     'Report concrete evidence tied to the changed files.',
     'State what was checked to avoid false-normal completion.',
     options.write === false
@@ -258,7 +259,8 @@ function buildBrief(request) {
     `CONSTRAINTS: ${(request.constraints || []).join(' | ') || 'None'}`,
     `DEPENDS ON: ${(request.dependsOn || []).join(', ') || 'none'}`,
     `PLAN FILE : ${request.planFile}`,
-    'HANDOFF   : Return: RESULT / FILES CHANGED / TESTS / EVIDENCE / FALSE NORMAL CHECKS / OPEN RISKS / NEXT ACTION / SUMMARY',
+    'FALSE NORMAL DETECTOR: RESULT:DONE requires explicit TESTS, EVIDENCE, FALSE NORMAL CHECKS, FALSE NORMAL SIGNALS: none, and NEXT ACTION.',
+    'HANDOFF   : Return: RESULT / FILES CHANGED / TESTS / EVIDENCE / FALSE NORMAL CHECKS / FALSE NORMAL SIGNALS / OPEN RISKS / NEXT ACTION / SUMMARY',
   ];
 
   return lines.join('\n');
@@ -384,6 +386,46 @@ function resultStateFor(result) {
   return 'BLOCKED';
 }
 
+function detectFalseNormalCompletion(fields = {}) {
+  if (fields.result !== 'DONE') {
+    return [];
+  }
+
+  const signals = [];
+  if (!fields.testsMatch) {
+    signals.push('RESULT:DONE without explicit TESTS line.');
+  } else if (fields.tests === 'FAIL') {
+    signals.push('RESULT:DONE with TESTS: FAIL.');
+  }
+
+  if (fields.evidence.length === 0) {
+    signals.push('RESULT:DONE without explicit EVIDENCE.');
+  }
+
+  if (fields.falseNormalChecks.length === 0) {
+    signals.push('RESULT:DONE without explicit FALSE NORMAL CHECKS.');
+  }
+
+  if (!fields.falseNormalSignalsMatch) {
+    signals.push('RESULT:DONE without explicit FALSE NORMAL SIGNALS line.');
+  } else if (fields.falseNormalSignals.length > 0) {
+    signals.push(`RESULT:DONE has unresolved FALSE NORMAL SIGNALS: ${fields.falseNormalSignals.join(' | ')}`);
+  }
+
+  if (!fields.nextAction) {
+    signals.push('RESULT:DONE without explicit NEXT ACTION.');
+  }
+
+  if (
+    fields.tests === 'PASS'
+    && (fields.evidence.length === 0 || fields.falseNormalChecks.length === 0 || !fields.nextAction)
+  ) {
+    signals.push('TESTS: PASS alone is not sufficient completion evidence.');
+  }
+
+  return uniqueStrings(signals);
+}
+
 function parseCodexResult(output) {
   const rawOutput = typeof output === 'string' ? output : '';
   const resultMatch = rawOutput.match(/^RESULT:\s*(DONE|BLOCKED|PARTIAL)\s*$/m);
@@ -391,26 +433,38 @@ function parseCodexResult(output) {
   const testsMatch = rawOutput.match(/^TESTS:\s*(PASS|FAIL|SKIPPED)\s*$/m);
   const evidenceMatch = rawOutput.match(/^EVIDENCE:\s*(.*)$/m);
   const falseNormalMatch = rawOutput.match(/^FALSE NORMAL CHECKS:\s*(.*)$/m);
+  const falseNormalSignalsMatch = rawOutput.match(/^FALSE NORMAL SIGNALS:\s*(.*)$/m);
   const openRisksMatch = rawOutput.match(/^OPEN RISKS:\s*(.*)$/m);
   const nextActionMatch = rawOutput.match(/^NEXT ACTION:\s*(.*)$/m);
   const summaryMatch = rawOutput.match(/^SUMMARY:\s*(.*)$/m);
+  const filesChanged = splitFilesChanged(filesMatch ? filesMatch[1] : '');
+  const tests = testsMatch ? testsMatch[1] : 'SKIPPED';
+  const evidence = splitChecklist(evidenceMatch ? evidenceMatch[1] : '');
+  const falseNormalChecks = splitChecklist(falseNormalMatch ? falseNormalMatch[1] : '');
+  const falseNormalSignals = splitChecklist(falseNormalSignalsMatch ? falseNormalSignalsMatch[1] : '');
+  const openRisks = splitChecklist(openRisksMatch ? openRisksMatch[1] : '');
+  const nextAction = nextActionMatch ? nextActionMatch[1].trim() : '';
+  const summary = summaryMatch ? summaryMatch[1] : '';
 
   if (!resultMatch) {
     const blocked = {
-      schemaVersion: 'ecc.codex.handoff.result.v2',
+      schemaVersion: 'ecc.codex.handoff.result.v3',
       state: 'BLOCKED',
       valid: false,
       result: 'BLOCKED',
       filesChanged: [],
-      tests: testsMatch ? testsMatch[1] : 'SKIPPED',
-      evidence: normalizeChecklist(splitChecklist(evidenceMatch ? evidenceMatch[1] : ''), [
+      tests,
+      evidence: normalizeChecklist(evidence, [
         'Codex output did not contain a RESULT line.',
       ]),
-      falseNormalChecks: normalizeChecklist(splitChecklist(falseNormalMatch ? falseNormalMatch[1] : ''), [
+      falseNormalChecks: normalizeChecklist(falseNormalChecks, [
         'Rejected completion because the RESULT line was missing.',
       ]),
-      openRisks: splitChecklist(openRisksMatch ? openRisksMatch[1] : ''),
-      nextAction: nextActionMatch ? nextActionMatch[1].trim() : 'Inspect the blocked handoff output and re-run with a clearer contract.',
+      falseNormalSignals: normalizeChecklist(falseNormalSignals, [
+        'Missing RESULT made the output look like a handoff but not an executable result.',
+      ]),
+      openRisks,
+      nextAction: nextAction || 'Inspect the blocked handoff output and re-run with a clearer contract.',
       summary: 'Codex rescue returned no RESULT line.',
       error: 'Codex rescue returned no RESULT line.',
       rawOutput,
@@ -419,26 +473,64 @@ function parseCodexResult(output) {
     return blocked;
   }
 
+  const detectedSignals = detectFalseNormalCompletion({
+    result: resultMatch[1],
+    tests,
+    testsMatch,
+    evidence,
+    falseNormalChecks,
+    falseNormalSignals,
+    falseNormalSignalsMatch,
+    nextAction,
+  });
+
+  if (detectedSignals.length > 0) {
+    const blocked = {
+      schemaVersion: 'ecc.codex.handoff.result.v3',
+      state: 'BLOCKED',
+      valid: false,
+      result: 'BLOCKED',
+      filesChanged,
+      tests,
+      evidence: normalizeChecklist(evidence, [
+        'False-normal detector rejected RESULT:DONE because required proof was missing.',
+      ]),
+      falseNormalChecks: normalizeChecklist(falseNormalChecks, detectedSignals),
+      falseNormalSignals: uniqueStrings([...falseNormalSignals, ...detectedSignals]),
+      openRisks: uniqueStrings([
+        ...openRisks,
+        'Rejected RESULT:DONE until false-normal signals are resolved.',
+      ]),
+      nextAction: nextAction || 'Provide TESTS, EVIDENCE, FALSE NORMAL CHECKS, FALSE NORMAL SIGNALS, and NEXT ACTION, then rerun the handoff parser.',
+      summary: summary || 'False-normal detector blocked completion.',
+      error: `False-normal detector blocked completion: ${detectedSignals.join('; ')}`,
+      rawOutput,
+    };
+    assertValidResult(blocked, 'false-normal detector');
+    return blocked;
+  }
+
   const result = {
-    schemaVersion: 'ecc.codex.handoff.result.v2',
+    schemaVersion: 'ecc.codex.handoff.result.v3',
     state: resultStateFor(resultMatch[1]),
     valid: true,
     result: resultMatch[1],
-    filesChanged: splitFilesChanged(filesMatch ? filesMatch[1] : ''),
-    tests: testsMatch ? testsMatch[1] : 'SKIPPED',
-    evidence: normalizeChecklist(splitChecklist(evidenceMatch ? evidenceMatch[1] : ''), [
-      `Observed result ${resultMatch[1]} with tests=${testsMatch ? testsMatch[1] : 'SKIPPED'}.`,
+    filesChanged,
+    tests,
+    evidence: normalizeChecklist(evidence, [
+      `Observed result ${resultMatch[1]} with tests=${tests}.`,
     ]),
-    falseNormalChecks: normalizeChecklist(splitChecklist(falseNormalMatch ? falseNormalMatch[1] : ''), [
+    falseNormalChecks: normalizeChecklist(falseNormalChecks, [
       'Checked the completion status against explicit result and test output.',
     ]),
-    openRisks: splitChecklist(openRisksMatch ? openRisksMatch[1] : ''),
-    nextAction: nextActionMatch
-      ? nextActionMatch[1].trim()
+    falseNormalSignals,
+    openRisks,
+    nextAction: nextAction
+      ? nextAction
       : resultMatch[1] === 'DONE'
         ? 'Review the evidence and merge when the diff looks correct.'
         : 'Investigate remaining gaps and continue from the latest evidence.',
-    summary: summaryMatch ? summaryMatch[1] : 'No summary provided.',
+    summary: summary || 'No summary provided.',
     ...(rawOutput ? { rawOutput } : {}),
   };
   assertValidResult(result, 'parsed result');
@@ -507,7 +599,7 @@ function createPlanRoute(options = {}) {
   }
 
   const ontologyRoot = resolveProjectOntologyRoot({ cwd: routingRoot });
-  const { fileMap, domainMap } = ontologyRoot ? loadOntologyMaps(ontologyRoot) : { fileMap: {}, domainMap: {} };
+  const { fileMap } = ontologyRoot ? loadOntologyMaps(ontologyRoot) : { fileMap: {} };
   const hasOntology = ontologyRoot && Object.keys(fileMap).length > 0;
 
   if (!hasOntology) {

@@ -13,7 +13,8 @@
     "agents/codex-rescue.md",
     "scripts/hooks/pre-bash-codex-guard.js",
     "scripts/lib/codex-handoff.js",
-    "schemas/codex-handoff-request.schema.json"
+    "schemas/codex-handoff-request.schema.json",
+    "schemas/codex-handoff-result.schema.json"
   ],
   "summary": "Codex CLI 통합. 4개 멀티에이전트 역할(explorer/reviewer/docs-researcher/implementer), MCP 서버 구성, sandbox 정책. Claude Code hooks 없이 approval_policy + sandbox_mode로 행동 제어.",
   "models": [
@@ -44,6 +45,10 @@
         "RESULT": "string",
         "files_changed": "string[]",
         "tests": "string — 'PASS' | 'FAIL'",
+        "evidence": "string[] — concrete proof tied to changed files",
+        "false_normal_checks": "string[] — checks that ruled out misleading healthy signals",
+        "false_normal_signals": "string[] — unresolved misleading signals; none required for DONE",
+        "next_action": "string — explicit next operator step",
         "summary": "string — 1-2문장"
       }
     }
@@ -87,7 +92,8 @@
     "merge-mcp-config.js(sync-ecc-to-codex.sh)는 기존 사용자 설정 삭제/수정 금지 — add-only",
     "Codex 훅은 .codex/hooks.json으로 설정 — run-with-flags.js 래퍼 없이 직접 호출",
     "implementer는 BRIEF의 FILES 섹션에 명시된 파일만 수정 — 범위 외 파일 접근 금지",
-    "implementer 완료 보고 형식: RESULT / FILES CHANGED / TESTS / SUMMARY 고정",
+    "implementer 완료 보고 형식: RESULT / FILES CHANGED / TESTS / EVIDENCE / FALSE NORMAL CHECKS / FALSE NORMAL SIGNALS / OPEN RISKS / NEXT ACTION / SUMMARY 고정",
+    "RESULT:DONE은 증거 필드와 FALSE NORMAL SIGNALS: none 없이는 완료로 인정하지 않음",
     "multi_agent 활성화 시 max_threads = 6, max_depth = 1",
     "신규 파일 생성 시 .claude/ontology/index.json 업데이트 필수 (implementer 규칙)",
     "codex-handoff request artifact는 implementation source에서 write=true 필수 — dispatch는 이 값을 companion --write로 승격",

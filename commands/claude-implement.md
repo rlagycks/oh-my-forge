@@ -109,6 +109,7 @@ FILES CHANGED: <list of files modified>
 TESTS: PASS | FAIL | SKIPPED
 EVIDENCE: <proof item 1> | <proof item 2>
 FALSE NORMAL CHECKS: <what looked healthy but was verified>
+FALSE NORMAL SIGNALS: <unresolved misleading signal 1> | <signal 2> | none
 OPEN RISKS: <risk 1> | <risk 2> | none
 NEXT ACTION: <clear next operator action>
 SUMMARY: <one paragraph describing what was implemented>

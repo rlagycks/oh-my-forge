@@ -53,6 +53,7 @@ Use `scripts/lib/codex-handoff.js` as the source of truth for request constructi
 - `buildBrief` generates the BRIEF text.
 - `dispatch --request-file` generates the prompt file, invokes Codex, and validates that Codex returned `RESULT:` before the caller proceeds.
 - Codex implementation requests must carry `write: true`; the runtime converts that contract into the companion `--write` flag.
+- The runtime includes a `FALSE NORMAL DETECTOR` gate: `RESULT: DONE` is downgraded to `BLOCKED` when proof fields are missing or unresolved `FALSE NORMAL SIGNALS` remain.
 
 Construct the BRIEF in the shared runtime format:
 
@@ -90,6 +91,7 @@ Return your result in the following structure:
   TESTS: PASS | FAIL | SKIPPED
   EVIDENCE: <proof item 1> | <proof item 2>
   FALSE NORMAL CHECKS: <what looked healthy but was verified>
+  FALSE NORMAL SIGNALS: <unresolved misleading signal 1> | <signal 2> | none
   OPEN RISKS: <risk 1> | <risk 2> | none
   NEXT ACTION: <clear next operator action>
   SUMMARY: <one paragraph>
@@ -124,7 +126,8 @@ Background mode is manual-only. If you explicitly want queued background work, c
 After `/codex:rescue` or `codex` completes, inspect the output with `parseCodexResult`:
 
 - If the output is empty, or contains no `RESULT:` line → output `CODEX_DELEGATION_FAILED: rescue returned no result` and return `RESULT: BLOCKED` immediately.
-- If `RESULT:` exists but `EVIDENCE`, `FALSE NORMAL CHECKS`, or `NEXT ACTION` are missing, the runtime fills safe defaults so the completion contract stays explicit.
+- If `RESULT: DONE` exists but `TESTS`, `EVIDENCE`, `FALSE NORMAL CHECKS`, `FALSE NORMAL SIGNALS`, or `NEXT ACTION` are missing, the false-normal detector returns `RESULT: BLOCKED`.
+- If `RESULT: DONE` contains unresolved `FALSE NORMAL SIGNALS`, the runtime returns `RESULT: BLOCKED` even when `TESTS: PASS`.
 - Do NOT proceed to code review or commit if Codex did not confirm execution.
 - Surface the failure clearly so the caller (plan.md Step 4 or the user) can re-delegate with a clearer BRIEF.
 

@@ -155,7 +155,7 @@ This runtime owns:
 
 The shared handoff contract also carries:
 - `problemOneLine`, `successCriteria`, `completionChecks`
-- result-side `EVIDENCE`, `FALSE NORMAL CHECKS`, `OPEN RISKS`, `NEXT ACTION`
+- result-side `EVIDENCE`, `FALSE NORMAL CHECKS`, `FALSE NORMAL SIGNALS`, `OPEN RISKS`, `NEXT ACTION`
 
 For routing, treat `process.cwd()` as the active project root.
 
@@ -197,7 +197,8 @@ node "$PLUGIN_ROOT/scripts/lib/codex-handoff.js" dispatch \
 - dispatch adds `--write` from the validated request artifact; do not craft or run a read-only Codex implementation handoff
 - do NOT call `codex-companion.mjs task ...` directly from this flow
 - if the default companion resolution is wrong in your environment, override it with `--companion-path`
-- do NOT treat `TESTS: PASS` alone as completion; require the result-side `EVIDENCE`, `FALSE NORMAL CHECKS`, and `NEXT ACTION`
+- do NOT treat `TESTS: PASS` alone as completion; require the result-side `EVIDENCE`, `FALSE NORMAL CHECKS`, `FALSE NORMAL SIGNALS`, and `NEXT ACTION`
+- the false-normal detector downgrades `RESULT: DONE` to `BLOCKED` when required proof is missing or unresolved `FALSE NORMAL SIGNALS` remain
 
 For matched domains, respect `dependsOn` order from `createPlanRoute`. Files outside any matched domain must go through fallback rescue rather than a domain-less `/codex-delegate`.
 
@@ -215,6 +216,7 @@ Engine: codex | claude
 Routing root: <process.cwd()>
 Plan saved: ~/.claude/plans/<feature>-<timestamp>.md
 Ontology: project-local match | none
+False-normal detector: clear | blocked
 domain_hooks    → /codex-delegate completed (ontology match)
 mobile/src/...  → /codex:rescue completed (fallback)
 ──────────────────────────────────────────

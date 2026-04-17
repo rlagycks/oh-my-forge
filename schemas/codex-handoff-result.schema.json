@@ -16,7 +16,8 @@
     "schemaVersion": {
       "enum": [
         "ecc.codex.handoff.result.v1",
-        "ecc.codex.handoff.result.v2"
+        "ecc.codex.handoff.result.v2",
+        "ecc.codex.handoff.result.v3"
       ]
     },
     "state": {
@@ -57,6 +58,13 @@
         "minLength": 1
       }
     },
+    "falseNormalSignals": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
     "openRisks": {
       "type": "array",
       "items": {
@@ -89,6 +97,24 @@
         "required": [
           "evidence",
           "falseNormalChecks",
+          "openRisks",
+          "nextAction"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "const": "ecc.codex.handoff.result.v3"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "evidence",
+          "falseNormalChecks",
+          "falseNormalSignals",
           "openRisks",
           "nextAction"
         ]

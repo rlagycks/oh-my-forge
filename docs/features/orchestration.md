@@ -18,6 +18,7 @@
 - `seedPaths`는 존재하는 파일만 — 없는 경로 지정 시 워크트리 생성 실패
 - 워크트리 브랜치명 충돌 시 자동으로 suffix 추가하지 않음 — 플랜에서 고유 이름 보장 필요
 - 핸드오프 문서 포맷: `## HANDOFF: [from] -> [to]` 헤더 필수
+- 최종 `SHIP` 판정은 evidence 존재, false-normal signals = none, next action 명시 후에만 가능
 
 ## 관련 도메인
 
