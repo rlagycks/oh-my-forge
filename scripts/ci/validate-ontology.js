@@ -22,9 +22,34 @@ const REQUIRED_ENTRY_FIELDS = ['files', 'spec', 'codexWorkerHint'];
 const VALID_WORKER_HINTS = ['workspace-write', 'read-only'];
 const REQUIRED_H2_SECTIONS = ['## 목적', '## 진입점', '## 핵심 제약', '## 관련 도메인'];
 const DOMAIN_KEY_PATTERN = /^domain_[a-z][a-z0-9_]*$/;
+const VALID_DECAY_STATUSES = new Set(['active', 'deprecated', 'stale', 'superseded']);
+const DECAY_DATE_FIELDS = ['createdAt', 'updatedAt', 'lastSeenAt', 'expiresAt'];
 
 function isStringArray(value) {
   return Array.isArray(value) && value.every(item => typeof item === 'string');
+}
+
+function validateDecayMetadata(domainKey, detailPath, itemPath, item, reportError) {
+  if (!item || typeof item !== 'object') return;
+
+  if (item.status !== undefined && !VALID_DECAY_STATUSES.has(item.status)) {
+    reportError(
+      `ERROR: ${domainKey} — ${itemPath}.status must be one of: ${[...VALID_DECAY_STATUSES].join(', ')} (${detailPath})`
+    );
+  }
+
+  for (const field of DECAY_DATE_FIELDS) {
+    if (item[field] === undefined) continue;
+    if (typeof item[field] !== 'string' || Number.isNaN(Date.parse(item[field]))) {
+      reportError(`ERROR: ${domainKey} — ${itemPath}.${field} must be a parseable date string (${detailPath})`);
+    }
+  }
+
+  for (const field of ['supersededBy', 'replacedBy']) {
+    if (item[field] !== undefined && typeof item[field] !== 'string') {
+      reportError(`ERROR: ${domainKey} — ${itemPath}.${field} must be a string (${detailPath})`);
+    }
+  }
 }
 
 function validateDetailShape(domainKey, detailPath, detail, reportError) {
@@ -67,6 +92,17 @@ function validateDetailShape(domainKey, detailPath, detail, reportError) {
         if (!isStringArray(pattern.verifyWith || [])) {
           reportError(`ERROR: ${domainKey} — failurePatterns.verifyWith must be a string array (${detailPath})`);
         }
+        validateDecayMetadata(domainKey, detailPath, `failurePatterns.${pattern.id || '(unknown)'}`, pattern, reportError);
+      }
+    }
+  }
+
+  if (detail.decisions) {
+    if (!Array.isArray(detail.decisions)) {
+      reportError(`ERROR: ${domainKey} — detail.decisions must be an array (${detailPath})`);
+    } else {
+      for (const decision of detail.decisions) {
+        validateDecayMetadata(domainKey, detailPath, `decisions.${decision?.id || decision?.summary || '(unknown)'}`, decision, reportError);
       }
     }
   }

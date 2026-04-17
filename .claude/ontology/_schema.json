@@ -102,7 +102,18 @@
               "actuallyMeans": { "type": "string" },
               "verifyWith": { "type": "array", "items": { "type": "string" } },
               "nextSuspicion": { "type": "string" },
-              "prevention": { "type": "string" }
+              "prevention": { "type": "string" },
+              "status": {
+                "type": "string",
+                "enum": ["active", "deprecated", "stale", "superseded"],
+                "description": "Decay-control status. Non-active statuses are excluded from retrieval packets."
+              },
+              "lastSeenAt": { "type": "string", "description": "ISO timestamp/date used to prioritize fresh failure patterns." },
+              "updatedAt": { "type": "string", "description": "ISO timestamp/date used to prioritize fresh failure patterns." },
+              "createdAt": { "type": "string", "description": "ISO timestamp/date used to prioritize fresh failure patterns." },
+              "expiresAt": { "type": "string", "description": "ISO timestamp/date after which this pattern is excluded from retrieval packets." },
+              "supersededBy": { "type": "string", "description": "Replacement pattern ID. Presence excludes this item from retrieval packets." },
+              "replacedBy": { "type": "string", "description": "Replacement pattern ID. Presence excludes this item from retrieval packets." }
             }
           },
           "description": "Promoted failure signatures that should influence future work in this domain."
@@ -166,6 +177,17 @@
                 "type": "string",
                 "description": "What to suspect first if the same pattern appears again."
               },
+              "status": {
+                "type": "string",
+                "enum": ["active", "deprecated", "stale", "superseded"],
+                "description": "Decay-control status. Non-active statuses are excluded from retrieval packets."
+              },
+              "createdAt": { "type": "string", "description": "ISO timestamp/date used to prioritize fresh decisions." },
+              "updatedAt": { "type": "string", "description": "ISO timestamp/date used to prioritize fresh decisions." },
+              "lastSeenAt": { "type": "string", "description": "ISO timestamp/date used to prioritize fresh decisions." },
+              "expiresAt": { "type": "string", "description": "ISO timestamp/date after which this decision is excluded from retrieval packets." },
+              "supersededBy": { "type": "string", "description": "Replacement decision ID. Presence excludes this item from retrieval packets." },
+              "replacedBy": { "type": "string", "description": "Replacement decision ID. Presence excludes this item from retrieval packets." },
               "domain": { "type": "string", "description": "Domain key — populated automatically by addDecision()" }
             }
           },

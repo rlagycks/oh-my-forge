@@ -9,6 +9,16 @@ and the global log at `~/.claude/decisions/index.jsonl`.
 
 ---
 
+## 2026-04-18 — domain_hooks [updated]
+
+**Fields**: constraints, failurePatterns, retrieval decay metadata
+**Trigger**: ontology-decay-control
+**Reason**: Ontology packets now exclude deprecated, stale, superseded, or
+expired decisions/failure patterns and sort fresh active entries before applying
+profile limits.
+
+---
+
 ## 2026-04-14 — domain_hooks [updated]
 **Fields**: files, constraints, decisions
 **Trigger**: codex-engine-pin-guard

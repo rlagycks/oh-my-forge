@@ -96,6 +96,63 @@ if (test('buildDomainPacket keeps only the fields selected by the retrieval prof
   assert.ok(!packet.executionContract.notDo, JSON.stringify(packet, null, 2));
 })) passed++; else failed++;
 
+if (test('buildDomainPacket prefers fresh active decisions over stale design residue', () => {
+  const entry = {
+    domainKey: 'domain_decay',
+    owner: 'ontology',
+    decisions: [
+      { id: 'dec-old', date: '2026-01-01', status: 'active', summary: 'old active decision' },
+      { id: 'dec-expired', date: '2026-04-16', expiresAt: '2026-04-17', summary: 'expired decision' },
+      { id: 'dec-deprecated', date: '2026-04-15', status: 'deprecated', summary: 'deprecated decision' },
+      { id: 'dec-new', date: '2026-04-18', summary: 'new active decision' },
+      { id: 'dec-mid', date: '2026-04-12', status: 'active', summary: 'mid active decision' },
+    ],
+    retrievalProfiles: {
+      implement: {
+        include: ['decisions'],
+        maxDecisions: 2,
+      },
+    },
+  };
+
+  const packet = buildDomainPacket(entry, 'implement', { now: '2026-04-18T00:00:00Z' });
+
+  assert.deepStrictEqual(packet.decisions.map(decision => decision.id), ['dec-new', 'dec-mid']);
+})) passed++; else failed++;
+
+if (test('buildDomainPacket skips expired or deprecated failure patterns before truncating', () => {
+  const makePattern = (id, overrides = {}) => ({
+    id,
+    symptom: `${id} symptom`,
+    looksNormalIf: `${id} looks normal`,
+    actuallyMeans: `${id} actual meaning`,
+    verifyWith: [`verify ${id}`],
+    nextSuspicion: `${id} suspicion`,
+    ...overrides,
+  });
+  const entry = {
+    domainKey: 'domain_decay',
+    owner: 'ontology',
+    failurePatterns: [
+      makePattern('old-active', { lastSeenAt: '2026-01-01' }),
+      makePattern('expired', { lastSeenAt: '2026-04-15', expiresAt: '2026-04-17' }),
+      makePattern('deprecated', { lastSeenAt: '2026-04-16', status: 'deprecated' }),
+      makePattern('recent-active', { lastSeenAt: '2026-04-17' }),
+      makePattern('mid-active', { lastSeenAt: '2026-04-10', status: 'active' }),
+    ],
+    retrievalProfiles: {
+      implement: {
+        include: ['failurePatterns'],
+        maxFailurePatterns: 2,
+      },
+    },
+  };
+
+  const packet = buildDomainPacket(entry, 'implement', { now: '2026-04-18T00:00:00Z' });
+
+  assert.deepStrictEqual(packet.failurePatterns.map(pattern => pattern.id), ['recent-active', 'mid-active']);
+})) passed++; else failed++;
+
 if (test('buildDomainPacket falls back to default context profile when a domain does not define one', () => {
   const entry = {
     domainKey: 'domain_default',

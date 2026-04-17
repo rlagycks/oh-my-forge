@@ -2,6 +2,9 @@
 
 const { uniqueStrings } = require('./ontology-routing');
 
+const INACTIVE_STATUSES = new Set(['deprecated', 'stale', 'superseded']);
+const FRESHNESS_FIELDS = ['updatedAt', 'lastSeenAt', 'createdAt', 'date'];
+
 const DEFAULT_RETRIEVAL_PROFILES = {
   implement: {
     include: [
@@ -105,8 +108,69 @@ function truncateList(items, maxItems) {
   return items.slice(0, maxItems).map(item => cloneValue(item));
 }
 
+function parseTime(value) {
+  if (typeof value !== 'string' || value.trim().length === 0) return null;
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function resolveNowMs(now) {
+  if (now instanceof Date) return now.getTime();
+  const parsed = parseTime(now);
+  return parsed === null ? Date.now() : parsed;
+}
+
+function isRetrievableItem(item, nowMs) {
+  if (!item || typeof item !== 'object') return true;
+
+  const status = typeof item.status === 'string' ? item.status.trim().toLowerCase() : '';
+  if (INACTIVE_STATUSES.has(status)) return false;
+  if (item.supersededBy || item.replacedBy) return false;
+
+  const expiresAt = parseTime(item.expiresAt);
+  if (expiresAt !== null && expiresAt <= nowMs) return false;
+
+  return true;
+}
+
+function getFreshnessTime(item) {
+  if (!item || typeof item !== 'object') return null;
+  for (const field of FRESHNESS_FIELDS) {
+    const timestamp = parseTime(item[field]);
+    if (timestamp !== null) return timestamp;
+  }
+  return null;
+}
+
+function compareByFreshness(left, right) {
+  const leftTime = getFreshnessTime(left.item);
+  const rightTime = getFreshnessTime(right.item);
+
+  if (leftTime !== null || rightTime !== null) {
+    const normalizedLeft = leftTime === null ? Number.NEGATIVE_INFINITY : leftTime;
+    const normalizedRight = rightTime === null ? Number.NEGATIVE_INFINITY : rightTime;
+    if (normalizedLeft !== normalizedRight) {
+      return normalizedRight - normalizedLeft;
+    }
+  }
+
+  return left.index - right.index;
+}
+
+function selectRetrievalItems(items, maxItems, nowMs) {
+  if (!Array.isArray(items)) return [];
+  const selected = items
+    .map((item, index) => ({ item, index }))
+    .filter(entry => isRetrievableItem(entry.item, nowMs))
+    .sort(compareByFreshness)
+    .map(entry => entry.item);
+
+  return truncateList(selected, maxItems);
+}
+
 function buildDomainPacket(entry = {}, profileName = 'implement', options = {}) {
   const profile = normalizeProfile(profileName, entry, options.fallbackProfiles);
+  const nowMs = resolveNowMs(options.now);
   const packet = {
     domainKey: entry.domainKey,
     owner: entry.owner,
@@ -116,14 +180,14 @@ function buildDomainPacket(entry = {}, profileName = 'implement', options = {}) 
   for (const field of profile.include) {
     if (field === 'failurePatterns') {
       if (Array.isArray(entry.failurePatterns) && entry.failurePatterns.length > 0) {
-        packet.failurePatterns = truncateList(entry.failurePatterns, profile.maxFailurePatterns);
+        packet.failurePatterns = selectRetrievalItems(entry.failurePatterns, profile.maxFailurePatterns, nowMs);
       }
       continue;
     }
 
     if (field === 'decisions') {
       if (Array.isArray(entry.decisions) && entry.decisions.length > 0) {
-        packet.decisions = truncateList(entry.decisions, profile.maxDecisions);
+        packet.decisions = selectRetrievalItems(entry.decisions, profile.maxDecisions, nowMs);
       }
       continue;
     }
