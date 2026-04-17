@@ -44,11 +44,18 @@ function extractSessionSummary(transcriptPath) {
   const userMessages = [];
   const toolsUsed = new Set();
   const filesModified = new Set();
+  const failureTrace = {
+    failedHypotheses: [],
+    falseNormalSignals: [],
+    evidenceMissing: [],
+    nextSuspicion: ''
+  };
   let parseErrors = 0;
 
   for (const line of lines) {
     try {
       const entry = JSON.parse(line);
+      collectFailureTrace(entry, failureTrace);
 
       // Collect user messages (first 200 chars each)
       if (entry.type === 'user' || entry.role === 'user' || entry.message?.role === 'user') {
@@ -105,7 +112,90 @@ function extractSessionSummary(transcriptPath) {
     userMessages: userMessages.slice(-10), // Last 10 user messages
     toolsUsed: Array.from(toolsUsed).slice(0, 20),
     filesModified: Array.from(filesModified).slice(0, 30),
+    failureTrace: normalizeFailureTrace(failureTrace),
     totalMessages: userMessages.length
+  };
+}
+
+function extractTextValue(value) {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    return value.map(item => {
+      if (!item) return '';
+      if (typeof item === 'string') return item;
+      return item.text || item.content || item.output || '';
+    }).join(' ');
+  }
+  if (value && typeof value === 'object') {
+    return [
+      value.text,
+      value.content,
+      value.output,
+      value.stderr,
+      value.stdout,
+      value.error,
+      value.message,
+    ].filter(item => typeof item === 'string').join(' ');
+  }
+  return '';
+}
+
+function entryText(entry) {
+  return [
+    extractTextValue(entry.content),
+    extractTextValue(entry.message?.content),
+    extractTextValue(entry.tool_response),
+    extractTextValue(entry.tool_result),
+    extractTextValue(entry.result),
+    extractTextValue(entry.output),
+    extractTextValue(entry.stderr),
+    extractTextValue(entry.error),
+  ].filter(Boolean).join(' ');
+}
+
+function splitTraceSentences(text) {
+  return stripAnsi(String(text || ''))
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[.!?])\s+|(?:\s+-\s+)/)
+    .map(sentence => sentence.trim())
+    .filter(Boolean);
+}
+
+function pushUnique(target, value, limit = 5) {
+  const clean = String(value || '').trim();
+  if (!clean || target.includes(clean) || target.length >= limit) return;
+  target.push(clean);
+}
+
+function collectFailureTrace(entry, failureTrace) {
+  const text = entryText(entry);
+  if (!text) return;
+
+  const nextSuspicionMatch = text.match(/next suspicion\s*:\s*([^.\n]+)/i);
+  if (nextSuspicionMatch && !failureTrace.nextSuspicion) {
+    failureTrace.nextSuspicion = nextSuspicionMatch[1].trim();
+  }
+
+  for (const sentence of splitTraceSentences(text)) {
+    const lower = sentence.toLowerCase();
+    if (/\b(failed because|command failed|error:|blocked because|threw|crash(?:ed)?|timed out)\b/.test(lower)) {
+      pushUnique(failureTrace.failedHypotheses, sentence);
+    }
+    if (/\b(false[- ]normal|looked healthy|tests? passed but|green but|summary claimed|healthy but)\b/.test(lower)) {
+      pushUnique(failureTrace.falseNormalSignals, sentence);
+    }
+    if (/\b(evidence missing|missing evidence|without evidence|not verified|untested|skipped verification)\b/.test(lower)) {
+      pushUnique(failureTrace.evidenceMissing, sentence);
+    }
+  }
+}
+
+function normalizeFailureTrace(failureTrace) {
+  return {
+    failedHypotheses: failureTrace.failedHypotheses.slice(0, 5),
+    falseNormalSignals: failureTrace.falseNormalSignals.slice(0, 5),
+    evidenceMissing: failureTrace.evidenceMissing.slice(0, 5),
+    nextSuspicion: failureTrace.nextSuspicion || ''
   };
 }
 
@@ -237,7 +327,7 @@ async function main() {
         // Migration path for files created before summary markers existed.
         updatedContent = updatedContent.replace(
           /## (?:Session Summary|Current State)[\s\S]*?$/,
-          `${summaryBlock}\n\n${buildFollowUpTemplate()}\n`
+          `${summaryBlock}\n\n${buildFollowUpTemplate(summary)}\n`
         );
       }
     }
@@ -250,7 +340,7 @@ async function main() {
   } else {
     // Create new session file
     const summarySection = summary
-      ? `${buildSummaryBlock(summary)}\n\n${buildFollowUpTemplate()}`
+      ? `${buildSummaryBlock(summary)}\n\n${buildFollowUpTemplate(summary)}`
       : `## Current State\n\n[Session context goes here]\n\n### Completed\n- [ ]\n\n### In Progress\n- [ ]\n\n${buildFollowUpTemplate()}`;
 
     const template = `${buildSessionHeader(today, currentTime, sessionMetadata)}${SESSION_SEPARATOR}${summarySection}
@@ -296,18 +386,32 @@ function buildSummaryBlock(summary) {
   return `${SUMMARY_START_MARKER}\n${buildSummarySection(summary).trim()}\n${SUMMARY_END_MARKER}`;
 }
 
-function buildFollowUpTemplate() {
+function markdownItem(value) {
+  return String(value || '').replace(/\n/g, ' ').replace(/`/g, '\\`');
+}
+
+function traceItems(items, fallback) {
+  const values = Array.isArray(items) && items.length > 0 ? items : [fallback];
+  return values.map(item => `  - ${markdownItem(item)}`);
+}
+
+function buildFollowUpTemplate(summary = null) {
+  const trace = summary?.failureTrace || {};
   return [
     '### Failure Trace',
+    'Failure Trace Ledger — record misleading signals before writing generic lessons.',
     '- Failed hypotheses:',
+    ...traceItems(trace.failedHypotheses, '[approach tried] -> [exact failure reason or error]'),
     '- False-normal signals:',
+    ...traceItems(trace.falseNormalSignals, '[signal that looked healthy] -> [what it hid]'),
     '- Evidence still missing:',
+    ...traceItems(trace.evidenceMissing, '[claim] -> [proof still needed]'),
     '',
     '### Next Suspicion',
-    '-',
+    `- Next suspicion: ${markdownItem(trace.nextSuspicion || '[first place to inspect if this recurs]')}`,
     '',
     '### Next Action',
-    '-',
+    '- [single concrete next operator action]',
     '',
     '### Context to Load',
     '```',

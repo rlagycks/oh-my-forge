@@ -19,6 +19,8 @@ Claude Code 세션 간 컨텍스트를 지속하는 시스템. 세션 시작 시
 - stdout 출력은 반드시 JSON 형식 `{ hookSpecificOutput: { additionalContext: "..." } }`
 - state-store 쓰기 실패 시 exit 0 유지 (세션 저장 실패가 작업을 막으면 안 됨)
 - `CLAUDE_SESSION_ID` 환경변수 없으면 cwd SHA1로 폴백
+- 세션 메모리는 교훈 저장소보다 실패 흔적 장부가 우선이다. 실패 가설, false-normal 신호, 아직 없는 증거, 다음 의심 지점을 남기지 못하면 generic lesson으로 저장하지 않는다.
+- 재개 컨텍스트는 필요한 부분만 로드한다. 기본 context profile은 요약, 핵심 제약, false-normal check, 대표 failure pattern만 포함하고 전체 히스토리/결정 로그를 끌어오지 않는다.
 
 ## 관련 도메인
 

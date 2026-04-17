@@ -44,7 +44,92 @@
     "state-store 쓰기 실패 시 exit 0 유지",
     "CLAUDE_SESSION_ID 없으면 cwd SHA1로 폴백",
     "SESSION_FILENAME_REGEX: /^(\\d{4}-\\d{2}-\\d{2})(?:-([a-zA-Z0-9_][a-zA-Z0-9_-]*))?-session\\.tmp$/",
-    "날력 검증 필수 — Date 롤오버 (예: Feb 31) 허용 금지"
+    "날력 검증 필수 — Date 롤오버 (예: Feb 31) 허용 금지",
+    "실패 흔적 없는 generic lesson 저장 금지 — 실패 가설, false-normal 신호, 누락 증거, 다음 의심 지점을 우선 기록",
+    "기본 재개 컨텍스트는 최소 로드 — 전체 히스토리 대신 summary, constraints, false-normal checks, 대표 failure pattern만 사용"
   ],
+  "executionContract": {
+    "mission": "세션 간 재개 가능한 상태와 실패 흔적을 저장해 다음 작업자가 바로 다음 액션을 고르게 한다.",
+    "notDo": [
+      "실패 신호, 숨겨진 false-normal, 노출 증거, 다음 의심 지점 없는 generic lesson을 저장하지 않는다.",
+      "작업 재개에 필요하지 않은 전체 히스토리나 오래된 결정 로그를 기본 컨텍스트로 로드하지 않는다."
+    ],
+    "success": [
+      "SessionEnd가 현재 상태, 수정 파일, 결정, 열린 이슈, 다음 액션을 포함한 resumable markdown을 남긴다.",
+      "Failure Trace Ledger가 실패 가설, false-normal 신호, 아직 없는 증거, 다음 의심 지점을 캡처한다."
+    ],
+    "blockOn": [
+      "증거가 없거나 누락 증거가 명시되지 않은 완료형 세션 handoff"
+    ]
+  },
+  "completionContract": {
+    "requiredEvidence": [
+      "저장된 세션 파일에 current status, files modified, decisions/open items, next concrete action이 있다.",
+      "Failure Trace Ledger가 실제 실패 흔적을 기록하거나, 실패 흔적이 없음을 명시적으로 표시한다."
+    ],
+    "falseNormalChecks": [
+      "자연스러운 요약만 있고 실패 가설/증거 공백이 없으면 usable memory로 보지 않는다.",
+      "Tests passed but evidence missing 상태는 교훈이 아니라 failure trace로 남긴다."
+    ],
+    "handoffTemplate": [
+      "currentState",
+      "failureTrace.failedHypotheses",
+      "failureTrace.falseNormalSignals",
+      "failureTrace.evidenceStillMissing",
+      "failureTrace.nextSuspicion",
+      "nextAction"
+    ]
+  },
+  "failurePatterns": [
+    {
+      "id": "session-generic-lesson",
+      "symptom": "세션 메모리에 '다음엔 조심' 수준의 교훈만 남는다",
+      "looksNormalIf": "요약과 다음 액션이 자연스럽고 파일 목록이 있다",
+      "actuallyMeans": "실패 원인과 false-normal 신호가 사라져 다음 세션이 같은 가설을 재시도할 수 있다",
+      "verifyWith": [
+        "session file contains Failure Trace Ledger fields",
+        "next suspicion is concrete and actionable"
+      ],
+      "nextSuspicion": "missing failure-trace extraction or save-session template drift",
+      "prevention": "Require Failure Trace Ledger before generic lessons"
+    }
+  ],
+  "retrievalProfiles": {
+    "context": {
+      "include": [
+        "summary",
+        "spec",
+        "constraints",
+        "completionContract.falseNormalChecks",
+        "failurePatterns",
+        "dependsOn"
+      ],
+      "maxFailurePatterns": 1,
+      "maxDecisions": 0
+    },
+    "implement": {
+      "include": [
+        "summary",
+        "constraints",
+        "executionContract.success",
+        "executionContract.notDo",
+        "completionContract.requiredEvidence",
+        "completionContract.falseNormalChecks",
+        "failurePatterns"
+      ],
+      "maxFailurePatterns": 1,
+      "maxDecisions": 1
+    },
+    "handoff": {
+      "include": [
+        "executionContract.success",
+        "completionContract.handoffTemplate",
+        "completionContract.falseNormalChecks",
+        "failurePatterns"
+      ],
+      "maxFailurePatterns": 1,
+      "maxDecisions": 0
+    }
+  },
   "dependsOn": ["domain_state_store", "domain_hooks"]
 }
