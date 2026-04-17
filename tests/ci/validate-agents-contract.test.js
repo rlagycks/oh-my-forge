@@ -42,20 +42,19 @@ let failed = 0;
 
 console.log('\nvalidate-agents-contract.test.js');
 
-if (test('validateAgents fails when a strict agent is missing contract sections', () => {
+if (test('validateAgents fails when any agent is missing contract sections', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-agents-'));
   const agentsDir = path.join(root, 'agents');
-  writeAgent(agentsDir, 'planner.md', [
+  writeAgent(agentsDir, 'architect.md', [
     '## Mission',
-    '- plan work',
+    '- design systems',
     '## Success',
-    '- clear plan',
-  ], { contract: 'strict' });
+    '- clear design',
+  ]);
 
   try {
     const result = validateAgents({
       agentDirs: [agentsDir],
-      strictContractAgents: ['planner'],
     });
 
     assert.strictEqual(result.valid, false);
@@ -66,7 +65,7 @@ if (test('validateAgents fails when a strict agent is missing contract sections'
   }
 })) passed++; else failed++;
 
-if (test('validateAgents warns for non-strict agents but does not fail the run', () => {
+if (test('validateAgents does not warn for contract failures because missing sections are hard errors', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-agents-'));
   const agentsDir = path.join(root, 'agents');
   writeAgent(agentsDir, 'architect.md', [
@@ -77,11 +76,11 @@ if (test('validateAgents warns for non-strict agents but does not fail the run',
   try {
     const result = validateAgents({
       agentDirs: [agentsDir],
-      strictContractAgents: ['planner'],
     });
 
-    assert.strictEqual(result.valid, true, JSON.stringify(result, null, 2));
-    assert.ok(result.warnings.some(warning => warning.includes('architect.md')), result.warnings.join('\n'));
+    assert.strictEqual(result.valid, false, JSON.stringify(result, null, 2));
+    assert.deepStrictEqual(result.warnings, []);
+    assert.ok(result.errors.some(error => error.includes('architect.md')), result.errors.join('\n'));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -108,7 +107,6 @@ if (test('validateAgents passes when a strict agent contains the full contract',
   try {
     const result = validateAgents({
       agentDirs: [agentsDir],
-      strictContractAgents: ['planner'],
     });
 
     assert.strictEqual(result.valid, true, JSON.stringify(result, null, 2));
@@ -118,7 +116,7 @@ if (test('validateAgents passes when a strict agent contains the full contract',
   }
 })) passed++; else failed++;
 
-if (test('validateAgents enforces strict contract via frontmatter without explicit strictContractAgents option', () => {
+if (test('validateAgents ignores frontmatter rollout flags because all agents are strict', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-agents-'));
   const agentsDir = path.join(root, 'agents');
   writeAgent(agentsDir, 'my-agent.md', [
