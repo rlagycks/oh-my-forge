@@ -45,10 +45,12 @@ function makeFixture() {
   const trackedFile = path.join(projectRoot, 'src', 'tracked.js');
 
   mkdirp(path.join(projectRoot, '.claude', 'ontology'));
+  mkdirp(path.join(projectRoot, 'docs', 'features', 'project'));
   mkdirp(path.join(projectRoot, 'src'));
   mkdirp(path.join(pluginRoot, '.claude', 'ontology'));
 
   fs.writeFileSync(trackedFile, 'module.exports = 1;\n', 'utf8');
+  fs.writeFileSync(path.join(projectRoot, 'docs', 'features', 'project', 'api.md'), '# Project API\n', 'utf8');
 
   writeJson(path.join(projectRoot, '.claude', 'ontology', 'domain_project.json'), {
     domain: 'domain_project',
@@ -86,6 +88,9 @@ function makeFixture() {
       owner: 'project',
       files: ['src/tracked.js'],
       spec: 'docs/features/project.md',
+      sourceDocs: {
+        apiSpec: ['docs/features/project/api.md'],
+      },
       detail: '.claude/ontology/domain_project.json',
     },
   });
@@ -201,10 +206,12 @@ if (test('domain-context-inject uses the project ontology even when CLAUDE_PLUGI
     assert.ok(stderr.includes('[DOMAIN] domain_project'), stderr);
     assert.ok(!stderr.includes('domain_plugin'), stderr);
     assert.ok(stderr.includes('False-Normal Checks:'), stderr);
+    assert.ok(stderr.includes('Source Docs (load only if needed):'), stderr);
+    assert.ok(stderr.includes('apiSpec: docs/features/project/api.md'), stderr);
     assert.ok(stderr.includes('Watch For:'), stderr);
     assert.ok(stderr.includes('fetch call lands without the guard firing'), stderr);
     assert.ok(!stderr.includes('Constraints:'), stderr);
-    assert.ok(!stderr.includes('Spec:'), stderr);
+    assert.ok(!stderr.includes('\nSpec:'), stderr);
   } finally {
     process.chdir(originalCwd);
     delete process.env.CLAUDE_PLUGIN_ROOT;

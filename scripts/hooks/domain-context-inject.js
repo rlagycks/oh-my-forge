@@ -57,6 +57,17 @@ function saveInjected(set) {
   } catch { /* ignore write errors — never block */ }
 }
 
+function sourceDocEntries(sourceDocs = {}) {
+  if (!sourceDocs || typeof sourceDocs !== 'object' || Array.isArray(sourceDocs)) {
+    return [];
+  }
+
+  return Object.entries(sourceDocs)
+    .filter(([, docs]) => Array.isArray(docs) && docs.length > 0)
+    .map(([kind, docs]) => [kind, docs.filter(doc => typeof doc === 'string' && doc.trim().length > 0)])
+    .filter(([, docs]) => docs.length > 0);
+}
+
 // --- Main ---
 
 function run(rawInput) {
@@ -97,6 +108,14 @@ function run(rawInput) {
   if (packet.basePath) lines.push(`Base path: ${packet.basePath}`);
 
   if (packet.spec) lines.push(`Spec: ${packet.spec} — load for full context`);
+
+  const sourceDocs = sourceDocEntries(packet.sourceDocs);
+  if (sourceDocs.length > 0) {
+    lines.push('Source Docs (load only if needed):');
+    for (const [kind, docs] of sourceDocs) {
+      lines.push(`  - ${kind}: ${docs.join(', ')}`);
+    }
+  }
 
   if (Array.isArray(packet.endpoints) && packet.endpoints.length > 0) {
     lines.push(`Endpoints (${packet.endpoints.length}):`);

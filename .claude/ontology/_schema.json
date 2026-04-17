@@ -26,6 +26,18 @@
           "pattern": "^docs/features/.+\\.md$",
           "description": "Path to the feature doc under docs/features/. Claude reads only this file to understand business intent."
         },
+        "sourceDocs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": ".+\\.md$"
+            }
+          },
+          "description": "Optional human-authored PRD/API/feature-definition document pointers grouped by kind. These paths are routable but not auto-loaded; context packets expose them as load-only-if-needed references."
+        },
         "detail": {
           "type": "string",
           "pattern": "^\\.claude/ontology/domain_.+\\.json$",

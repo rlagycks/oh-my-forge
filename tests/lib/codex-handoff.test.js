@@ -43,6 +43,10 @@ if (test('createDomainDelegation returns a schema-valid domain handoff', () => {
     files: ['scripts/hooks/pre-bash-codex-guard.js', 'tests/hooks/pre-bash-codex-guard.test.js'],
     constraints: ['Do not use background mode'],
     dependsOn: ['domain_utils'],
+    sourceDocs: {
+      apiSpec: ['docs/features/hooks/api.md'],
+      prd: ['docs/features/hooks/prd.md'],
+    },
   });
 
   const validation = validateHandoff(request);
@@ -53,6 +57,7 @@ if (test('createDomainDelegation returns a schema-valid domain handoff', () => {
   assert.strictEqual(request.state, 'ROUTED');
   assert.strictEqual(request.write, true);
   assert.deepStrictEqual(request.dependsOn, ['domain_utils']);
+  assert.deepStrictEqual(request.sourceDocs.apiSpec, ['docs/features/hooks/api.md']);
 })) passed++; else failed++;
 
 if (test('createFallbackRescue returns a schema-valid fallback handoff without domainId', () => {
@@ -141,6 +146,9 @@ if (test('buildBrief emits the shared handoff format', () => {
     task: 'Add retry guard coverage',
     files: ['scripts/hooks/pre-bash-codex-guard.js'],
     constraints: ['Foreground only'],
+    sourceDocs: {
+      apiSpec: ['docs/features/hooks/api.md'],
+    },
   });
 
     const brief = buildBrief(request);
@@ -149,6 +157,8 @@ if (test('buildBrief emits the shared handoff format', () => {
     assert.ok(brief.includes('SUCCESS   :'), brief);
     assert.ok(brief.includes('CHECKS    :'), brief);
     assert.ok(brief.includes('SOURCE    : manual-delegate'), brief);
+    assert.ok(brief.includes('SOURCE DOCS: apiSpec=docs/features/hooks/api.md'), brief);
+    assert.ok(brief.includes('load only when code/types do not contain the needed contract'), brief);
     assert.ok(brief.includes('WRITE     : true'), brief);
     assert.ok(brief.includes('PLAN FILE : /repo/.claude/plans/retry.md'), brief);
     assert.ok(brief.includes('FALSE NORMAL DETECTOR:'), brief);

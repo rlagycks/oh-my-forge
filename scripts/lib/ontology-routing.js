@@ -50,10 +50,48 @@ function uniqueStrings(values) {
   return Array.from(new Set((values || []).filter(value => typeof value === 'string' && value.trim().length > 0)));
 }
 
+function normalizeSourceDocs(sourceDocs = {}) {
+  if (!sourceDocs || typeof sourceDocs !== 'object' || Array.isArray(sourceDocs)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(sourceDocs)
+      .map(([kind, docs]) => [kind, uniqueStrings(Array.isArray(docs) ? docs : [])])
+      .filter(([, docs]) => docs.length > 0)
+  );
+}
+
+function flattenSourceDocs(sourceDocs = {}) {
+  return uniqueStrings(Object.values(normalizeSourceDocs(sourceDocs)).flat());
+}
+
+function mergeSourceDocs(base = {}, incoming = {}) {
+  const normalizedBase = normalizeSourceDocs(base);
+  const normalizedIncoming = normalizeSourceDocs(incoming);
+  const merged = {};
+  const keys = uniqueStrings([
+    ...Object.keys(normalizedBase),
+    ...Object.keys(normalizedIncoming),
+  ]);
+
+  for (const key of keys) {
+    const docs = uniqueStrings([
+      ...(normalizedBase[key] || []),
+      ...(normalizedIncoming[key] || []),
+    ]);
+    if (docs.length > 0) merged[key] = docs;
+  }
+
+  return merged;
+}
+
 function mergeEntryWithDetail(entry, detailData = {}) {
   if (!detailData || typeof detailData !== 'object') {
     return entry;
   }
+
+  const sourceDocs = mergeSourceDocs(entry.sourceDocs, detailData.sourceDocs);
 
   return {
     ...entry,
@@ -61,6 +99,7 @@ function mergeEntryWithDetail(entry, detailData = {}) {
     files: entry.files,
     spec: entry.spec,
     detail: entry.detail,
+    ...(Object.keys(sourceDocs).length > 0 ? { sourceDocs } : {}),
     summary: entry.summary || detailData.summary,
     owner: entry.owner || detailData.owner,
     codexWorkerHint: entry.codexWorkerHint || detailData.codexWorkerHint,
@@ -114,7 +153,7 @@ function loadOntologyMaps(ontologyRoot) {
       const normalizedEntry = { domainKey, ...entry };
       domainMap[domainKey] = normalizedEntry;
 
-      for (const fileList of [entry.files, entry.source]) {
+      for (const fileList of [entry.files, entry.source, flattenSourceDocs(entry.sourceDocs)]) {
         if (!Array.isArray(fileList)) continue;
         for (const file of fileList) {
           fileMap[normalizeOntologyPath(file)] = normalizedEntry;
@@ -162,8 +201,10 @@ function matchFileToDomain({ filePath, ontologyRoot, fileMap }) {
 }
 
 module.exports = {
+  flattenSourceDocs,
   resolveProjectOntologyRoot,
   loadOntologyMaps,
   matchFileToDomain,
+  normalizeSourceDocs,
   uniqueStrings,
 };

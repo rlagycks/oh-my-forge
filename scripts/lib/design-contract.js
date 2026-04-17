@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { uniqueStrings } = require('./ontology-routing');
+const { normalizeSourceDocs, uniqueStrings } = require('./ontology-routing');
 
 const SECTION_ALIASES = new Map([
   ['problem one line', 'problemOneLine'],
@@ -123,6 +123,7 @@ function buildOntologyDetailFragment(contract = {}, options = {}) {
     ...(typeof options.version === 'string' && options.version.trim().length > 0 ? { version: options.version.trim() } : {}),
     ...(summary ? { summary } : {}),
     ...(sourcePath ? { source: [sourcePath] } : {}),
+    ...(sourcePath ? { sourceDocs: { designContract: [sourcePath] } } : {}),
     ...(constraints.length > 0 ? { constraints } : {}),
     executionContract: {
       ...(contract.mission ? { mission: contract.mission } : {}),
@@ -141,6 +142,17 @@ function mergeStringArrays(base, incoming) {
   return uniqueStrings([...(Array.isArray(base) ? base : []), ...(Array.isArray(incoming) ? incoming : [])]);
 }
 
+function mergeSourceDocs(base = {}, incoming = {}) {
+  const normalizedBase = normalizeSourceDocs(base);
+  const normalizedIncoming = normalizeSourceDocs(incoming);
+  const merged = {};
+  for (const key of uniqueStrings([...Object.keys(normalizedBase), ...Object.keys(normalizedIncoming)])) {
+    const docs = mergeStringArrays(normalizedBase[key], normalizedIncoming[key]);
+    if (docs.length > 0) merged[key] = docs;
+  }
+  return merged;
+}
+
 function mergeOntologyDetail(existing = {}, fragment = {}) {
   const merged = {
     ...existing,
@@ -149,6 +161,10 @@ function mergeOntologyDetail(existing = {}, fragment = {}) {
 
   if (existing.source || fragment.source) {
     merged.source = mergeStringArrays(existing.source, fragment.source);
+  }
+
+  if (existing.sourceDocs || fragment.sourceDocs) {
+    merged.sourceDocs = mergeSourceDocs(existing.sourceDocs, fragment.sourceDocs);
   }
 
   if (existing.constraints || fragment.constraints) {

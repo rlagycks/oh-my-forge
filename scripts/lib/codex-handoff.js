@@ -11,6 +11,7 @@ const {
   resolveProjectOntologyRoot,
   loadOntologyMaps,
   matchFileToDomain,
+  normalizeSourceDocs,
   uniqueStrings,
 } = require('./ontology-routing');
 const {
@@ -115,6 +116,21 @@ function normalizeEndpoints(endpoints) {
   }));
 }
 
+function sourceDocsEntries(sourceDocs = {}) {
+  return Object.entries(normalizeSourceDocs(sourceDocs));
+}
+
+function formatSourceDocs(sourceDocs = {}) {
+  const entries = sourceDocsEntries(sourceDocs);
+  if (entries.length === 0) {
+    return 'N/A';
+  }
+
+  return entries
+    .map(([kind, docs]) => `${kind}=${docs.join(',')}`)
+    .join(' | ');
+}
+
 function splitChecklist(value) {
   const trimmed = String(value || '').trim();
   if (!trimmed || /^none$/i.test(trimmed)) {
@@ -187,6 +203,7 @@ function baseRequest(options = {}) {
   ]);
   const completionChecks = normalizeChecklist(options.completionChecks, defaultCompletionChecks(options));
   const notDo = uniqueStrings(options.notDo);
+  const sourceDocs = normalizeSourceDocs(options.sourceDocs);
   return {
     schemaVersion: options.schemaVersion || 'ecc.codex.handoff.request.v2',
     state: options.state || 'ROUTED',
@@ -211,6 +228,7 @@ function baseRequest(options = {}) {
     ...(uniqueStrings(options.symbols).length > 0 ? { symbols: uniqueStrings(options.symbols) } : {}),
     ...(uniqueStrings(options.constraints).length > 0 ? { constraints: uniqueStrings(options.constraints) } : {}),
     ...(uniqueStrings(options.dependsOn).length > 0 ? { dependsOn: uniqueStrings(options.dependsOn) } : {}),
+    ...(Object.keys(sourceDocs).length > 0 ? { sourceDocs } : {}),
   };
 }
 
@@ -258,6 +276,7 @@ function buildBrief(request) {
     `SYMBOLS   : ${(request.symbols || []).join(', ') || 'N/A'}`,
     `CONSTRAINTS: ${(request.constraints || []).join(' | ') || 'None'}`,
     `DEPENDS ON: ${(request.dependsOn || []).join(', ') || 'none'}`,
+    `SOURCE DOCS: ${formatSourceDocs(request.sourceDocs)} — load only when code/types do not contain the needed contract`,
     `PLAN FILE : ${request.planFile}`,
     'FALSE NORMAL DETECTOR: RESULT:DONE requires explicit TESTS, EVIDENCE, FALSE NORMAL CHECKS, FALSE NORMAL SIGNALS: none, and NEXT ACTION.',
     'HANDOFF   : Return: RESULT / FILES CHANGED / TESTS / EVIDENCE / FALSE NORMAL CHECKS / FALSE NORMAL SIGNALS / OPEN RISKS / NEXT ACTION / SUMMARY',
@@ -671,6 +690,7 @@ function createPlanRoute(options = {}) {
       symbols: group.entry.symbols,
       constraints: group.entry.constraints,
       dependsOn: group.entry.dependsOn,
+      sourceDocs: group.entry.sourceDocs,
     }));
   }
 

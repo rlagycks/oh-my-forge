@@ -85,10 +85,18 @@ index.json (그래프 인덱스)
 ```json
 "domain_auth": {
   "spec":    "docs/features/auth.md",
-  "apiSpec": "docs/features/auth/api.md",
-  "prd":     "docs/features/auth/prd.md"
+  "sourceDocs": {
+    "apiSpec": ["docs/features/auth/api.md"],
+    "prd":     ["docs/features/auth/prd.md"]
+  }
 }
 ```
+
+`sourceDocs`는 원문 MD를 컨텍스트에 자동 주입하지 않는다.
+라우팅과 handoff에는 "필요할 때만 읽을 문서" 포인터로만 노출한다.
+구현자가 코드/타입만으로 계약을 확인할 수 있으면 읽지 않는다.
+API shape, 비즈니스 의도, acceptance criteria처럼 코드에 없는 계약이
+필요할 때만 해당 key의 문서를 연다.
 
 ---
 

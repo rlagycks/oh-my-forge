@@ -44,6 +44,11 @@ node "$PLUGIN_ROOT/scripts/lib/ontology.js" promote-contract \
 **정상 형식 (GPS 라우팅 인덱스)**: `$schema` 키 + `domain_*` 키에 `files[]`, `spec`, `codexWorkerHint` 포함.
 → **index.json을 수정하지 않는다.** `domain_*.json` 상세 파일만 생성/업데이트 후 Step 1로 진행.
 
+PRD/API/기능 정의서 원문을 도메인에 연결해야 한다면 `sourceDocs`를
+사용한다.
+이 필드는 원문을 컨텍스트에 자동 로드하지 않고 routing/handoff에
+"필요할 때만 읽을 문서" 포인터로만 노출한다.
+
 **존재하지 않는 경우**: 바로 Step 1로 진행. `/ontology-sync`를 먼저 실행하여 index.json을 구성할 것을 안내한다.
 
 > WARNING: **주의**: 이 커맨드는 ECC 내부 `index.json`(GPS 라우팅 인덱스)을 교체하거나 초기화하지 않는다.
@@ -180,6 +185,10 @@ node "$PLUGIN_ROOT/scripts/lib/ontology.js" promote-contract \
 "domain_auth": {
   "files": [...],
   "spec": "docs/features/auth.md",
+  "sourceDocs": {
+    "apiSpec": ["docs/features/auth/api.md"],
+    "prd": ["docs/features/auth/prd.md"]
+  },
   "detail": ".claude/ontology/domain_auth.json",
   ...
 }

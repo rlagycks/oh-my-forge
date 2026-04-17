@@ -36,6 +36,7 @@ const DEFAULT_RETRIEVAL_PROFILES = {
     include: [
       'summary',
       'spec',
+      'sourceDocs',
       'symbols',
       'constraints',
       'dependsOn',
@@ -84,7 +85,10 @@ function normalizeProfile(profileName, entry = {}, fallbackProfiles = DEFAULT_RE
     ? entry.retrievalProfiles[profileName]
     : null;
   const fallbackProfile = fallbackProfiles[profileName] || null;
-  const include = uniqueStrings(explicitProfile?.include || fallbackProfile?.include || []);
+  const include = uniqueStrings([
+    ...(explicitProfile?.include || fallbackProfile?.include || []),
+    ...(profileName === 'context' && entry.sourceDocs ? ['sourceDocs'] : []),
+  ]);
 
   return {
     include,
