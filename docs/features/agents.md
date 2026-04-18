@@ -17,7 +17,7 @@
 - 에이전트는 단일 책임 원칙 — 여러 역할을 하나의 에이전트에 합치지 말 것
 - 파일명은 lowercase-hyphen (예: `code-reviewer.md`, `tdd-guide.md`)
 - 핵심 에이전트는 본문에 `## Mission`, `## Not Do`, `## Success`, `## Decision Policy`, `## Execution Policy`, `## Style` 섹션 필수
-- 핵심 에이전트 계약은 `scripts/ci/validate-agents.js`가 lint로 강제, 나머지 에이전트는 점진 rollout 동안 경고로 추적
+- 핵심 에이전트 계약은 `scripts/ci/validate-agents.js`가 lint로 강제한다. 표준 섹션 존재뿐 아니라 금지 범위, 자율 결정 범위, 사람 승인 경계, escalate 기준, 실행 증거/blocked 기준, 보고 스타일 문구도 검사한다.
 
 ## 관련 도메인
 
