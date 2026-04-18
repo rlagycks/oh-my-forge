@@ -17,6 +17,25 @@ const SECTION_ALIASES = new Map([
   ['open assumptions', 'openAssumptions'],
 ]);
 
+const REQUIRED_CONTRACT_FIELDS = [
+  ['problemOneLine', 'Problem One Line', 'string'],
+  ['mission', 'Mission', 'string'],
+  ['success', 'Success', 'array'],
+  ['notDo', 'Not Do', 'array'],
+  ['inputsContracts', 'Inputs / Contracts', 'array'],
+  ['verificationPoints', 'Verification Points', 'array'],
+  ['falseNormalChecks', 'False-Normal Checks', 'array'],
+  ['expansionForbidden', 'Expansion Forbidden', 'array'],
+  ['handoffFormat', 'Handoff Format', 'array'],
+];
+
+const REQUIRED_HANDOFF_ITEMS = [
+  'Current State',
+  'Evidence',
+  'Open Risks',
+  'Next Action',
+];
+
 function normalizeHeading(heading) {
   return String(heading || '')
     .replace(/[`*_]/g, '')
@@ -101,6 +120,56 @@ function parseDesignContract(markdown) {
     handoffFormat: extractItems(sections.handoffFormat),
     openAssumptions: extractItems(sections.openAssumptions),
   };
+}
+
+function hasItems(value) {
+  return Array.isArray(value) && value.some(item => typeof item === 'string' && item.trim().length > 0);
+}
+
+function hasString(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function listIncludesLabel(items, label) {
+  const normalizedLabel = normalizeHeading(label);
+  return (items || []).some(item => normalizeHeading(item).includes(normalizedLabel));
+}
+
+function hasOwnProperty(object, property) {
+  return Object.prototype.hasOwnProperty.call(object || {}, property);
+}
+
+function validateDesignContract(contract = {}) {
+  const errors = [];
+  const candidate = contract && typeof contract === 'object' ? contract : {};
+
+  for (const [field, label, type] of REQUIRED_CONTRACT_FIELDS) {
+    const value = candidate[field];
+    const hasRequiredValue = hasOwnProperty(candidate, field) && (type === 'string' ? hasString(value) : hasItems(value));
+    if (!hasRequiredValue) {
+      errors.push(`Missing required design contract section: ${label}`);
+    }
+  }
+
+  if (hasItems(candidate.handoffFormat)) {
+    for (const item of REQUIRED_HANDOFF_ITEMS) {
+      if (!listIncludesLabel(candidate.handoffFormat, item)) {
+        errors.push(`Handoff Format must include: ${item}`);
+      }
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+function assertValidDesignContract(contract = {}) {
+  const validation = validateDesignContract(contract);
+  if (!validation.valid) {
+    throw new Error(`Invalid design contract:\n- ${validation.errors.join('\n- ')}`);
+  }
 }
 
 function buildOntologyDetailFragment(contract = {}, options = {}) {
@@ -222,9 +291,11 @@ function inferDomainFromDetailPath(detailFile) {
 }
 
 module.exports = {
+  assertValidDesignContract,
   buildOntologyDetailFragment,
   inferDomainFromDetailPath,
   mergeOntologyDetail,
   parseDesignContract,
   readContractFile,
+  validateDesignContract,
 };

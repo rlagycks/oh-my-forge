@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const {
+  assertValidDesignContract,
   buildOntologyDetailFragment,
   inferDomainFromDetailPath,
   mergeOntologyDetail,
@@ -105,6 +106,7 @@ function promoteContract(options = {}) {
 
   const contractFile = resolveWorkingPath(options.contractFile);
   const contract = parseDesignContract(readContractFile(contractFile));
+  assertValidDesignContract(contract);
   const detailFile = options.detailFile ? resolveWorkingPath(options.detailFile) : '';
   const domain = options.domain || inferDomainFromDetailPath(detailFile);
   const fragment = buildOntologyDetailFragment(contract, {
