@@ -6,6 +6,11 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const Ajv = require('ajv');
 const { resolveCodexCompanionPath } = require('./resolve-codex-companion');
+const {
+  COMPLETION_REPORT_FIELDS,
+  FALSE_NORMAL_DETECTOR_RULE,
+  parseCompletionResult,
+} = require('./false-normal-detector');
 
 const {
   resolveProjectOntologyRoot,
@@ -129,15 +134,6 @@ function formatSourceDocs(sourceDocs = {}) {
   return entries
     .map(([kind, docs]) => `${kind}=${docs.join(',')}`)
     .join(' | ');
-}
-
-function splitChecklist(value) {
-  const trimmed = String(value || '').trim();
-  if (!trimmed || /^none$/i.test(trimmed)) {
-    return [];
-  }
-
-  return uniqueStrings(trimmed.split('|').map(part => part.trim()));
 }
 
 function defaultCompletionChecks(options = {}) {
@@ -278,8 +274,8 @@ function buildBrief(request) {
     `DEPENDS ON: ${(request.dependsOn || []).join(', ') || 'none'}`,
     `SOURCE DOCS: ${formatSourceDocs(request.sourceDocs)} — load only when code/types do not contain the needed contract`,
     `PLAN FILE : ${request.planFile}`,
-    'FALSE NORMAL DETECTOR: RESULT:DONE requires explicit TESTS, EVIDENCE, FALSE NORMAL CHECKS, FALSE NORMAL SIGNALS: none, and NEXT ACTION.',
-    'HANDOFF   : Return: RESULT / FILES CHANGED / TESTS / EVIDENCE / FALSE NORMAL CHECKS / FALSE NORMAL SIGNALS / OPEN RISKS / NEXT ACTION / SUMMARY',
+    `FALSE NORMAL DETECTOR: ${FALSE_NORMAL_DETECTOR_RULE}`,
+    `HANDOFF   : Return: ${COMPLETION_REPORT_FIELDS.join(' / ')}`,
   ];
 
   return lines.join('\n');
@@ -390,169 +386,26 @@ function dispatchHandoff(options = {}) {
   }
 }
 
-function splitFilesChanged(value) {
-  const trimmed = String(value || '').trim();
-  if (!trimmed || /^none$/i.test(trimmed)) {
-    return [];
-  }
-
-  return uniqueStrings(trimmed.split(',').map(part => part.trim()));
-}
-
-function resultStateFor(result) {
-  if (result === 'DONE') return 'COMPLETED';
-  if (result === 'PARTIAL') return 'PARTIAL';
-  return 'BLOCKED';
-}
-
-function detectFalseNormalCompletion(fields = {}) {
-  if (fields.result !== 'DONE') {
-    return [];
-  }
-
-  const signals = [];
-  if (!fields.testsMatch) {
-    signals.push('RESULT:DONE without explicit TESTS line.');
-  } else if (fields.tests === 'FAIL') {
-    signals.push('RESULT:DONE with TESTS: FAIL.');
-  }
-
-  if (fields.evidence.length === 0) {
-    signals.push('RESULT:DONE without explicit EVIDENCE.');
-  }
-
-  if (fields.falseNormalChecks.length === 0) {
-    signals.push('RESULT:DONE without explicit FALSE NORMAL CHECKS.');
-  }
-
-  if (!fields.falseNormalSignalsMatch) {
-    signals.push('RESULT:DONE without explicit FALSE NORMAL SIGNALS line.');
-  } else if (fields.falseNormalSignals.length > 0) {
-    signals.push(`RESULT:DONE has unresolved FALSE NORMAL SIGNALS: ${fields.falseNormalSignals.join(' | ')}`);
-  }
-
-  if (!fields.nextAction) {
-    signals.push('RESULT:DONE without explicit NEXT ACTION.');
-  }
-
-  if (
-    fields.tests === 'PASS'
-    && (fields.evidence.length === 0 || fields.falseNormalChecks.length === 0 || !fields.nextAction)
-  ) {
-    signals.push('TESTS: PASS alone is not sufficient completion evidence.');
-  }
-
-  return uniqueStrings(signals);
-}
-
 function parseCodexResult(output) {
-  const rawOutput = typeof output === 'string' ? output : '';
-  const resultMatch = rawOutput.match(/^RESULT:\s*(DONE|BLOCKED|PARTIAL)\s*$/m);
-  const filesMatch = rawOutput.match(/^FILES CHANGED:\s*(.*)$/m);
-  const testsMatch = rawOutput.match(/^TESTS:\s*(PASS|FAIL|SKIPPED)\s*$/m);
-  const evidenceMatch = rawOutput.match(/^EVIDENCE:\s*(.*)$/m);
-  const falseNormalMatch = rawOutput.match(/^FALSE NORMAL CHECKS:\s*(.*)$/m);
-  const falseNormalSignalsMatch = rawOutput.match(/^FALSE NORMAL SIGNALS:\s*(.*)$/m);
-  const openRisksMatch = rawOutput.match(/^OPEN RISKS:\s*(.*)$/m);
-  const nextActionMatch = rawOutput.match(/^NEXT ACTION:\s*(.*)$/m);
-  const summaryMatch = rawOutput.match(/^SUMMARY:\s*(.*)$/m);
-  const filesChanged = splitFilesChanged(filesMatch ? filesMatch[1] : '');
-  const tests = testsMatch ? testsMatch[1] : 'SKIPPED';
-  const evidence = splitChecklist(evidenceMatch ? evidenceMatch[1] : '');
-  const falseNormalChecks = splitChecklist(falseNormalMatch ? falseNormalMatch[1] : '');
-  const falseNormalSignals = splitChecklist(falseNormalSignalsMatch ? falseNormalSignalsMatch[1] : '');
-  const openRisks = splitChecklist(openRisksMatch ? openRisksMatch[1] : '');
-  const nextAction = nextActionMatch ? nextActionMatch[1].trim() : '';
-  const summary = summaryMatch ? summaryMatch[1] : '';
-
-  if (!resultMatch) {
-    const blocked = {
-      schemaVersion: 'ecc.codex.handoff.result.v3',
-      state: 'BLOCKED',
-      valid: false,
-      result: 'BLOCKED',
-      filesChanged: [],
-      tests,
-      evidence: normalizeChecklist(evidence, [
-        'Codex output did not contain a RESULT line.',
-      ]),
-      falseNormalChecks: normalizeChecklist(falseNormalChecks, [
-        'Rejected completion because the RESULT line was missing.',
-      ]),
-      falseNormalSignals: normalizeChecklist(falseNormalSignals, [
-        'Missing RESULT made the output look like a handoff but not an executable result.',
-      ]),
-      openRisks,
-      nextAction: nextAction || 'Inspect the blocked handoff output and re-run with a clearer contract.',
-      summary: 'Codex rescue returned no RESULT line.',
-      error: 'Codex rescue returned no RESULT line.',
-      rawOutput,
-    };
-    assertValidResult(blocked, 'missing RESULT');
-    return blocked;
-  }
-
-  const detectedSignals = detectFalseNormalCompletion({
-    result: resultMatch[1],
-    tests,
-    testsMatch,
-    evidence,
-    falseNormalChecks,
-    falseNormalSignals,
-    falseNormalSignalsMatch,
-    nextAction,
-  });
-
-  if (detectedSignals.length > 0) {
-    const blocked = {
-      schemaVersion: 'ecc.codex.handoff.result.v3',
-      state: 'BLOCKED',
-      valid: false,
-      result: 'BLOCKED',
-      filesChanged,
-      tests,
-      evidence: normalizeChecklist(evidence, [
-        'False-normal detector rejected RESULT:DONE because required proof was missing.',
-      ]),
-      falseNormalChecks: normalizeChecklist(falseNormalChecks, detectedSignals),
-      falseNormalSignals: uniqueStrings([...falseNormalSignals, ...detectedSignals]),
-      openRisks: uniqueStrings([
-        ...openRisks,
-        'Rejected RESULT:DONE until false-normal signals are resolved.',
-      ]),
-      nextAction: nextAction || 'Provide TESTS, EVIDENCE, FALSE NORMAL CHECKS, FALSE NORMAL SIGNALS, and NEXT ACTION, then rerun the handoff parser.',
-      summary: summary || 'False-normal detector blocked completion.',
-      error: `False-normal detector blocked completion: ${detectedSignals.join('; ')}`,
-      rawOutput,
-    };
-    assertValidResult(blocked, 'false-normal detector');
-    return blocked;
-  }
-
-  const result = {
+  const result = parseCompletionResult(output, {
     schemaVersion: 'ecc.codex.handoff.result.v3',
-    state: resultStateFor(resultMatch[1]),
-    valid: true,
-    result: resultMatch[1],
-    filesChanged,
-    tests,
-    evidence: normalizeChecklist(evidence, [
-      `Observed result ${resultMatch[1]} with tests=${tests}.`,
-    ]),
-    falseNormalChecks: normalizeChecklist(falseNormalChecks, [
-      'Checked the completion status against explicit result and test output.',
-    ]),
-    falseNormalSignals,
-    openRisks,
-    nextAction: nextAction
-      ? nextAction
-      : resultMatch[1] === 'DONE'
-        ? 'Review the evidence and merge when the diff looks correct.'
-        : 'Investigate remaining gaps and continue from the latest evidence.',
-    summary: summary || 'No summary provided.',
-    ...(rawOutput ? { rawOutput } : {}),
-  };
-  assertValidResult(result, 'parsed result');
+    missingResultEvidence: 'Codex output did not contain a RESULT line.',
+    missingResultCheck: 'Rejected completion because the RESULT line was missing.',
+    missingResultSignal: 'Missing RESULT made the output look like a handoff but not an executable result.',
+    missingResultNextAction: 'Inspect the blocked handoff output and re-run with a clearer contract.',
+    missingResultSummary: 'Codex rescue returned no RESULT line.',
+    missingResultError: 'Codex rescue returned no RESULT line.',
+    falseNormalEvidence: 'False-normal detector rejected RESULT:DONE because required proof was missing.',
+    falseNormalOpenRisk: 'Rejected RESULT:DONE until false-normal signals are resolved.',
+    falseNormalNextAction: 'Provide TESTS, EVIDENCE, FALSE NORMAL CHECKS, FALSE NORMAL SIGNALS, and NEXT ACTION, then rerun the handoff parser.',
+    falseNormalSummary: 'False-normal detector blocked completion.',
+  });
+  const label = result.reasonCode === 'missing-result'
+    ? 'missing RESULT'
+    : result.reasonCode === 'false-normal'
+      ? 'false-normal detector'
+      : 'parsed result';
+  assertValidResult(result, label);
   return result;
 }
 

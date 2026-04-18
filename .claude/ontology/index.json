@@ -223,6 +223,7 @@
       "commands/codex-delegate.md",
       "scripts/hooks/pre-bash-codex-guard.js",
       "scripts/lib/codex-handoff.js",
+      "scripts/lib/false-normal-detector.js",
       "schemas/codex-handoff-request.schema.json",
       "schemas/codex-handoff-result.schema.json"
     ],
