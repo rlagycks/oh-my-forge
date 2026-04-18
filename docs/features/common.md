@@ -13,6 +13,9 @@ oh-my-forge 플러그인의 루트 구성 계층. `plugin.json`(플러그인 메
 - `.claude/ontology/index.json` `sourceDocs` — PRD/API/기능정의서 같은
   원문 MD를 도메인에 연결하는 포인터. 원문은 자동 로드하지 않고
   필요할 때만 읽는다.
+- `scripts/ci/audit-source-docs.js` — PRD/API/contract 성격의 MD가
+  `sourceDocs`에 연결됐는지 리포트한다. `--strict`에서만 누락을 실패로
+  처리한다.
 
 ## 핵심 제약
 
