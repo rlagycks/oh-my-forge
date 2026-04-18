@@ -407,6 +407,7 @@ if (test('parseCodexResult parses successful Codex output into a schema-valid re
   const validation = validateResult(result);
   assert.strictEqual(validation.valid, true, validation.error);
   assert.strictEqual(result.result, 'DONE');
+  assert.strictEqual(result.reasonCode, 'accepted');
   assert.deepStrictEqual(result.evidence, ['updated guard logic', 'added coverage']);
   assert.deepStrictEqual(result.falseNormalChecks, ['confirmed test pass covers changed path']);
   assert.deepStrictEqual(result.falseNormalSignals, []);
@@ -431,6 +432,7 @@ if (test('parseCodexResult blocks DONE when only tests look healthy', () => {
   assert.strictEqual(result.valid, false);
   assert.strictEqual(result.state, 'BLOCKED');
   assert.strictEqual(result.result, 'BLOCKED');
+  assert.strictEqual(result.reasonCode, 'false-normal');
   assert.ok(result.error.includes('False-normal detector'), result.error);
   assert.ok(result.falseNormalSignals.some(signal => signal.includes('EVIDENCE')), JSON.stringify(result));
   assert.ok(result.falseNormalSignals.some(signal => signal.includes('FALSE NORMAL CHECKS')), JSON.stringify(result));
@@ -455,6 +457,7 @@ if (test('parseCodexResult blocks DONE with unresolved false-normal signals', ()
   assert.strictEqual(result.valid, false);
   assert.strictEqual(result.state, 'BLOCKED');
   assert.strictEqual(result.result, 'BLOCKED');
+  assert.strictEqual(result.reasonCode, 'false-normal');
   assert.ok(result.falseNormalSignals.includes('green tests did not exercise the dispatch path'), JSON.stringify(result));
   assert.ok(result.error.includes('unresolved FALSE NORMAL SIGNALS'), result.error);
 })) passed++; else failed++;
@@ -467,6 +470,7 @@ if (test('parseCodexResult turns missing RESULT output into explicit BLOCKED sta
   assert.strictEqual(result.valid, false);
   assert.strictEqual(result.state, 'BLOCKED');
   assert.strictEqual(result.result, 'BLOCKED');
+  assert.strictEqual(result.reasonCode, 'missing-result');
   assert.ok(result.error.includes('RESULT'), result.error);
 })) passed++; else failed++;
 

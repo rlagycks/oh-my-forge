@@ -25,6 +25,14 @@ function normalizeChecklist(values, fallback = []) {
   return normalized.length > 0 ? normalized : uniqueStrings(fallback);
 }
 
+function hasOwnProperty(object, property) {
+  return Object.prototype.hasOwnProperty.call(object || {}, property);
+}
+
+function optionValue(options, property, fallback) {
+  return hasOwnProperty(options, property) ? options[property] : fallback;
+}
+
 function splitChecklist(value) {
   const trimmed = String(value || '').trim();
   if (!trimmed || /^none$/i.test(trimmed)) {
@@ -119,31 +127,33 @@ function detectFalseNormalCompletion(fields = {}) {
 }
 
 function parseCompletionResult(output, options = {}) {
+  const config = options && typeof options === 'object' ? options : {};
   const fields = parseCompletionReport(output);
-  const schemaVersion = options.schemaVersion || 'ecc.completion.result.v1';
-  const detectorName = options.detectorName || 'False-normal detector';
+  const schemaVersion = optionValue(config, 'schemaVersion', 'ecc.completion.result.v1');
+  const detectorName = optionValue(config, 'detectorName', 'False-normal detector');
 
   if (!fields.resultMatch) {
     return {
       schemaVersion,
+      reasonCode: 'missing-result',
       state: 'BLOCKED',
       valid: false,
       result: 'BLOCKED',
       filesChanged: [],
       tests: fields.tests,
       evidence: normalizeChecklist(fields.evidence, [
-        options.missingResultEvidence || 'Completion output did not contain a RESULT line.',
+        optionValue(config, 'missingResultEvidence', 'Completion output did not contain a RESULT line.'),
       ]),
       falseNormalChecks: normalizeChecklist(fields.falseNormalChecks, [
-        options.missingResultCheck || 'Rejected completion because the RESULT line was missing.',
+        optionValue(config, 'missingResultCheck', 'Rejected completion because the RESULT line was missing.'),
       ]),
       falseNormalSignals: normalizeChecklist(fields.falseNormalSignals, [
-        options.missingResultSignal || 'Missing RESULT made the output look like a handoff but not an executable result.',
+        optionValue(config, 'missingResultSignal', 'Missing RESULT made the output look like a handoff but not an executable result.'),
       ]),
       openRisks: fields.openRisks,
-      nextAction: fields.nextAction || options.missingResultNextAction || 'Inspect the blocked handoff output and re-run with a clearer contract.',
-      summary: options.missingResultSummary || 'Completion output returned no RESULT line.',
-      error: options.missingResultError || 'Completion output returned no RESULT line.',
+      nextAction: fields.nextAction || optionValue(config, 'missingResultNextAction', 'Inspect the blocked handoff output and re-run with a clearer contract.'),
+      summary: optionValue(config, 'missingResultSummary', 'Completion output returned no RESULT line.'),
+      error: optionValue(config, 'missingResultError', 'Completion output returned no RESULT line.'),
       rawOutput: fields.rawOutput,
     };
   }
@@ -152,22 +162,23 @@ function parseCompletionResult(output, options = {}) {
   if (detectedSignals.length > 0) {
     return {
       schemaVersion,
+      reasonCode: 'false-normal',
       state: 'BLOCKED',
       valid: false,
       result: 'BLOCKED',
       filesChanged: fields.filesChanged,
       tests: fields.tests,
       evidence: normalizeChecklist(fields.evidence, [
-        options.falseNormalEvidence || `${detectorName} rejected RESULT:DONE because required proof was missing.`,
+        optionValue(config, 'falseNormalEvidence', `${detectorName} rejected RESULT:DONE because required proof was missing.`),
       ]),
       falseNormalChecks: normalizeChecklist(fields.falseNormalChecks, detectedSignals),
       falseNormalSignals: uniqueStrings([...fields.falseNormalSignals, ...detectedSignals]),
       openRisks: uniqueStrings([
         ...fields.openRisks,
-        options.falseNormalOpenRisk || 'Rejected RESULT:DONE until false-normal signals are resolved.',
+        optionValue(config, 'falseNormalOpenRisk', 'Rejected RESULT:DONE until false-normal signals are resolved.'),
       ]),
-      nextAction: fields.nextAction || options.falseNormalNextAction || 'Provide TESTS, EVIDENCE, FALSE NORMAL CHECKS, FALSE NORMAL SIGNALS, and NEXT ACTION, then rerun the completion parser.',
-      summary: fields.summary || options.falseNormalSummary || `${detectorName} blocked completion.`,
+      nextAction: fields.nextAction || optionValue(config, 'falseNormalNextAction', 'Provide TESTS, EVIDENCE, FALSE NORMAL CHECKS, FALSE NORMAL SIGNALS, and NEXT ACTION, then rerun the completion parser.'),
+      summary: fields.summary || optionValue(config, 'falseNormalSummary', `${detectorName} blocked completion.`),
       error: `${detectorName} blocked completion: ${detectedSignals.join('; ')}`,
       rawOutput: fields.rawOutput,
     };
@@ -175,6 +186,7 @@ function parseCompletionResult(output, options = {}) {
 
   const result = {
     schemaVersion,
+    reasonCode: 'accepted',
     state: resultStateFor(fields.result),
     valid: true,
     result: fields.result,

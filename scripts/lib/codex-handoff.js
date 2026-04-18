@@ -400,9 +400,9 @@ function parseCodexResult(output) {
     falseNormalNextAction: 'Provide TESTS, EVIDENCE, FALSE NORMAL CHECKS, FALSE NORMAL SIGNALS, and NEXT ACTION, then rerun the handoff parser.',
     falseNormalSummary: 'False-normal detector blocked completion.',
   });
-  const label = result.error === 'Codex rescue returned no RESULT line.'
+  const label = result.reasonCode === 'missing-result'
     ? 'missing RESULT'
-    : result.error
+    : result.reasonCode === 'false-normal'
       ? 'false-normal detector'
       : 'parsed result';
   assertValidResult(result, label);

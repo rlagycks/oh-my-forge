@@ -106,6 +106,7 @@ if (test('parseCompletionResult downgrades false-normal DONE to BLOCKED', () => 
   });
 
   assert.strictEqual(result.schemaVersion, 'test.result.v1');
+  assert.strictEqual(result.reasonCode, 'false-normal');
   assert.strictEqual(result.valid, false);
   assert.strictEqual(result.state, 'BLOCKED');
   assert.strictEqual(result.result, 'BLOCKED');
@@ -129,6 +130,7 @@ if (test('parseCompletionResult accepts DONE with evidence, checks, no signals, 
   });
 
   assert.strictEqual(result.valid, true);
+  assert.strictEqual(result.reasonCode, 'accepted');
   assert.strictEqual(result.state, 'COMPLETED');
   assert.strictEqual(result.result, 'DONE');
   assert.deepStrictEqual(result.falseNormalSignals, []);
@@ -143,11 +145,49 @@ if (test('parseCompletionResult returns explicit BLOCKED when RESULT is missing'
   });
 
   assert.strictEqual(result.valid, false);
+  assert.strictEqual(result.reasonCode, 'missing-result');
   assert.strictEqual(result.state, 'BLOCKED');
   assert.strictEqual(result.result, 'BLOCKED');
   assert.strictEqual(result.summary, 'No result line.');
   assert.strictEqual(result.error, 'No result line.');
   assert.ok(result.falseNormalSignals.some(signal => signal.includes('RESULT')), JSON.stringify(result, null, 2));
+})) passed++; else failed++;
+
+if (test('parseCompletionResult respects explicitly provided empty option values', () => {
+  const missing = parseCompletionResult('TESTS: SKIPPED', {
+    schemaVersion: '',
+    missingResultEvidence: '',
+    missingResultCheck: '',
+    missingResultSignal: '',
+    missingResultNextAction: '',
+    missingResultSummary: '',
+    missingResultError: '',
+  });
+
+  assert.strictEqual(missing.schemaVersion, '');
+  assert.deepStrictEqual(missing.evidence, []);
+  assert.deepStrictEqual(missing.falseNormalChecks, []);
+  assert.deepStrictEqual(missing.falseNormalSignals, []);
+  assert.strictEqual(missing.nextAction, '');
+  assert.strictEqual(missing.summary, '');
+  assert.strictEqual(missing.error, '');
+
+  const falseNormal = parseCompletionResult([
+    'RESULT: DONE',
+    'TESTS: PASS',
+  ].join('\n'), {
+    detectorName: '',
+    falseNormalEvidence: '',
+    falseNormalOpenRisk: '',
+    falseNormalNextAction: '',
+    falseNormalSummary: '',
+  });
+
+  assert.deepStrictEqual(falseNormal.evidence, []);
+  assert.deepStrictEqual(falseNormal.openRisks, []);
+  assert.strictEqual(falseNormal.nextAction, '');
+  assert.strictEqual(falseNormal.summary, '');
+  assert.ok(falseNormal.error.startsWith(' blocked completion:'), falseNormal.error);
 })) passed++; else failed++;
 
 console.log(`\n  ${passed} passed, ${failed} failed\n`);
