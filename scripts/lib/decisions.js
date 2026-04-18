@@ -41,6 +41,13 @@ function resolveOntologyDir() {
 const ONTOLOGY_DIR = resolveOntologyDir();
 const GLOBAL_LOG_DIR = path.join(os.homedir(), '.claude', 'decisions');
 const GLOBAL_LOG_FILE = path.join(GLOBAL_LOG_DIR, 'index.jsonl');
+const GLOBAL_REF_INDEX_FILE = path.join(GLOBAL_LOG_DIR, 'refs.json');
+const GLOBAL_REF_LOCK_FILE = path.join(GLOBAL_LOG_DIR, 'refs.lock');
+const GLOBAL_REF_LOCK_ATTEMPTS = 100;
+const GLOBAL_REF_LOCK_WAIT_MS = 20;
+const GLOBAL_REF_LOCK_STALE_MS = 30_000;
+const RECENT_LOG_SCAN_BYTES = 64 * 1024;
+const RECENT_LOG_SCAN_LINES = 200;
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -78,6 +85,54 @@ function appendGlobalLog(entry) {
   fs.appendFileSync(GLOBAL_LOG_FILE, JSON.stringify(entry) + '\n', 'utf8');
 }
 
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function isStaleLock(file) {
+  try {
+    return Date.now() - fs.statSync(file).mtimeMs > GLOBAL_REF_LOCK_STALE_MS;
+  } catch {
+    return false;
+  }
+}
+
+function acquireGlobalRefLock() {
+  fs.mkdirSync(GLOBAL_LOG_DIR, { recursive: true });
+
+  for (let attempt = 0; attempt < GLOBAL_REF_LOCK_ATTEMPTS; attempt++) {
+    try {
+      const fd = fs.openSync(GLOBAL_REF_LOCK_FILE, 'wx');
+      fs.writeFileSync(fd, JSON.stringify({
+        pid: process.pid,
+        createdAt: new Date().toISOString()
+      }));
+      return fd;
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+
+      if (isStaleLock(GLOBAL_REF_LOCK_FILE)) {
+        try { fs.unlinkSync(GLOBAL_REF_LOCK_FILE); } catch { /* another process won the race */ }
+        continue;
+      }
+
+      sleepSync(GLOBAL_REF_LOCK_WAIT_MS);
+    }
+  }
+
+  throw new Error('Timed out waiting for decisions ref lock');
+}
+
+function withGlobalRefLock(fn) {
+  const fd = acquireGlobalRefLock();
+  try {
+    return fn();
+  } finally {
+    try { fs.closeSync(fd); } catch { /* ignore close failures */ }
+    try { fs.unlinkSync(GLOBAL_REF_LOCK_FILE); } catch { /* ignore stale cleanup failures */ }
+  }
+}
+
 function readGlobalLog() {
   if (!fs.existsSync(GLOBAL_LOG_FILE)) return [];
   return fs.readFileSync(GLOBAL_LOG_FILE, 'utf8')
@@ -94,24 +149,127 @@ function listDomainFiles() {
     .map(f => f.replace('.json', ''));
 }
 
+function readRefIndex() {
+  if (!fs.existsSync(GLOBAL_REF_INDEX_FILE)) return {};
+  try {
+    const parsed = JSON.parse(fs.readFileSync(GLOBAL_REF_INDEX_FILE, 'utf8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeRefIndex(index) {
+  fs.mkdirSync(GLOBAL_LOG_DIR, { recursive: true });
+  fs.writeFileSync(GLOBAL_REF_INDEX_FILE, JSON.stringify(index, null, 2) + '\n', 'utf8');
+}
+
+function decisionRefKey({ domain, type, ref }) {
+  return JSON.stringify([domain, type, ref]);
+}
+
+function sameDecisionRef(entry, { domain, type, ref }) {
+  return Boolean(entry && entry.domain === domain && entry.type === type && entry.ref === ref);
+}
+
+function readRecentGlobalLogEntries() {
+  if (!fs.existsSync(GLOBAL_LOG_FILE)) return [];
+
+  const stat = fs.statSync(GLOBAL_LOG_FILE);
+  const length = Math.min(stat.size, RECENT_LOG_SCAN_BYTES);
+  const start = stat.size - length;
+  const buffer = Buffer.alloc(length);
+  const fd = fs.openSync(GLOBAL_LOG_FILE, 'r');
+
+  try {
+    fs.readSync(fd, buffer, 0, length, start);
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  const text = buffer.toString('utf8');
+  const lines = text
+    .split('\n')
+    .filter(Boolean)
+    .slice(start === 0 ? 0 : 1)
+    .slice(-RECENT_LOG_SCAN_LINES);
+
+  return lines
+    .map(line => { try { return JSON.parse(line); } catch { return null; } })
+    .filter(Boolean);
+}
+
+function findRecentGlobalLogEntryByRef(entry) {
+  return readRecentGlobalLogEntries().find(candidate => sameDecisionRef(candidate, entry));
+}
+
+function writeDomainDecision(entry) {
+  const domainFile = domainFilePath(entry.domain);
+  if (!fs.existsSync(domainFile)) return;
+
+  const domainData = loadDomain(entry.domain);
+  if (!Array.isArray(domainData.decisions)) domainData.decisions = [];
+  domainData.decisions.push(entry);
+
+  // Auto-inject prevention pattern into domain constraints[] for constraint-guard.js
+  if (entry.prevention && (entry.type === 'bug-fix' || entry.type === 'constraint')) {
+    if (!Array.isArray(domainData.constraints)) domainData.constraints = [];
+    const constraintEntry = `[prevention] ${entry.summary}|pattern:${entry.prevention}`;
+    // Only add if not already present (avoid duplicates on re-run)
+    if (!domainData.constraints.includes(constraintEntry)) {
+      domainData.constraints.push(constraintEntry);
+    }
+  }
+
+  saveDomain(entry.domain, domainData);
+}
+
+function appendDecision(entry, { writeDomain = true, dedupeRef = false } = {}) {
+  if (dedupeRef && entry.ref) {
+    return withGlobalRefLock(() => {
+      const refIndex = readRefIndex();
+      const key = decisionRefKey(entry);
+      const indexed = refIndex[key];
+      if (indexed) return indexed;
+
+      const recent = findRecentGlobalLogEntryByRef(entry);
+      if (recent) {
+        writeRefIndex({ ...refIndex, [key]: recent });
+        return recent;
+      }
+
+      if (writeDomain) writeDomainDecision(entry);
+      appendGlobalLog(entry);
+      writeRefIndex({ ...refIndex, [key]: entry });
+      return entry;
+    });
+  }
+
+  if (writeDomain) writeDomainDecision(entry);
+  appendGlobalLog(entry);
+  return entry;
+}
+
 // ─── public API ─────────────────────────────────────────────────────────────
 
 /**
  * Add a decision record to the specified domain and global log.
  * @param {object} opts
  * @param {string} opts.domain - domain key, e.g. "domain_commands"
- * @param {'design'|'bug-fix'|'refactor'|'tool-pattern'|'constraint'} opts.type
+ * @param {'design'|'bug-fix'|'refactor'|'tool-pattern'|'constraint'|'failure-trace'} opts.type
  * @param {string} opts.summary - one-line description
  * @param {string} opts.why - root cause / motivation
  * @param {string[]} [opts.files] - affected file paths
  * @param {string} [opts.ref] - PR/commit/issue reference
  * @param {string} [opts.prevention] - keyword/pattern to auto-inject into domain constraints[]
+ *   When provided for bug-fix or constraint types, appends a constraint entry:
+ *   "[prevention] <summary>|pattern:<prevention>" — picked up by constraint-guard.js
  * @param {string[]} [opts.evidence] - concrete proof captured while resolving the issue
  * @param {string[]} [opts.falseNormalSignals] - signals that looked healthy but were misleading
  * @param {string[]} [opts.verifyWith] - explicit follow-up checks for re-validation
  * @param {string} [opts.nextSuspicion] - what to suspect first if the issue recurs
- *   When provided for bug-fix or constraint types, appends a constraint entry:
- *   "[prevention] <summary>|pattern:<prevention>" — picked up by constraint-guard.js
+ * @param {boolean} [opts.writeDomain=true] - write into domain_*.json as well as the global log
+ * @param {boolean} [opts.dedupeRef=false] - reuse an existing global entry with the same domain/type/ref
  * @returns {object} the created decision entry
  */
 function addDecision({
@@ -126,8 +284,10 @@ function addDecision({
   falseNormalSignals = [],
   verifyWith = [],
   nextSuspicion = '',
+  writeDomain = true,
+  dedupeRef = false,
 }) {
-  const VALID_TYPES = ['design', 'bug-fix', 'refactor', 'tool-pattern', 'constraint'];
+  const VALID_TYPES = ['design', 'bug-fix', 'refactor', 'tool-pattern', 'constraint', 'failure-trace'];
   if (!domain) throw new Error('--domain is required');
   if (!VALID_TYPES.includes(type)) throw new Error(`--type must be one of: ${VALID_TYPES.join(', ')}`);
   if (!summary) throw new Error('--summary is required');
@@ -149,30 +309,9 @@ function addDecision({
     ...(nextSuspicion ? { nextSuspicion } : {})
   };
 
-  // Write into domain_*.json decisions array (best-effort; falls back to global log only)
-  const domainFile = domainFilePath(domain);
-  if (fs.existsSync(domainFile)) {
-    const domainData = loadDomain(domain);
-    if (!Array.isArray(domainData.decisions)) domainData.decisions = [];
-    domainData.decisions.push(entry);
-
-    // Auto-inject prevention pattern into domain constraints[] for constraint-guard.js
-    if (prevention && (type === 'bug-fix' || type === 'constraint')) {
-      if (!Array.isArray(domainData.constraints)) domainData.constraints = [];
-      const constraintEntry = `[prevention] ${summary}|pattern:${prevention}`;
-      // Only add if not already present (avoid duplicates on re-run)
-      if (!domainData.constraints.includes(constraintEntry)) {
-        domainData.constraints.push(constraintEntry);
-      }
-    }
-
-    saveDomain(domain, domainData);
-  }
-
-  // Append to global log
-  appendGlobalLog(entry);
-
-  return entry;
+  // Optionally mirror the entry into domain_*.json when writeDomain is enabled
+  // and the domain file already exists; otherwise only the global log is updated.
+  return appendDecision(entry, { writeDomain, dedupeRef });
 }
 
 /**

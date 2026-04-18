@@ -7,10 +7,11 @@ Claude Code 세션 간 컨텍스트를 지속하는 시스템. 세션 시작 시
 ## 진입점
 
 - `scripts/hooks/session-start.js` — SessionStart 훅 핸들러. `selectMatchingSession()` 호출 후 `{ hookSpecificOutput: { additionalContext } }` JSON을 stdout으로 출력해 Claude 컨텍스트에 주입
-- `scripts/hooks/session-end.js` — SessionEnd 훅 핸들러. 현재 세션 요약을 state-store에 저장
+- `scripts/hooks/session-end.js` — SessionEnd 훅 핸들러. 현재 세션 요약을 markdown 세션 파일에 저장하고 concrete failure trace를 durable decisions log로 승격
 - `scripts/lib/session-manager.js` — 세션 CRUD 및 매칭 로직
 - `scripts/lib/session-aliases.js` — 세션 별칭(alias) 관리
 - `scripts/lib/session-adapters/` — claude-history, dmux-tmux 등 어댑터 패턴 구현
+- `scripts/lib/decisions.js` — `failure-trace` 타입을 `~/.claude/decisions/index.jsonl`에 저장하는 durable promotion 레이어
 
 ## 핵심 제약
 
@@ -20,6 +21,7 @@ Claude Code 세션 간 컨텍스트를 지속하는 시스템. 세션 시작 시
 - state-store 쓰기 실패 시 exit 0 유지 (세션 저장 실패가 작업을 막으면 안 됨)
 - `CLAUDE_SESSION_ID` 환경변수 없으면 cwd SHA1로 폴백
 - 세션 메모리는 교훈 저장소보다 실패 흔적 장부가 우선이다. 실패 가설, false-normal 신호, 아직 없는 증거, 다음 의심 지점을 남기지 못하면 generic lesson으로 저장하지 않는다.
+- concrete failure trace는 세션 파일에만 두지 않고 `~/.claude/decisions/index.jsonl`에 `failure-trace` 타입으로 1회 승격한다. 기본 동작은 repo ontology JSON을 자동 수정하지 않는다.
 - 재개 컨텍스트는 필요한 부분만 로드한다. 기본 context profile은 요약, 핵심 제약, false-normal check, 대표 failure pattern만 포함하고 전체 히스토리/결정 로그를 끌어오지 않는다.
 
 ## 관련 도메인
