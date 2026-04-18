@@ -150,6 +150,48 @@ run('addDecision: dedupes durable promotions by ref when requested', () => {
   assert.strictEqual(second.id, first.id);
   const results = queryDecisions({ type: 'failure-trace' });
   assert.strictEqual(results.length, 1);
+
+  const refIndexFile = path.join(tmpRoot, '.claude', 'decisions', 'refs.json');
+  assert.ok(fs.existsSync(refIndexFile), 'dedupe should maintain a lightweight ref index');
+  const refIndex = JSON.parse(fs.readFileSync(refIndexFile, 'utf8'));
+  assert.strictEqual(Object.keys(refIndex).length, 1);
+  assert.strictEqual(Object.values(refIndex)[0].id, first.id);
+});
+
+run('addDecision: backfills dedupe index from recent global log entry', () => {
+  const logDir = path.join(tmpRoot, '.claude', 'decisions');
+  const logFile = path.join(logDir, 'index.jsonl');
+  fs.mkdirSync(logDir, { recursive: true });
+
+  const existing = {
+    id: 'dec-existing-tail',
+    date: '2026-04-19',
+    type: 'failure-trace',
+    domain: 'domain_commands',
+    summary: 'existing tail failure trace',
+    why: 'same unresolved failure trace',
+    ref: 'failure-trace:session-a:tail',
+  };
+  fs.writeFileSync(logFile, JSON.stringify(existing) + '\n', 'utf8');
+
+  const { addDecision, queryDecisions } = require('../../scripts/lib/decisions');
+  const returned = addDecision({
+    domain: 'domain_commands',
+    type: 'failure-trace',
+    summary: 'new duplicate failure trace',
+    why: 'same unresolved failure trace',
+    ref: 'failure-trace:session-a:tail',
+    writeDomain: false,
+    dedupeRef: true,
+  });
+
+  assert.strictEqual(returned.id, existing.id);
+  assert.strictEqual(queryDecisions({ type: 'failure-trace' }).length, 1);
+
+  const refIndexFile = path.join(logDir, 'refs.json');
+  const refIndex = JSON.parse(fs.readFileSync(refIndexFile, 'utf8'));
+  const key = JSON.stringify(['domain_commands', 'failure-trace', 'failure-trace:session-a:tail']);
+  assert.strictEqual(refIndex[key].id, existing.id);
 });
 
 run('queryDecisions: filters by domain', () => {

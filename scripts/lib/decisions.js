@@ -41,6 +41,13 @@ function resolveOntologyDir() {
 const ONTOLOGY_DIR = resolveOntologyDir();
 const GLOBAL_LOG_DIR = path.join(os.homedir(), '.claude', 'decisions');
 const GLOBAL_LOG_FILE = path.join(GLOBAL_LOG_DIR, 'index.jsonl');
+const GLOBAL_REF_INDEX_FILE = path.join(GLOBAL_LOG_DIR, 'refs.json');
+const GLOBAL_REF_LOCK_FILE = path.join(GLOBAL_LOG_DIR, 'refs.lock');
+const GLOBAL_REF_LOCK_ATTEMPTS = 100;
+const GLOBAL_REF_LOCK_WAIT_MS = 20;
+const GLOBAL_REF_LOCK_STALE_MS = 30_000;
+const RECENT_LOG_SCAN_BYTES = 64 * 1024;
+const RECENT_LOG_SCAN_LINES = 200;
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -78,6 +85,54 @@ function appendGlobalLog(entry) {
   fs.appendFileSync(GLOBAL_LOG_FILE, JSON.stringify(entry) + '\n', 'utf8');
 }
 
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function isStaleLock(file) {
+  try {
+    return Date.now() - fs.statSync(file).mtimeMs > GLOBAL_REF_LOCK_STALE_MS;
+  } catch {
+    return false;
+  }
+}
+
+function acquireGlobalRefLock() {
+  fs.mkdirSync(GLOBAL_LOG_DIR, { recursive: true });
+
+  for (let attempt = 0; attempt < GLOBAL_REF_LOCK_ATTEMPTS; attempt++) {
+    try {
+      const fd = fs.openSync(GLOBAL_REF_LOCK_FILE, 'wx');
+      fs.writeFileSync(fd, JSON.stringify({
+        pid: process.pid,
+        createdAt: new Date().toISOString()
+      }));
+      return fd;
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+
+      if (isStaleLock(GLOBAL_REF_LOCK_FILE)) {
+        try { fs.unlinkSync(GLOBAL_REF_LOCK_FILE); } catch { /* another process won the race */ }
+        continue;
+      }
+
+      sleepSync(GLOBAL_REF_LOCK_WAIT_MS);
+    }
+  }
+
+  throw new Error('Timed out waiting for decisions ref lock');
+}
+
+function withGlobalRefLock(fn) {
+  const fd = acquireGlobalRefLock();
+  try {
+    return fn();
+  } finally {
+    try { fs.closeSync(fd); } catch { /* ignore close failures */ }
+    try { fs.unlinkSync(GLOBAL_REF_LOCK_FILE); } catch { /* ignore stale cleanup failures */ }
+  }
+}
+
 function readGlobalLog() {
   if (!fs.existsSync(GLOBAL_LOG_FILE)) return [];
   return fs.readFileSync(GLOBAL_LOG_FILE, 'utf8')
@@ -92,6 +147,107 @@ function listDomainFiles() {
   return fs.readdirSync(ONTOLOGY_DIR)
     .filter(f => f.startsWith('domain_') && f.endsWith('.json'))
     .map(f => f.replace('.json', ''));
+}
+
+function readRefIndex() {
+  if (!fs.existsSync(GLOBAL_REF_INDEX_FILE)) return {};
+  try {
+    const parsed = JSON.parse(fs.readFileSync(GLOBAL_REF_INDEX_FILE, 'utf8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeRefIndex(index) {
+  fs.mkdirSync(GLOBAL_LOG_DIR, { recursive: true });
+  fs.writeFileSync(GLOBAL_REF_INDEX_FILE, JSON.stringify(index, null, 2) + '\n', 'utf8');
+}
+
+function decisionRefKey({ domain, type, ref }) {
+  return JSON.stringify([domain, type, ref]);
+}
+
+function sameDecisionRef(entry, { domain, type, ref }) {
+  return Boolean(entry && entry.domain === domain && entry.type === type && entry.ref === ref);
+}
+
+function readRecentGlobalLogEntries() {
+  if (!fs.existsSync(GLOBAL_LOG_FILE)) return [];
+
+  const stat = fs.statSync(GLOBAL_LOG_FILE);
+  const length = Math.min(stat.size, RECENT_LOG_SCAN_BYTES);
+  const start = stat.size - length;
+  const buffer = Buffer.alloc(length);
+  const fd = fs.openSync(GLOBAL_LOG_FILE, 'r');
+
+  try {
+    fs.readSync(fd, buffer, 0, length, start);
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  const text = buffer.toString('utf8');
+  const lines = text
+    .split('\n')
+    .filter(Boolean)
+    .slice(start === 0 ? 0 : 1)
+    .slice(-RECENT_LOG_SCAN_LINES);
+
+  return lines
+    .map(line => { try { return JSON.parse(line); } catch { return null; } })
+    .filter(Boolean);
+}
+
+function findRecentGlobalLogEntryByRef(entry) {
+  return readRecentGlobalLogEntries().find(candidate => sameDecisionRef(candidate, entry));
+}
+
+function writeDomainDecision(entry) {
+  const domainFile = domainFilePath(entry.domain);
+  if (!fs.existsSync(domainFile)) return;
+
+  const domainData = loadDomain(entry.domain);
+  if (!Array.isArray(domainData.decisions)) domainData.decisions = [];
+  domainData.decisions.push(entry);
+
+  // Auto-inject prevention pattern into domain constraints[] for constraint-guard.js
+  if (entry.prevention && (entry.type === 'bug-fix' || entry.type === 'constraint')) {
+    if (!Array.isArray(domainData.constraints)) domainData.constraints = [];
+    const constraintEntry = `[prevention] ${entry.summary}|pattern:${entry.prevention}`;
+    // Only add if not already present (avoid duplicates on re-run)
+    if (!domainData.constraints.includes(constraintEntry)) {
+      domainData.constraints.push(constraintEntry);
+    }
+  }
+
+  saveDomain(entry.domain, domainData);
+}
+
+function appendDecision(entry, { writeDomain = true, dedupeRef = false } = {}) {
+  if (dedupeRef && entry.ref) {
+    return withGlobalRefLock(() => {
+      const refIndex = readRefIndex();
+      const key = decisionRefKey(entry);
+      const indexed = refIndex[key];
+      if (indexed) return indexed;
+
+      const recent = findRecentGlobalLogEntryByRef(entry);
+      if (recent) {
+        writeRefIndex({ ...refIndex, [key]: recent });
+        return recent;
+      }
+
+      if (writeDomain) writeDomainDecision(entry);
+      appendGlobalLog(entry);
+      writeRefIndex({ ...refIndex, [key]: entry });
+      return entry;
+    });
+  }
+
+  if (writeDomain) writeDomainDecision(entry);
+  appendGlobalLog(entry);
+  return entry;
 }
 
 // ─── public API ─────────────────────────────────────────────────────────────
@@ -137,15 +293,6 @@ function addDecision({
   if (!summary) throw new Error('--summary is required');
   if (!why) throw new Error('--why is required');
 
-  if (dedupeRef && ref) {
-    const existing = readGlobalLog().find(candidate =>
-      candidate.domain === domain
-      && candidate.type === type
-      && candidate.ref === ref
-    );
-    if (existing) return existing;
-  }
-
   const entry = {
     id: makeId(),
     date: today(),
@@ -162,30 +309,9 @@ function addDecision({
     ...(nextSuspicion ? { nextSuspicion } : {})
   };
 
-  // Write into domain_*.json decisions array (best-effort; falls back to global log only)
-  const domainFile = domainFilePath(domain);
-  if (writeDomain && fs.existsSync(domainFile)) {
-    const domainData = loadDomain(domain);
-    if (!Array.isArray(domainData.decisions)) domainData.decisions = [];
-    domainData.decisions.push(entry);
-
-    // Auto-inject prevention pattern into domain constraints[] for constraint-guard.js
-    if (prevention && (type === 'bug-fix' || type === 'constraint')) {
-      if (!Array.isArray(domainData.constraints)) domainData.constraints = [];
-      const constraintEntry = `[prevention] ${summary}|pattern:${prevention}`;
-      // Only add if not already present (avoid duplicates on re-run)
-      if (!domainData.constraints.includes(constraintEntry)) {
-        domainData.constraints.push(constraintEntry);
-      }
-    }
-
-    saveDomain(domain, domainData);
-  }
-
-  // Append to global log
-  appendGlobalLog(entry);
-
-  return entry;
+  // Optionally mirror the entry into domain_*.json when writeDomain is enabled
+  // and the domain file already exists; otherwise only the global log is updated.
+  return appendDecision(entry, { writeDomain, dedupeRef });
 }
 
 /**

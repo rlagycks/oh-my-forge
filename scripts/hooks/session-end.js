@@ -237,7 +237,7 @@ function buildFailureTracePromotion(summary, sessionFile) {
     why: whyParts.join(' | ') || 'SessionEnd captured an unresolved failure trace for future debugging.',
     files: Array.isArray(summary.filesModified) ? summary.filesModified : [],
     ref: `failure-trace:${path.basename(sessionFile)}:${hashFailureTrace(trace)}`,
-    evidence: failedHypotheses,
+    evidence: [],
     falseNormalSignals,
     verifyWith: evidenceMissing.map(signal => `Resolve missing evidence: ${signal}`),
     nextSuspicion,

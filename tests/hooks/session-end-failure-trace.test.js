@@ -114,6 +114,7 @@ if (test('session-end promotes concrete failure traces to durable decisions log'
     assert.strictEqual(entries[0].type, 'failure-trace');
     assert.ok(entries[0].summary.includes('failure trace promotion path'), JSON.stringify(entries[0], null, 2));
     assert.ok(entries[0].why.includes('Command failed because durable log was empty'), JSON.stringify(entries[0], null, 2));
+    assert.ok(!Object.prototype.hasOwnProperty.call(entries[0], 'evidence'), JSON.stringify(entries[0], null, 2));
     assert.deepStrictEqual(entries[0].falseNormalSignals, ['Tests passed but evidence missing.']);
     assert.deepStrictEqual(entries[0].verifyWith, ['Resolve missing evidence: Tests passed but evidence missing.']);
     assert.strictEqual(entries[0].nextSuspicion, 'failure trace promotion path');
