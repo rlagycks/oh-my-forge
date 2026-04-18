@@ -35,6 +35,7 @@ const REQUIRED_HANDOFF_ITEMS = [
   'Open Risks',
   'Next Action',
 ];
+const SKIPPED_MARKDOWN_DIRS = new Set(['.git', 'node_modules']);
 
 function normalizeHeading(heading) {
   return String(heading || '')
@@ -290,16 +291,44 @@ function inferDomainFromDetailPath(detailFile) {
   return match ? match[1] : '';
 }
 
+function isDesignContractMarkdownFile(filePath) {
+  if (!String(filePath || '').toLowerCase().endsWith('.md')) return false;
+
+  try {
+    const markdown = readContractFile(filePath);
+    if (/^#\s+Design Contract:/mi.test(markdown)) return true;
+
+    const sections = splitSections(markdown);
+    return Boolean(sections.problemOneLine && sections.handoffFormat);
+  } catch {
+    return false;
+  }
+}
+
 function collectMarkdownFiles(dirPath) {
-  const absDir = path.resolve(dirPath);
-  if (!fs.existsSync(absDir)) return [];
+  const absPath = path.resolve(dirPath);
+  if (!fs.existsSync(absPath)) return [];
+
+  let stat;
+  try {
+    stat = fs.statSync(absPath);
+  } catch {
+    return [];
+  }
+
+  if (stat.isFile()) {
+    return isDesignContractMarkdownFile(absPath) ? [absPath] : [];
+  }
+  if (!stat.isDirectory()) return [];
 
   const results = [];
-  for (const entry of fs.readdirSync(absDir, { withFileTypes: true })) {
-    const fullPath = path.join(absDir, entry.name);
+  for (const entry of fs.readdirSync(absPath, { withFileTypes: true })) {
+    if (entry.isDirectory() && SKIPPED_MARKDOWN_DIRS.has(entry.name)) continue;
+
+    const fullPath = path.join(absPath, entry.name);
     if (entry.isDirectory()) {
       results.push(...collectMarkdownFiles(fullPath));
-    } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
+    } else if (entry.isFile() && isDesignContractMarkdownFile(fullPath)) {
       results.push(fullPath);
     }
   }
@@ -341,12 +370,23 @@ function parseCliFlags(args = []) {
     json: false,
   };
 
+  const readFlagValue = (index, flag) => {
+    const hasNext = Object.prototype.hasOwnProperty.call(args, index + 1);
+    const value = hasNext ? args[index + 1] : undefined;
+    if (!hasNext || String(value || '').startsWith('--')) {
+      throw new Error(`Missing value for ${flag}`);
+    }
+    return value;
+  };
+
   for (let index = 0; index < args.length; index++) {
     const arg = args[index];
     if (arg === '--file') {
-      options.files.push(args[++index]);
+      options.files.push(readFlagValue(index, arg));
+      index++;
     } else if (arg === '--dir') {
-      options.dirs.push(args[++index]);
+      options.dirs.push(readFlagValue(index, arg));
+      index++;
     } else if (arg === '--json') {
       options.json = true;
     }
@@ -377,27 +417,32 @@ function printValidationReport(report) {
 }
 
 function runCli(argv = process.argv.slice(2)) {
-  const [cmd, ...rest] = argv;
-  if (cmd !== 'validate') {
-    console.error('Usage: design-contract.js validate --file <path> [--file <path>] [--dir <dir>] [--json]');
-    process.exit(1);
-  }
+  try {
+    const [cmd, ...rest] = argv;
+    if (cmd !== 'validate') {
+      console.error('Usage: design-contract.js validate --file <path> [--file <path>] [--dir <dir>] [--json]');
+      process.exit(1);
+    }
 
-  const options = parseCliFlags(rest);
-  const files = collectFilesFromOptions(options);
-  if (files.length === 0) {
-    console.error('No design contract files found. Use --file <path> or --dir <dir>.');
-    process.exit(1);
-  }
+    const options = parseCliFlags(rest);
+    const files = collectFilesFromOptions(options);
+    if (files.length === 0) {
+      console.error('No design contract files found. Use --file <path> or --dir <dir>.');
+      process.exit(1);
+    }
 
-  const report = validateDesignContractFiles(files);
-  if (options.json) {
-    console.log(JSON.stringify(report, null, 2));
-  } else {
-    printValidationReport(report);
-  }
+    const report = validateDesignContractFiles(files);
+    if (options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      printValidationReport(report);
+    }
 
-  if (!report.valid) {
+    if (!report.valid) {
+      process.exit(1);
+    }
+  } catch (err) {
+    console.error(err && err.message ? err.message : String(err));
     process.exit(1);
   }
 }

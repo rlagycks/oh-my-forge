@@ -218,6 +218,53 @@ if (test('design-contract validate CLI exits non-zero for invalid batches', () =
   });
 })) passed++; else failed++;
 
+if (test('design-contract validate CLI reports missing flag values cleanly', () => {
+  const result = spawnSync(process.execPath, [scriptPath, 'validate', '--file', '--json'], {
+    encoding: 'utf8',
+  });
+
+  assert.notStrictEqual(result.status, 0);
+  assert.ok(result.stderr.includes('Missing value for --file'), result.stderr);
+  assert.ok(!result.stderr.includes('TypeError'), result.stderr);
+  assert.ok(!result.stderr.includes('at '), result.stderr);
+})) passed++; else failed++;
+
+if (test('design-contract validate CLI accepts a file path passed to --dir', () => {
+  withTempDir(tempDir => {
+    const contractPath = path.join(tempDir, 'valid.design-contract.md');
+    fs.writeFileSync(contractPath, contractMarkdown);
+
+    const result = spawnSync(process.execPath, [scriptPath, 'validate', '--dir', contractPath, '--json'], {
+      encoding: 'utf8',
+    });
+
+    assert.strictEqual(result.status, 0, result.stderr || result.stdout);
+    const report = JSON.parse(result.stdout);
+    assert.strictEqual(report.files.length, 1);
+    assert.strictEqual(path.basename(report.files[0].file), 'valid.design-contract.md');
+  });
+})) passed++; else failed++;
+
+if (test('design-contract validate CLI skips unrelated markdown and vendored dirs', () => {
+  withTempDir(tempDir => {
+    const contractsDir = path.join(tempDir, 'contracts');
+    const nodeModulesDir = path.join(contractsDir, 'node_modules');
+    fs.mkdirSync(nodeModulesDir, { recursive: true });
+    fs.writeFileSync(path.join(contractsDir, 'valid.design-contract.md'), contractMarkdown);
+    fs.writeFileSync(path.join(contractsDir, 'README.md'), '# Notes\n\nNot a design contract.');
+    fs.writeFileSync(path.join(nodeModulesDir, 'invalid.design-contract.md'), incompleteContractMarkdown);
+
+    const result = spawnSync(process.execPath, [scriptPath, 'validate', '--dir', contractsDir, '--json'], {
+      encoding: 'utf8',
+    });
+
+    assert.strictEqual(result.status, 0, result.stderr || result.stdout);
+    const report = JSON.parse(result.stdout);
+    assert.strictEqual(report.files.length, 1);
+    assert.strictEqual(path.basename(report.files[0].file), 'valid.design-contract.md');
+  });
+})) passed++; else failed++;
+
 if (test('buildOntologyDetailFragment maps design contract fields into ontology detail shape', () => {
   const parsed = parseDesignContract(contractMarkdown);
   const fragment = buildOntologyDetailFragment(parsed, {
