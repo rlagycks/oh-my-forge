@@ -135,21 +135,27 @@ function listIncludesLabel(items, label) {
   return (items || []).some(item => normalizeHeading(item).includes(normalizedLabel));
 }
 
+function hasOwnProperty(object, property) {
+  return Object.prototype.hasOwnProperty.call(object || {}, property);
+}
+
 function validateDesignContract(contract = {}) {
   const errors = [];
+  const candidate = contract && typeof contract === 'object' ? contract : {};
 
   for (const [field, label, type] of REQUIRED_CONTRACT_FIELDS) {
-    if (type === 'string' && !hasString(contract[field])) {
-      errors.push(`Missing required design contract section: ${label}`);
-    }
-    if (type === 'array' && !hasItems(contract[field])) {
+    const value = candidate[field];
+    const hasRequiredValue = hasOwnProperty(candidate, field) && (type === 'string' ? hasString(value) : hasItems(value));
+    if (!hasRequiredValue) {
       errors.push(`Missing required design contract section: ${label}`);
     }
   }
 
-  for (const item of REQUIRED_HANDOFF_ITEMS) {
-    if (!listIncludesLabel(contract.handoffFormat, item)) {
-      errors.push(`Handoff Format must include: ${item}`);
+  if (hasItems(candidate.handoffFormat)) {
+    for (const item of REQUIRED_HANDOFF_ITEMS) {
+      if (!listIncludesLabel(candidate.handoffFormat, item)) {
+        errors.push(`Handoff Format must include: ${item}`);
+      }
     }
   }
 

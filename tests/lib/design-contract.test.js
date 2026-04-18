@@ -82,6 +82,34 @@ const incompleteContractMarkdown = `
 - Evidence
 `;
 
+const missingHandoffContractMarkdown = `
+# Design Contract: Missing Handoff
+
+## Problem One Line
+- Prevent duplicate webhook side effects when retries happen.
+
+## Mission
+- Deliver webhook retries safely without widening the notification feature scope.
+
+## Success
+- Retry attempts are idempotent.
+
+## Not Do
+- Do not redesign the whole notification pipeline.
+
+## Inputs / Contracts
+- Existing webhook payload shape stays stable.
+
+## Verification Points
+- Unit tests prove repeated deliveries do not duplicate side effects.
+
+## False-Normal Checks
+- A 200 response alone is not proof that side effects stayed idempotent.
+
+## Expansion Forbidden
+- No package swaps.
+`;
+
 console.log('\ndesign-contract.test.js');
 
 if (test('parseDesignContract extracts enforceable sections from markdown', () => {
@@ -119,6 +147,15 @@ if (test('validateDesignContract rejects contracts missing enforceable sections'
   assert.ok(validation.errors.some(error => error.includes('Expansion Forbidden')), validation.errors.join('\n'));
   assert.ok(validation.errors.some(error => error.includes('Open Risks')), validation.errors.join('\n'));
   assert.ok(validation.errors.some(error => error.includes('Next Action')), validation.errors.join('\n'));
+})) passed++; else failed++;
+
+if (test('validateDesignContract avoids redundant handoff item errors when handoff section is absent', () => {
+  const parsed = parseDesignContract(missingHandoffContractMarkdown);
+  const validation = validateDesignContract(parsed);
+
+  assert.strictEqual(validation.valid, false);
+  assert.ok(validation.errors.includes('Missing required design contract section: Handoff Format'), validation.errors.join('\n'));
+  assert.ok(!validation.errors.some(error => error.includes('Handoff Format must include')), validation.errors.join('\n'));
 })) passed++; else failed++;
 
 if (test('validateDesignContract accepts complete execution contracts', () => {
