@@ -13,6 +13,7 @@
     "agents/codex-rescue.md",
     "scripts/hooks/pre-bash-codex-guard.js",
     "scripts/lib/codex-handoff.js",
+    "scripts/lib/false-normal-detector.js",
     "schemas/codex-handoff-request.schema.json",
     "schemas/codex-handoff-result.schema.json"
   ],
@@ -97,6 +98,7 @@
     "multi_agent 활성화 시 max_threads = 6, max_depth = 1",
     "신규 파일 생성 시 .claude/ontology/index.json 업데이트 필수 (implementer 규칙)",
     "codex-handoff request artifact는 implementation source에서 write=true 필수 — dispatch는 이 값을 companion --write로 승격",
+    "false-normal completion 판정은 scripts/lib/false-normal-detector.js가 단일 소유 — 각 caller가 RESULT:DONE 판정 로직을 재구현하지 않음",
     "codex-companion.mjs 호출 시 --approval-mode 플래그 사용 금지 — pre-bash-codex-guard가 차단하지만 소스에도 작성 불가|pattern:--approval-mode",
     "codex-companion.mjs task 호출은 인라인 positional 프롬프트 금지 — --prompt-file 사용 필수|pattern:companion.mjs task \"",
     "codex-rescue 에이전트 수정 시 반드시 fail-fast 보장 — 재시도 루프 추가 금지|pattern:retry"
