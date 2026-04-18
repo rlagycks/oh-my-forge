@@ -154,6 +154,93 @@ function selectMatchingSession(sessions, cwd, currentProject) {
   return null;
 }
 
+function normalizeHeading(value) {
+  return String(value || '')
+    .replace(/[`*_]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function parseHeading(line) {
+  const match = String(line || '').match(/^(#{1,6})\s+(.+?)\s*$/);
+  if (!match) return null;
+  return {
+    level: match[1].length,
+    text: match[2].trim(),
+  };
+}
+
+function extractMarkdownSection(content, heading) {
+  const lines = String(content || '').split('\n');
+  const target = normalizeHeading(heading);
+  let startIndex = -1;
+  let startLevel = 0;
+
+  for (let index = 0; index < lines.length; index++) {
+    const parsed = parseHeading(lines[index]);
+    if (parsed && normalizeHeading(parsed.text) === target) {
+      startIndex = index;
+      startLevel = parsed.level;
+      break;
+    }
+  }
+
+  if (startIndex === -1) return '';
+
+  let endIndex = lines.length;
+  for (let index = startIndex + 1; index < lines.length; index++) {
+    const parsed = parseHeading(lines[index]);
+    if (parsed && parsed.level <= startLevel) {
+      endIndex = index;
+      break;
+    }
+  }
+
+  return lines.slice(startIndex, endIndex).join('\n').trim();
+}
+
+function extractSessionMetadata(content) {
+  const metadata = [];
+  for (const label of ['Project', 'Branch', 'Worktree']) {
+    const match = String(content || '').match(new RegExp(`^\\*\\*${label}:\\*\\*\\s*(.+)$`, 'm'));
+    if (match && match[1].trim()) {
+      metadata.push(`**${label}:** ${match[1].trim()}`);
+    }
+  }
+  return metadata;
+}
+
+function buildSessionStartContext(content) {
+  const cleanContent = String(content || '').trim();
+  if (!cleanContent || cleanContent.includes('[Session context goes here]')) {
+    return '';
+  }
+
+  const contextHeadings = [
+    'Tasks',
+    'Files Modified',
+    'What WORKED (with evidence)',
+    'Failure Trace Ledger',
+    'Failure Trace',
+    'Evidence still missing',
+    'Next Suspicion',
+    'Next Action',
+    'Context to Load',
+  ];
+  const sections = contextHeadings
+    .map(heading => extractMarkdownSection(cleanContent, heading))
+    .filter(Boolean);
+
+  if (sections.length === 0) {
+    return cleanContent;
+  }
+
+  const metadata = extractSessionMetadata(cleanContent);
+  return [...metadata, ...sections].join('\n\n').trim();
+}
+
 async function main() {
   const sessionsDir = getSessionsDir();
   const learnedDir = getLearnedSkillsDir();
@@ -182,8 +269,9 @@ async function main() {
 
       // Use the already-read content from selectMatchingSession (no duplicate I/O)
       const content = stripAnsi(result.content);
-      if (content && !content.includes('[Session context goes here]')) {
-        additionalContextParts.push(`Previous session summary:\n${content}`);
+      const sessionContext = buildSessionStartContext(content);
+      if (sessionContext) {
+        additionalContextParts.push(`Previous session summary:\n${sessionContext}`);
       }
     } else {
       log('[SessionStart] No matching session found');
