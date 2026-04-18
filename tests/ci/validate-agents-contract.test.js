@@ -97,11 +97,14 @@ if (test('validateAgents passes when a strict agent contains the full contract',
     '## Success',
     '- plan is actionable',
     '## Decision Policy',
-    '- choose the safest path',
+    '- You may choose the safest local planning path.',
+    '- Human approval is required for scope changes.',
+    '- Escalate when requirements conflict.',
     '## Execution Policy',
-    '- checkpoint before risky steps',
+    '- Start by confirming requirements before risky steps.',
+    '- Do not finish without evidence and next action.',
     '## Style',
-    '- concise',
+    '- Be concise and concrete.',
   ], { contract: 'strict' });
 
   try {
@@ -111,6 +114,41 @@ if (test('validateAgents passes when a strict agent contains the full contract',
 
     assert.strictEqual(result.valid, true, JSON.stringify(result, null, 2));
     assert.deepStrictEqual(result.errors, []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+})) passed++; else failed++;
+
+if (test('validateAgents fails when contract sections are present but too vague', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-agents-'));
+  const agentsDir = path.join(root, 'agents');
+  writeAgent(agentsDir, 'vague.md', [
+    '## Mission',
+    '- help with work',
+    '## Not Do',
+    '- stuff',
+    '## Success',
+    '- good outcome',
+    '## Decision Policy',
+    '- be smart',
+    '## Execution Policy',
+    '- work carefully',
+    '## Style',
+    '- nice',
+  ]);
+
+  try {
+    const result = validateAgents({
+      agentDirs: [agentsDir],
+    });
+
+    assert.strictEqual(result.valid, false);
+    assert.ok(result.errors.some(error => error.includes('Not Do must include a concrete prohibition')), result.errors.join('\n'));
+    assert.ok(result.errors.some(error => error.includes('Decision Policy must state autonomous decision scope')), result.errors.join('\n'));
+    assert.ok(result.errors.some(error => error.includes('Decision Policy must state human approval boundary')), result.errors.join('\n'));
+    assert.ok(result.errors.some(error => error.includes('Decision Policy must state escalation criteria')), result.errors.join('\n'));
+    assert.ok(result.errors.some(error => error.includes('Execution Policy must state evidence or blocked completion criteria')), result.errors.join('\n'));
+    assert.ok(result.errors.some(error => error.includes('Style must state reporting or communication style')), result.errors.join('\n'));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

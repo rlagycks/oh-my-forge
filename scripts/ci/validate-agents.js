@@ -21,6 +21,44 @@ const CONTRACT_SECTIONS = [
   'Execution Policy',
   'Style',
 ];
+const CONTRACT_SECTION_RULES = {
+  'Not Do': [
+    {
+      message: 'Not Do must include a concrete prohibition',
+      pattern: /\b(do not|don't|never|avoid|without approval|without evidence)\b/i,
+    },
+  ],
+  'Decision Policy': [
+    {
+      message: 'Decision Policy must state autonomous decision scope',
+      pattern: /\b(you may|may choose|may classify|may fix|may select|may infer|may assign|may tune|may remove|may propose|may adjust|may define)\b/i,
+    },
+    {
+      message: 'Decision Policy must state human approval boundary',
+      pattern: /\b(human approval|approval is required|ask for human approval|explicit approval)\b/i,
+    },
+    {
+      message: 'Decision Policy must state escalation criteria',
+      pattern: /\b(escalate|ask or escalate)\b/i,
+    },
+  ],
+  'Execution Policy': [
+    {
+      message: 'Execution Policy must state start or checkpoint criteria',
+      pattern: /\b(start|before|capture|read|inspect|review|run|collect|confirm|inventory|scan|establish|resolve)\b/i,
+    },
+    {
+      message: 'Execution Policy must state evidence or blocked completion criteria',
+      pattern: /\b(evidence|verdict|blocked|risk|handoff|next action|pass\/fail|score|recommended path|checking|source quality)\b/i,
+    },
+  ],
+  'Style': [
+    {
+      message: 'Style must state reporting or communication style',
+      pattern: /\b(concise|terse|concrete|evidence|specific|operational|pragmatic|severity|implementation|direct|clear|brief|precise|findings|diagnostic|compiler|audit|metric|reproducible|operator|strict|focused|exact|minimal|framework|idiomatic|runtime|remediation|behavior)\b/i,
+    },
+  ],
+};
 
 function extractFrontmatter(content) {
   const cleanContent = content.replace(/^\uFEFF/, '');
@@ -49,6 +87,41 @@ function extractBody(content) {
 function hasHeading(body, heading) {
   const pattern = new RegExp(`^##\\s+${heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'mi');
   return pattern.test(body);
+}
+
+function extractHeadingSection(body, heading) {
+  const lines = String(body || '').split(/\r?\n/);
+  const pattern = new RegExp(`^##\\s+${heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'i');
+  const startIndex = lines.findIndex(line => pattern.test(line.trim()));
+  if (startIndex === -1) return '';
+
+  let endIndex = lines.length;
+  for (let index = startIndex + 1; index < lines.length; index++) {
+    if (/^##\s+/.test(lines[index])) {
+      endIndex = index;
+      break;
+    }
+  }
+
+  return lines.slice(startIndex + 1, endIndex).join('\n').trim();
+}
+
+function validateContractSectionQuality(fileName, body, section) {
+  const errors = [];
+  const content = extractHeadingSection(body, section);
+  if (!content) {
+    errors.push(`ERROR: ${fileName} - Empty contract section: ${section}`);
+    return errors;
+  }
+
+  const rules = CONTRACT_SECTION_RULES[section] || [];
+  for (const rule of rules) {
+    if (!rule.pattern.test(content)) {
+      errors.push(`ERROR: ${fileName} - ${rule.message}`);
+    }
+  }
+
+  return errors;
 }
 
 function validateAgentFile(filePath) {
@@ -91,6 +164,9 @@ function validateAgentFile(filePath) {
   if (missingSections.length > 0) {
     const message = `${fileName} - Missing contract section(s): ${missingSections.join(', ')}`;
     errors.push(`ERROR: ${message}`);
+  }
+  for (const section of CONTRACT_SECTIONS.filter(section => !missingSections.includes(section))) {
+    errors.push(...validateContractSectionQuality(fileName, body, section));
   }
 
   return { file: fileName, errors, warnings };
@@ -144,6 +220,7 @@ function runCli() {
 
 module.exports = {
   CONTRACT_SECTIONS,
+  CONTRACT_SECTION_RULES,
   extractFrontmatter,
   validateAgentFile,
   validateAgents,
