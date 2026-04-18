@@ -154,7 +154,7 @@
               "date": { "type": "string", "description": "ISO date YYYY-MM-DD" },
               "type": {
                 "type": "string",
-                "enum": ["design", "bug-fix", "refactor", "tool-pattern", "constraint"],
+                "enum": ["design", "bug-fix", "refactor", "tool-pattern", "constraint", "failure-trace"],
                 "description": "Category of the decision"
               },
               "summary": { "type": "string", "description": "One-line: what was decided / changed" },

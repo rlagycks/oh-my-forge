@@ -101,6 +101,57 @@ run('addDecision: throws on missing required fields', () => {
   assert.throws(() => addDecision({ domain: 'domain_commands', type: 'bug-fix', summary: 'x' }), /why is required/);
 });
 
+run('addDecision: can append durable failure traces without writing domain files', () => {
+  const { addDecision, queryDecisions } = require('../../scripts/lib/decisions');
+  const domainFile = path.join(tmpRoot, '.claude', 'ontology', 'domain_commands.json');
+  const before = fs.readFileSync(domainFile, 'utf8');
+
+  const entry = addDecision({
+    domain: 'domain_commands',
+    type: 'failure-trace',
+    summary: 'parser fallback suspicion',
+    why: 'SessionEnd captured an unresolved failure trace',
+    ref: 'failure-trace:session-a:abc123',
+    falseNormalSignals: ['tests passed but evidence missing'],
+    verifyWith: ['prove changed-path coverage'],
+    nextSuspicion: 'parseCodexResult fallback path',
+    writeDomain: false,
+  });
+
+  assert.strictEqual(entry.type, 'failure-trace');
+  assert.strictEqual(fs.readFileSync(domainFile, 'utf8'), before, 'domain file should remain unchanged');
+
+  const results = queryDecisions({ type: 'failure-trace' });
+  assert.strictEqual(results.length, 1);
+  assert.strictEqual(results[0].ref, 'failure-trace:session-a:abc123');
+});
+
+run('addDecision: dedupes durable promotions by ref when requested', () => {
+  const { addDecision, queryDecisions } = require('../../scripts/lib/decisions');
+  const first = addDecision({
+    domain: 'domain_commands',
+    type: 'failure-trace',
+    summary: 'same failure trace',
+    why: 'same root',
+    ref: 'failure-trace:session-a:dedupe',
+    writeDomain: false,
+    dedupeRef: true,
+  });
+  const second = addDecision({
+    domain: 'domain_commands',
+    type: 'failure-trace',
+    summary: 'same failure trace',
+    why: 'same root',
+    ref: 'failure-trace:session-a:dedupe',
+    writeDomain: false,
+    dedupeRef: true,
+  });
+
+  assert.strictEqual(second.id, first.id);
+  const results = queryDecisions({ type: 'failure-trace' });
+  assert.strictEqual(results.length, 1);
+});
+
 run('queryDecisions: filters by domain', () => {
   const { addDecision, queryDecisions } = require('../../scripts/lib/decisions');
   addDecision({ domain: 'domain_commands', type: 'bug-fix', summary: 'cmd bug', why: 'reason a' });

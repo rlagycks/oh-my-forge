@@ -11,6 +11,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const {
   getSessionsDir,
   getDateString,
@@ -199,6 +200,64 @@ function normalizeFailureTrace(failureTrace) {
   };
 }
 
+function hasConcreteFailureTrace(summary) {
+  const trace = summary?.failureTrace || {};
+  return Boolean(
+    trace.nextSuspicion
+    || (Array.isArray(trace.failedHypotheses) && trace.failedHypotheses.length > 0)
+    || (Array.isArray(trace.falseNormalSignals) && trace.falseNormalSignals.length > 0)
+    || (Array.isArray(trace.evidenceMissing) && trace.evidenceMissing.length > 0)
+  );
+}
+
+function hashFailureTrace(trace) {
+  return crypto
+    .createHash('sha1')
+    .update(JSON.stringify(trace || {}))
+    .digest('hex')
+    .slice(0, 12);
+}
+
+function buildFailureTracePromotion(summary, sessionFile) {
+  const trace = summary.failureTrace;
+  const nextSuspicion = trace.nextSuspicion || 'unresolved failure trace';
+  const failedHypotheses = Array.isArray(trace.failedHypotheses) ? trace.failedHypotheses : [];
+  const falseNormalSignals = Array.isArray(trace.falseNormalSignals) ? trace.falseNormalSignals : [];
+  const evidenceMissing = Array.isArray(trace.evidenceMissing) ? trace.evidenceMissing : [];
+  const whyParts = [
+    ...failedHypotheses,
+    ...falseNormalSignals.map(signal => `False-normal signal: ${signal}`),
+    ...evidenceMissing.map(signal => `Evidence missing: ${signal}`),
+  ];
+
+  return {
+    domain: 'domain_session',
+    type: 'failure-trace',
+    summary: `Failure trace: ${nextSuspicion}`.slice(0, 200),
+    why: whyParts.join(' | ') || 'SessionEnd captured an unresolved failure trace for future debugging.',
+    files: Array.isArray(summary.filesModified) ? summary.filesModified : [],
+    ref: `failure-trace:${path.basename(sessionFile)}:${hashFailureTrace(trace)}`,
+    evidence: failedHypotheses,
+    falseNormalSignals,
+    verifyWith: evidenceMissing.map(signal => `Resolve missing evidence: ${signal}`),
+    nextSuspicion,
+    writeDomain: false,
+    dedupeRef: true,
+  };
+}
+
+function promoteFailureTrace(summary, sessionFile) {
+  if (!hasConcreteFailureTrace(summary)) return;
+
+  try {
+    const { addDecision } = require('../lib/decisions');
+    const entry = addDecision(buildFailureTracePromotion(summary, sessionFile));
+    log(`[SessionEnd] Promoted failure trace to durable decisions log: ${entry.id}`);
+  } catch (err) {
+    log(`[SessionEnd] Failed to promote failure trace: ${err.message}`);
+  }
+}
+
 // Read hook input from stdin (Claude Code provides transcript_path via stdin JSON)
 const MAX_STDIN = 1024 * 1024;
 let stdinData = '';
@@ -349,6 +408,8 @@ async function main() {
     writeFile(sessionFile, template);
     log(`[SessionEnd] Created session file: ${sessionFile}`);
   }
+
+  promoteFailureTrace(summary, sessionFile);
 
   process.exit(0);
 }

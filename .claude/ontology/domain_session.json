@@ -7,7 +7,8 @@
     "scripts/hooks/session-start-bootstrap.js",
     "scripts/lib/session-manager.js",
     "scripts/lib/session-aliases.js",
-    "scripts/lib/session-adapters/"
+    "scripts/lib/session-adapters/",
+    "scripts/lib/decisions.js"
   ],
   "summary": "Claude Code 세션 관리 시스템. 세션 파일 CRUD, 이전 세션 매칭·로드, 세션 데이터 영구 저장. ~/.claude/session-data/ 에 마크다운 파일로 저장.",
   "models": [
@@ -46,6 +47,7 @@
     "SESSION_FILENAME_REGEX: /^(\\d{4}-\\d{2}-\\d{2})(?:-([a-zA-Z0-9_][a-zA-Z0-9_-]*))?-session\\.tmp$/",
     "날력 검증 필수 — Date 롤오버 (예: Feb 31) 허용 금지",
     "실패 흔적 없는 generic lesson 저장 금지 — 실패 가설, false-normal 신호, 누락 증거, 다음 의심 지점을 우선 기록",
+    "concrete failure trace는 ~/.claude/decisions/index.jsonl에 failure-trace 타입으로 승격하되 repo ontology JSON은 기본 자동 수정하지 않는다",
     "기본 재개 컨텍스트는 최소 로드 — 전체 히스토리 대신 summary, constraints, false-normal checks, 대표 failure pattern만 사용"
   ],
   "executionContract": {
@@ -65,7 +67,8 @@
   "completionContract": {
     "requiredEvidence": [
       "저장된 세션 파일에 current status, files modified, decisions/open items, next concrete action이 있다.",
-      "Failure Trace Ledger가 실제 실패 흔적을 기록하거나, 실패 흔적이 없음을 명시적으로 표시한다."
+      "Failure Trace Ledger가 실제 실패 흔적을 기록하거나, 실패 흔적이 없음을 명시적으로 표시한다.",
+      "concrete failure trace가 있으면 ~/.claude/decisions/index.jsonl에 failure-trace durable record가 남는다."
     ],
     "falseNormalChecks": [
       "자연스러운 요약만 있고 실패 가설/증거 공백이 없으면 usable memory로 보지 않는다.",

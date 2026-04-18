@@ -126,7 +126,8 @@
       "scripts/hooks/session-end.js",
       "scripts/hooks/session-start-bootstrap.js",
       "scripts/lib/session-manager.js",
-      "scripts/lib/session-aliases.js"
+      "scripts/lib/session-aliases.js",
+      "scripts/lib/decisions.js"
     ],
     "spec": "docs/features/session.md",
     "detail": ".claude/ontology/domain_session.json",

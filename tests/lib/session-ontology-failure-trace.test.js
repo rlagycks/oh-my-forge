@@ -36,6 +36,11 @@ if (test('domain_session ontology exposes a minimal failure-trace contract', () 
     'missing false-normal completion check'
   );
   assert.strictEqual(domain.failurePatterns[0].id, 'session-generic-lesson');
+  assert.ok(domain.source.includes('scripts/lib/decisions.js'), 'missing durable decisions dependency');
+  assert.ok(
+    domain.constraints.some(item => item.includes('failure-trace 타입으로 승격')),
+    'missing durable failure-trace promotion constraint'
+  );
   assert.deepStrictEqual(domain.retrievalProfiles.context.maxDecisions, 0);
   assert.ok(
     domain.retrievalProfiles.context.include.includes('completionContract.falseNormalChecks'),
@@ -47,6 +52,7 @@ if (test('session feature doc documents failure traces and minimal context loadi
   const doc = fs.readFileSync(docPath, 'utf8');
 
   assert.ok(doc.includes('실패 흔적 장부'), 'missing failure trace constraint');
+  assert.ok(doc.includes('durable decisions log'), 'missing durable promotion documentation');
   assert.ok(doc.includes('기본 context profile'), 'missing minimal retrieval constraint');
 })) passed++; else failed++;
 

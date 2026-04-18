@@ -100,18 +100,20 @@ function listDomainFiles() {
  * Add a decision record to the specified domain and global log.
  * @param {object} opts
  * @param {string} opts.domain - domain key, e.g. "domain_commands"
- * @param {'design'|'bug-fix'|'refactor'|'tool-pattern'|'constraint'} opts.type
+ * @param {'design'|'bug-fix'|'refactor'|'tool-pattern'|'constraint'|'failure-trace'} opts.type
  * @param {string} opts.summary - one-line description
  * @param {string} opts.why - root cause / motivation
  * @param {string[]} [opts.files] - affected file paths
  * @param {string} [opts.ref] - PR/commit/issue reference
  * @param {string} [opts.prevention] - keyword/pattern to auto-inject into domain constraints[]
+ *   When provided for bug-fix or constraint types, appends a constraint entry:
+ *   "[prevention] <summary>|pattern:<prevention>" — picked up by constraint-guard.js
  * @param {string[]} [opts.evidence] - concrete proof captured while resolving the issue
  * @param {string[]} [opts.falseNormalSignals] - signals that looked healthy but were misleading
  * @param {string[]} [opts.verifyWith] - explicit follow-up checks for re-validation
  * @param {string} [opts.nextSuspicion] - what to suspect first if the issue recurs
- *   When provided for bug-fix or constraint types, appends a constraint entry:
- *   "[prevention] <summary>|pattern:<prevention>" — picked up by constraint-guard.js
+ * @param {boolean} [opts.writeDomain=true] - write into domain_*.json as well as the global log
+ * @param {boolean} [opts.dedupeRef=false] - reuse an existing global entry with the same domain/type/ref
  * @returns {object} the created decision entry
  */
 function addDecision({
@@ -126,12 +128,23 @@ function addDecision({
   falseNormalSignals = [],
   verifyWith = [],
   nextSuspicion = '',
+  writeDomain = true,
+  dedupeRef = false,
 }) {
-  const VALID_TYPES = ['design', 'bug-fix', 'refactor', 'tool-pattern', 'constraint'];
+  const VALID_TYPES = ['design', 'bug-fix', 'refactor', 'tool-pattern', 'constraint', 'failure-trace'];
   if (!domain) throw new Error('--domain is required');
   if (!VALID_TYPES.includes(type)) throw new Error(`--type must be one of: ${VALID_TYPES.join(', ')}`);
   if (!summary) throw new Error('--summary is required');
   if (!why) throw new Error('--why is required');
+
+  if (dedupeRef && ref) {
+    const existing = readGlobalLog().find(candidate =>
+      candidate.domain === domain
+      && candidate.type === type
+      && candidate.ref === ref
+    );
+    if (existing) return existing;
+  }
 
   const entry = {
     id: makeId(),
@@ -151,7 +164,7 @@ function addDecision({
 
   // Write into domain_*.json decisions array (best-effort; falls back to global log only)
   const domainFile = domainFilePath(domain);
-  if (fs.existsSync(domainFile)) {
+  if (writeDomain && fs.existsSync(domainFile)) {
     const domainData = loadDomain(domain);
     if (!Array.isArray(domainData.decisions)) domainData.decisions = [];
     domainData.decisions.push(entry);
