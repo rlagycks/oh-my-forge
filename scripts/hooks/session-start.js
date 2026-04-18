@@ -26,6 +26,11 @@ const { detectProjectType } = require('../lib/project-detect');
 const path = require('path');
 const fs = require('fs');
 
+const SUMMARY_START_MARKER = '<!-- ECC:SUMMARY:START -->';
+const SUMMARY_END_MARKER = '<!-- ECC:SUMMARY:END -->';
+const SESSION_METADATA_LABELS = ['Project', 'Branch', 'Worktree'];
+const SESSION_METADATA_PATTERN = /^\*\*(Project|Branch|Worktree):\*\*\s*(.+)$/gm;
+
 /**
  * Resolve a filesystem path to its canonical (real) form.
  *
@@ -172,14 +177,14 @@ function parseHeading(line) {
   };
 }
 
-function extractMarkdownSection(content, heading) {
-  const lines = String(content || '').split('\n');
+function extractMarkdownSection(lines, heading) {
+  const sourceLines = Array.isArray(lines) ? lines : String(lines || '').split('\n');
   const target = normalizeHeading(heading);
   let startIndex = -1;
   let startLevel = 0;
 
-  for (let index = 0; index < lines.length; index++) {
-    const parsed = parseHeading(lines[index]);
+  for (let index = 0; index < sourceLines.length; index++) {
+    const parsed = parseHeading(sourceLines[index]);
     if (parsed && normalizeHeading(parsed.text) === target) {
       startIndex = index;
       startLevel = parsed.level;
@@ -189,27 +194,33 @@ function extractMarkdownSection(content, heading) {
 
   if (startIndex === -1) return '';
 
-  let endIndex = lines.length;
-  for (let index = startIndex + 1; index < lines.length; index++) {
-    const parsed = parseHeading(lines[index]);
+  let endIndex = sourceLines.length;
+  for (let index = startIndex + 1; index < sourceLines.length; index++) {
+    const parsed = parseHeading(sourceLines[index]);
     if (parsed && parsed.level <= startLevel) {
       endIndex = index;
       break;
     }
   }
 
-  return lines.slice(startIndex, endIndex).join('\n').trim();
+  return sourceLines.slice(startIndex, endIndex).join('\n').trim();
 }
 
 function extractSessionMetadata(content) {
-  const metadata = [];
-  for (const label of ['Project', 'Branch', 'Worktree']) {
-    const match = String(content || '').match(new RegExp(`^\\*\\*${label}:\\*\\*\\s*(.+)$`, 'm'));
-    if (match && match[1].trim()) {
-      metadata.push(`**${label}:** ${match[1].trim()}`);
+  const metadataByLabel = new Map();
+  for (const match of String(content || '').matchAll(SESSION_METADATA_PATTERN)) {
+    if (match[2].trim()) {
+      metadataByLabel.set(match[1], match[2].trim());
     }
   }
-  return metadata;
+  return SESSION_METADATA_LABELS
+    .filter(label => metadataByLabel.has(label))
+    .map(label => `**${label}:** ${metadataByLabel.get(label)}`);
+}
+
+function hasGeneratedSummaryBlock(content) {
+  return String(content || '').includes(SUMMARY_START_MARKER)
+    && String(content || '').includes(SUMMARY_END_MARKER);
 }
 
 function buildSessionStartContext(content) {
@@ -229,15 +240,27 @@ function buildSessionStartContext(content) {
     'Next Action',
     'Context to Load',
   ];
-  const sections = contextHeadings
-    .map(heading => extractMarkdownSection(cleanContent, heading))
-    .filter(Boolean);
+  const lines = cleanContent.split('\n');
+  const metadata = extractSessionMetadata(cleanContent);
 
-  if (sections.length === 0) {
+  if (!hasGeneratedSummaryBlock(cleanContent)) {
+    if (metadata.length > 0) {
+      const hasResumeSection = contextHeadings.some(heading => extractMarkdownSection(lines, heading));
+      if (!hasResumeSection) {
+        return metadata.join('\n').trim();
+      }
+    }
     return cleanContent;
   }
 
-  const metadata = extractSessionMetadata(cleanContent);
+  const sections = contextHeadings
+    .map(heading => extractMarkdownSection(lines, heading))
+    .filter(Boolean);
+
+  if (sections.length === 0) {
+    return metadata.join('\n').trim();
+  }
+
   return [...metadata, ...sections].join('\n\n').trim();
 }
 
