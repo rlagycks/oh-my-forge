@@ -433,6 +433,158 @@ async function runTests() {
   else failed++;
 
   if (
+    await asyncTest('injects minimal generated session context without tool/stat noise', async () => {
+      const isoHome = path.join(os.tmpdir(), `ecc-minimal-start-${Date.now()}`);
+      const sessionsDir = getCanonicalSessionsDir(isoHome);
+      fs.mkdirSync(sessionsDir, { recursive: true });
+      fs.mkdirSync(path.join(isoHome, '.claude', 'skills', 'learned'), { recursive: true });
+
+      const sessionFile = path.join(sessionsDir, '2026-02-11-minctx01-session.tmp');
+      fs.writeFileSync(
+        sessionFile,
+        [
+          '# Session: 2026-02-11',
+          '**Project:** oh-my-forge',
+          '**Branch:** main',
+          '**Worktree:** /tmp/oh-my-forge',
+          '',
+          '---',
+          '<!-- ECC:SUMMARY:START -->',
+          '## Session Summary',
+          '### Tasks',
+          '- Continue ontology session loading.',
+          '',
+          '### Files Modified',
+          '- scripts/hooks/session-start.js',
+          '',
+          '### Tools Used',
+          'Read, Grep, Bash',
+          '',
+          '### Stats',
+          '- Total user messages: 42',
+          '<!-- ECC:SUMMARY:END -->',
+          '',
+          '### Failure Trace',
+          '- False-normal signals:',
+          '  - Tests passed but context still included full history.',
+          '',
+          '### Next Suspicion',
+          '- Next suspicion: session-start full file injection',
+          '',
+          '### Next Action',
+          '- Add minimal context extractor.',
+          '',
+          '### Current State',
+          'VERY_LONG_HISTORY_SHOULD_NOT_LOAD',
+        ].join('\n')
+      );
+
+      try {
+        const result = await runScript(path.join(scriptsDir, 'session-start.js'), '', {
+          HOME: isoHome,
+          USERPROFILE: isoHome
+        });
+        assert.strictEqual(result.code, 0);
+        const additionalContext = getSessionStartAdditionalContext(result.stdout);
+        assert.ok(additionalContext.includes('Previous session summary'), 'Should inject generated session context');
+        assert.ok(additionalContext.includes('Continue ontology session loading'), 'Should include task summary');
+        assert.ok(additionalContext.includes('scripts/hooks/session-start.js'), 'Should include modified files');
+        assert.ok(additionalContext.includes('session-start full file injection'), 'Should include next suspicion');
+        assert.ok(!additionalContext.includes('Tools Used'), 'Should not inject tool inventory by default');
+        assert.ok(!additionalContext.includes('Total user messages'), 'Should not inject stats by default');
+        assert.ok(!additionalContext.includes('VERY_LONG_HISTORY_SHOULD_NOT_LOAD'), 'Should not inject long free-form history');
+      } finally {
+        fs.rmSync(isoHome, { recursive: true, force: true });
+      }
+    })
+  )
+    passed++;
+  else failed++;
+
+  if (
+    await asyncTest('keeps legacy session files with headings intact when summary markers are absent', async () => {
+      const isoHome = path.join(os.tmpdir(), `ecc-legacy-heading-start-${Date.now()}`);
+      const sessionsDir = getCanonicalSessionsDir(isoHome);
+      fs.mkdirSync(sessionsDir, { recursive: true });
+      fs.mkdirSync(path.join(isoHome, '.claude', 'skills', 'learned'), { recursive: true });
+
+      const sessionFile = path.join(sessionsDir, '2026-02-11-legacyhd-session.tmp');
+      fs.writeFileSync(
+        sessionFile,
+        [
+          '# Free-form Session',
+          '**Project:** oh-my-forge',
+          '**Branch:** main',
+          '**Worktree:** /tmp/oh-my-forge',
+          '',
+          '### Failure Trace',
+          '- This was written before generated summary markers existed.',
+          '',
+          '### Next Action',
+          '- Continue from the full legacy notes.',
+          '',
+          'VERY_LONG_LEGACY_HISTORY_SHOULD_LOAD',
+        ].join('\n')
+      );
+
+      try {
+        const result = await runScript(path.join(scriptsDir, 'session-start.js'), '', {
+          HOME: isoHome,
+          USERPROFILE: isoHome
+        });
+        assert.strictEqual(result.code, 0);
+        const additionalContext = getSessionStartAdditionalContext(result.stdout);
+        assert.ok(additionalContext.includes('This was written before generated summary markers existed.'), 'Should include legacy heading content');
+        assert.ok(additionalContext.includes('VERY_LONG_LEGACY_HISTORY_SHOULD_LOAD'), 'Should keep full legacy content when no summary markers exist');
+      } finally {
+        fs.rmSync(isoHome, { recursive: true, force: true });
+      }
+    })
+  )
+    passed++;
+  else failed++;
+
+  if (
+    await asyncTest('loads metadata only for markerless generated sessions without resume sections', async () => {
+      const isoHome = path.join(os.tmpdir(), `ecc-markerless-metadata-start-${Date.now()}`);
+      const sessionsDir = getCanonicalSessionsDir(isoHome);
+      fs.mkdirSync(sessionsDir, { recursive: true });
+      fs.mkdirSync(path.join(isoHome, '.claude', 'skills', 'learned'), { recursive: true });
+
+      const sessionFile = path.join(sessionsDir, '2026-02-11-metonly1-session.tmp');
+      fs.writeFileSync(
+        sessionFile,
+        [
+          '# Session: 2026-02-11',
+          '**Project:** oh-my-forge',
+          '**Branch:** main',
+          '**Worktree:** /tmp/oh-my-forge',
+          '',
+          '---',
+          '',
+          '## Notes',
+          'METADATA_ONLY_BODY_SHOULD_NOT_LOAD',
+        ].join('\n')
+      );
+
+      try {
+        const result = await runScript(path.join(scriptsDir, 'session-start.js'), '', {
+          HOME: isoHome,
+          USERPROFILE: isoHome
+        });
+        assert.strictEqual(result.code, 0);
+        const additionalContext = getSessionStartAdditionalContext(result.stdout);
+        assert.ok(additionalContext.includes('**Project:** oh-my-forge'), 'Should keep session metadata');
+        assert.ok(!additionalContext.includes('METADATA_ONLY_BODY_SHOULD_NOT_LOAD'), 'Should not inject markerless generated body without resume sections');
+      } finally {
+        fs.rmSync(isoHome, { recursive: true, force: true });
+      }
+    })
+  )
+    passed++;
+  else failed++;
+
+  if (
     await asyncTest('prefers canonical session-data content over legacy duplicates', async () => {
       const isoHome = path.join(os.tmpdir(), `ecc-canonical-start-${Date.now()}`);
       const canonicalDir = getCanonicalSessionsDir(isoHome);

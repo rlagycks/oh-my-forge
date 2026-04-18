@@ -26,6 +26,11 @@ const { detectProjectType } = require('../lib/project-detect');
 const path = require('path');
 const fs = require('fs');
 
+const SUMMARY_START_MARKER = '<!-- ECC:SUMMARY:START -->';
+const SUMMARY_END_MARKER = '<!-- ECC:SUMMARY:END -->';
+const SESSION_METADATA_LABELS = ['Project', 'Branch', 'Worktree'];
+const SESSION_METADATA_PATTERN = /^\*\*(Project|Branch|Worktree):\*\*\s*(.+)$/gm;
+
 /**
  * Resolve a filesystem path to its canonical (real) form.
  *
@@ -154,6 +159,111 @@ function selectMatchingSession(sessions, cwd, currentProject) {
   return null;
 }
 
+function normalizeHeading(value) {
+  return String(value || '')
+    .replace(/[`*_]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function parseHeading(line) {
+  const match = String(line || '').match(/^(#{1,6})\s+(.+?)\s*$/);
+  if (!match) return null;
+  return {
+    level: match[1].length,
+    text: match[2].trim(),
+  };
+}
+
+function extractMarkdownSection(lines, heading) {
+  const sourceLines = Array.isArray(lines) ? lines : String(lines || '').split('\n');
+  const target = normalizeHeading(heading);
+  let startIndex = -1;
+  let startLevel = 0;
+
+  for (let index = 0; index < sourceLines.length; index++) {
+    const parsed = parseHeading(sourceLines[index]);
+    if (parsed && normalizeHeading(parsed.text) === target) {
+      startIndex = index;
+      startLevel = parsed.level;
+      break;
+    }
+  }
+
+  if (startIndex === -1) return '';
+
+  let endIndex = sourceLines.length;
+  for (let index = startIndex + 1; index < sourceLines.length; index++) {
+    const parsed = parseHeading(sourceLines[index]);
+    if (parsed && parsed.level <= startLevel) {
+      endIndex = index;
+      break;
+    }
+  }
+
+  return sourceLines.slice(startIndex, endIndex).join('\n').trim();
+}
+
+function extractSessionMetadata(content) {
+  const metadataByLabel = new Map();
+  for (const match of String(content || '').matchAll(SESSION_METADATA_PATTERN)) {
+    if (match[2].trim()) {
+      metadataByLabel.set(match[1], match[2].trim());
+    }
+  }
+  return SESSION_METADATA_LABELS
+    .filter(label => metadataByLabel.has(label))
+    .map(label => `**${label}:** ${metadataByLabel.get(label)}`);
+}
+
+function hasGeneratedSummaryBlock(content) {
+  return String(content || '').includes(SUMMARY_START_MARKER)
+    && String(content || '').includes(SUMMARY_END_MARKER);
+}
+
+function buildSessionStartContext(content) {
+  const cleanContent = String(content || '').trim();
+  if (!cleanContent || cleanContent.includes('[Session context goes here]')) {
+    return '';
+  }
+
+  const contextHeadings = [
+    'Tasks',
+    'Files Modified',
+    'What WORKED (with evidence)',
+    'Failure Trace Ledger',
+    'Failure Trace',
+    'Evidence still missing',
+    'Next Suspicion',
+    'Next Action',
+    'Context to Load',
+  ];
+  const lines = cleanContent.split('\n');
+  const metadata = extractSessionMetadata(cleanContent);
+
+  if (!hasGeneratedSummaryBlock(cleanContent)) {
+    if (metadata.length > 0) {
+      const hasResumeSection = contextHeadings.some(heading => extractMarkdownSection(lines, heading));
+      if (!hasResumeSection) {
+        return metadata.join('\n').trim();
+      }
+    }
+    return cleanContent;
+  }
+
+  const sections = contextHeadings
+    .map(heading => extractMarkdownSection(lines, heading))
+    .filter(Boolean);
+
+  if (sections.length === 0) {
+    return metadata.join('\n').trim();
+  }
+
+  return [...metadata, ...sections].join('\n\n').trim();
+}
+
 async function main() {
   const sessionsDir = getSessionsDir();
   const learnedDir = getLearnedSkillsDir();
@@ -182,8 +292,9 @@ async function main() {
 
       // Use the already-read content from selectMatchingSession (no duplicate I/O)
       const content = stripAnsi(result.content);
-      if (content && !content.includes('[Session context goes here]')) {
-        additionalContextParts.push(`Previous session summary:\n${content}`);
+      const sessionContext = buildSessionStartContext(content);
+      if (sessionContext) {
+        additionalContextParts.push(`Previous session summary:\n${sessionContext}`);
       }
     } else {
       log('[SessionStart] No matching session found');
