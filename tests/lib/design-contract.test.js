@@ -1,6 +1,10 @@
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { spawnSync } = require('child_process');
 
 const {
   buildOntologyDetailFragment,
@@ -8,6 +12,7 @@ const {
   mergeOntologyDetail,
   parseDesignContract,
   validateDesignContract,
+  validateDesignContractFiles,
 } = require('../../scripts/lib/design-contract');
 
 function test(name, fn) {
@@ -23,6 +28,7 @@ function test(name, fn) {
 
 let passed = 0;
 let failed = 0;
+const scriptPath = path.resolve(__dirname, '../../scripts/lib/design-contract.js');
 
 const contractMarkdown = `
 # Design Contract: Retry-safe Webhooks
@@ -110,6 +116,15 @@ const missingHandoffContractMarkdown = `
 - No package swaps.
 `;
 
+function withTempDir(fn) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'design-contracts-'));
+  try {
+    return fn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 console.log('\ndesign-contract.test.js');
 
 if (test('parseDesignContract extracts enforceable sections from markdown', () => {
@@ -163,6 +178,44 @@ if (test('validateDesignContract accepts complete execution contracts', () => {
 
   assert.strictEqual(validation.valid, true, validation.errors.join('\n'));
   assert.deepStrictEqual(validation.errors, []);
+})) passed++; else failed++;
+
+if (test('validateDesignContractFiles validates batches of contract files', () => {
+  withTempDir(tempDir => {
+    const validPath = path.join(tempDir, 'valid.design-contract.md');
+    const invalidPath = path.join(tempDir, 'invalid.design-contract.md');
+    fs.writeFileSync(validPath, contractMarkdown);
+    fs.writeFileSync(invalidPath, incompleteContractMarkdown);
+
+    const report = validateDesignContractFiles([invalidPath, validPath]);
+
+    assert.strictEqual(report.valid, false);
+    assert.strictEqual(report.files.length, 2);
+    assert.deepStrictEqual(report.files.map(file => path.basename(file.file)), [
+      'invalid.design-contract.md',
+      'valid.design-contract.md',
+    ]);
+    assert.strictEqual(report.files[0].valid, false);
+    assert.strictEqual(report.files[1].valid, true);
+    assert.ok(report.files[0].errors.some(error => error.includes('Not Do')), report.files[0].errors.join('\n'));
+  });
+})) passed++; else failed++;
+
+if (test('design-contract validate CLI exits non-zero for invalid batches', () => {
+  withTempDir(tempDir => {
+    const contractsDir = path.join(tempDir, 'contracts');
+    fs.mkdirSync(contractsDir, { recursive: true });
+    fs.writeFileSync(path.join(contractsDir, 'valid.design-contract.md'), contractMarkdown);
+    fs.writeFileSync(path.join(contractsDir, 'invalid.design-contract.md'), incompleteContractMarkdown);
+
+    const result = spawnSync(process.execPath, [scriptPath, 'validate', '--dir', contractsDir], {
+      encoding: 'utf8',
+    });
+
+    assert.notStrictEqual(result.status, 0, result.stdout);
+    assert.ok(result.stdout.includes('invalid.design-contract.md'), result.stdout);
+    assert.ok(result.stdout.includes('Missing required design contract section: Not Do'), result.stdout);
+  });
 })) passed++; else failed++;
 
 if (test('buildOntologyDetailFragment maps design contract fields into ontology detail shape', () => {

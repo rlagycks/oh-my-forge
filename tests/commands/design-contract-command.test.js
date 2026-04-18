@@ -50,6 +50,8 @@ if (test('design-contract links to adjacent commands in the workflow', () => {
   expectIncludes(commandMd, '`/ontology-extract`');
   expectIncludes(commandMd, '`/prp-plan`');
   expectIncludes(commandMd, 'promote-contract');
+  expectIncludes(commandMd, 'scripts/lib/design-contract.js');
+  expectIncludes(commandMd, 'validate --dir');
   expectIncludes(commandMd, 'Promotion fails if any required design contract section is missing.');
 })) passed++; else failed++;
 

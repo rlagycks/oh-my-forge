@@ -290,6 +290,118 @@ function inferDomainFromDetailPath(detailFile) {
   return match ? match[1] : '';
 }
 
+function collectMarkdownFiles(dirPath) {
+  const absDir = path.resolve(dirPath);
+  if (!fs.existsSync(absDir)) return [];
+
+  const results = [];
+  for (const entry of fs.readdirSync(absDir, { withFileTypes: true })) {
+    const fullPath = path.join(absDir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...collectMarkdownFiles(fullPath));
+    } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
+      results.push(fullPath);
+    }
+  }
+  return results;
+}
+
+function validateDesignContractFile(filePath) {
+  const absPath = path.resolve(filePath);
+  try {
+    const contract = parseDesignContract(readContractFile(absPath));
+    const validation = validateDesignContract(contract);
+    return {
+      file: absPath,
+      valid: validation.valid,
+      errors: validation.errors,
+    };
+  } catch (err) {
+    return {
+      file: absPath,
+      valid: false,
+      errors: [err.message || String(err)],
+    };
+  }
+}
+
+function validateDesignContractFiles(filePaths = []) {
+  const files = uniqueStrings(filePaths.map(filePath => path.resolve(filePath))).sort();
+  const results = files.map(validateDesignContractFile);
+  return {
+    valid: results.every(result => result.valid),
+    files: results,
+  };
+}
+
+function parseCliFlags(args = []) {
+  const options = {
+    files: [],
+    dirs: [],
+    json: false,
+  };
+
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === '--file') {
+      options.files.push(args[++index]);
+    } else if (arg === '--dir') {
+      options.dirs.push(args[++index]);
+    } else if (arg === '--json') {
+      options.json = true;
+    }
+  }
+
+  return options;
+}
+
+function collectFilesFromOptions(options = {}) {
+  return uniqueStrings([
+    ...(options.files || []),
+    ...(options.dirs || []).flatMap(collectMarkdownFiles),
+  ]).sort();
+}
+
+function printValidationReport(report) {
+  const invalid = report.files.filter(file => !file.valid);
+  console.log('Design contract validation');
+  console.log(`Files: ${report.files.length}`);
+  console.log(`Invalid: ${invalid.length}`);
+
+  for (const result of report.files) {
+    console.log(`- ${result.valid ? 'PASS' : 'FAIL'} ${result.file}`);
+    for (const error of result.errors) {
+      console.log(`  - ${error}`);
+    }
+  }
+}
+
+function runCli(argv = process.argv.slice(2)) {
+  const [cmd, ...rest] = argv;
+  if (cmd !== 'validate') {
+    console.error('Usage: design-contract.js validate --file <path> [--file <path>] [--dir <dir>] [--json]');
+    process.exit(1);
+  }
+
+  const options = parseCliFlags(rest);
+  const files = collectFilesFromOptions(options);
+  if (files.length === 0) {
+    console.error('No design contract files found. Use --file <path> or --dir <dir>.');
+    process.exit(1);
+  }
+
+  const report = validateDesignContractFiles(files);
+  if (options.json) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    printValidationReport(report);
+  }
+
+  if (!report.valid) {
+    process.exit(1);
+  }
+}
+
 module.exports = {
   assertValidDesignContract,
   buildOntologyDetailFragment,
@@ -298,4 +410,10 @@ module.exports = {
   parseDesignContract,
   readContractFile,
   validateDesignContract,
+  validateDesignContractFile,
+  validateDesignContractFiles,
 };
+
+if (require.main === module) {
+  runCli();
+}
