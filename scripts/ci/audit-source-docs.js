@@ -25,10 +25,26 @@ function normalizeRepoPath(filePath) {
   return toPosixPath(filePath).replace(/^\.\/+/, '').replace(/\/+/g, '/');
 }
 
-function readJson(filePath) {
+function hasOwn(object, property) {
+  return Object.prototype.hasOwnProperty.call(object, property);
+}
+
+function isInsideRoot(rootDir, targetPath) {
+  const relative = path.relative(path.resolve(rootDir), path.resolve(targetPath));
+  return !relative || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function hasParentSegment(filePath) {
+  return toPosixPath(filePath).split('/').includes('..');
+}
+
+function readJson(filePath, diagnostics = []) {
+  if (!fs.existsSync(filePath)) return null;
+
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  } catch {
+  } catch (err) {
+    diagnostics.push(`Failed to parse JSON: ${filePath} (${err.message})`);
     return null;
   }
 }
@@ -60,19 +76,46 @@ function sourceDocValues(sourceDocs = {}) {
   return Object.values(normalizeSourceDocs(sourceDocs)).flat();
 }
 
-function collectLinkedSourceDocs(repoRoot, ontologyRoot) {
+function resolveDetailPath(repoRoot, ontologyRoot, detailPath, diagnostics = []) {
+  const cleanDetailPath = String(detailPath || '').trim();
+  if (!cleanDetailPath) return null;
+
+  if (path.isAbsolute(cleanDetailPath) || hasParentSegment(cleanDetailPath)) {
+    diagnostics.push(`Invalid ontology detail path: ${cleanDetailPath}`);
+    return null;
+  }
+
+  const candidates = uniqueStrings([
+    path.resolve(repoRoot, cleanDetailPath),
+    path.resolve(ontologyRoot, cleanDetailPath),
+  ]);
+  for (const candidate of candidates) {
+    if (!isInsideRoot(repoRoot, candidate)) {
+      diagnostics.push(`Invalid ontology detail path outside repo: ${cleanDetailPath}`);
+      continue;
+    }
+    if (fs.existsSync(candidate)) return candidate;
+  }
+
+  return candidates.find(candidate => isInsideRoot(repoRoot, candidate)) || null;
+}
+
+function collectLinkedSourceDocs(repoRoot, ontologyRoot, diagnostics = []) {
   const indexPath = path.join(ontologyRoot, 'index.json');
-  const index = readJson(indexPath) || {};
+  const index = readJson(indexPath, diagnostics) || {};
   const linked = [];
 
-  for (const entry of Object.values(index)) {
+  for (const [key, entry] of Object.entries(index)) {
+    if (key.startsWith('$')) continue;
     if (!entry || typeof entry !== 'object') continue;
-    linked.push(...sourceDocValues(entry.sourceDocs));
+    if (hasOwn(entry, 'sourceDocs')) {
+      linked.push(...sourceDocValues(entry.sourceDocs));
+    }
 
     if (typeof entry.detail === 'string' && entry.detail.trim()) {
-      const detailPath = path.resolve(repoRoot, entry.detail);
-      const detail = readJson(detailPath);
-      if (detail && typeof detail === 'object') {
+      const detailPath = resolveDetailPath(repoRoot, ontologyRoot, entry.detail, diagnostics);
+      const detail = detailPath ? readJson(detailPath, diagnostics) : null;
+      if (detail && typeof detail === 'object' && hasOwn(detail, 'sourceDocs')) {
         linked.push(...sourceDocValues(detail.sourceDocs));
       }
     }
@@ -87,13 +130,14 @@ function auditSourceDocs(options = {}) {
   const docsDirs = Array.isArray(options.docsDirs) && options.docsDirs.length > 0
     ? options.docsDirs
     : DEFAULT_DOCS_DIRS;
+  const diagnostics = [];
 
   const candidates = uniqueStrings(
     docsDirs.flatMap(docsDir => collectMarkdownFiles(path.resolve(repoRoot, docsDir), repoRoot))
       .filter(isSourceDocCandidate)
       .map(normalizeRepoPath)
   ).sort();
-  const linked = collectLinkedSourceDocs(repoRoot, ontologyRoot);
+  const linked = collectLinkedSourceDocs(repoRoot, ontologyRoot, diagnostics);
   const linkedSet = new Set(linked);
   const missing = candidates.filter(candidate => !linkedSet.has(candidate));
 
@@ -102,6 +146,7 @@ function auditSourceDocs(options = {}) {
     candidates,
     linked,
     missing,
+    diagnostics,
   };
 }
 
@@ -112,6 +157,15 @@ function parseArgs(argv) {
     docsDirs: [],
   };
 
+  const readFlagValue = (index, flag) => {
+    const hasNext = hasOwn(argv, index + 1);
+    const value = hasNext ? argv[index + 1] : undefined;
+    if (!hasNext || String(value || '').startsWith('--')) {
+      throw new Error(`Missing value for ${flag}`);
+    }
+    return value;
+  };
+
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
     if (arg === '--strict') {
@@ -119,11 +173,14 @@ function parseArgs(argv) {
     } else if (arg === '--json') {
       options.json = true;
     } else if (arg === '--repo-root') {
-      options.repoRoot = argv[++index];
+      options.repoRoot = readFlagValue(index, arg);
+      index++;
     } else if (arg === '--ontology-root') {
-      options.ontologyRoot = argv[++index];
+      options.ontologyRoot = readFlagValue(index, arg);
+      index++;
     } else if (arg === '--docs-dir') {
-      options.docsDirs.push(argv[++index]);
+      options.docsDirs.push(readFlagValue(index, arg));
+      index++;
     }
   }
 
@@ -142,19 +199,31 @@ function printTextReport(report) {
       console.log(`- ${missing}`);
     }
   }
+
+  if (report.diagnostics.length > 0) {
+    console.log('\nDiagnostics:');
+    for (const diagnostic of report.diagnostics) {
+      console.log(`- ${diagnostic}`);
+    }
+  }
 }
 
 function runCli() {
-  const options = parseArgs(process.argv.slice(2));
-  const report = auditSourceDocs(options);
+  try {
+    const options = parseArgs(process.argv.slice(2));
+    const report = auditSourceDocs(options);
 
-  if (options.json) {
-    console.log(JSON.stringify(report, null, 2));
-  } else {
-    printTextReport(report);
-  }
+    if (options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      printTextReport(report);
+    }
 
-  if (options.strict && report.missing.length > 0) {
+    if (options.strict && (report.missing.length > 0 || report.diagnostics.length > 0)) {
+      process.exit(1);
+    }
+  } catch (err) {
+    console.error(err && err.message ? err.message : String(err));
     process.exit(1);
   }
 }

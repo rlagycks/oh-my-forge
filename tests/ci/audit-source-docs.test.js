@@ -94,6 +94,50 @@ if (test('auditSourceDocs treats detail sourceDocs as covered', () => {
   });
 })) passed++; else failed++;
 
+if (test('auditSourceDocs reports malformed ontology JSON diagnostics', () => {
+  withRepo(tempRoot => {
+    writeFile(path.join(tempRoot, 'docs', 'api', 'payments.api.md'));
+    writeFile(path.join(tempRoot, '.claude', 'ontology', 'index.json'), '{not json');
+
+    const { auditSourceDocs } = require(auditScript);
+    const report = auditSourceDocs({ repoRoot: tempRoot });
+
+    assert.ok(report.diagnostics.some(message => message.includes('Failed to parse JSON')), report.diagnostics.join('\n'));
+    assert.deepStrictEqual(report.missing, ['docs/api/payments.api.md']);
+  });
+})) passed++; else failed++;
+
+if (test('auditSourceDocs rejects ontology detail paths outside the repo', () => {
+  withRepo(tempRoot => {
+    writeFile(path.join(tempRoot, 'docs', 'api', 'payments.api.md'));
+    writeJson(path.join(tempRoot, '.claude', 'ontology', 'index.json'), {
+      $schema: './schema.json',
+      domain_payments: {
+        summary: 'payments',
+        files: ['src/payments/'],
+        detail: '../outside.json',
+      },
+    });
+
+    const { auditSourceDocs } = require(auditScript);
+    const report = auditSourceDocs({ repoRoot: tempRoot });
+
+    assert.ok(report.diagnostics.some(message => message.includes('Invalid ontology detail path')), report.diagnostics.join('\n'));
+    assert.deepStrictEqual(report.missing, ['docs/api/payments.api.md']);
+  });
+})) passed++; else failed++;
+
+if (test('CLI reports missing flag values cleanly', () => {
+  const result = spawnSync(process.execPath, [auditScript, '--repo-root', '--strict'], {
+    encoding: 'utf8',
+  });
+
+  assert.notStrictEqual(result.status, 0);
+  assert.ok(result.stderr.includes('Missing value for --repo-root'), result.stderr);
+  assert.ok(!result.stderr.includes('TypeError'), result.stderr);
+  assert.ok(!result.stderr.includes('at '), result.stderr);
+})) passed++; else failed++;
+
 if (test('CLI --strict exits non-zero when source docs are unlinked', () => {
   withRepo(tempRoot => {
     writeFile(path.join(tempRoot, 'docs', 'product', 'checkout.prd.md'));
