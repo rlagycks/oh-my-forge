@@ -140,14 +140,17 @@ function testSessionFlagSet() {
 }
 
 function testInvalidJsonPassThrough() {
-  const { result } = captureRun('not called');
   // Actually test directly
-  let captured2 = '';
+  let capturedStdout = '';
   const origWrite = process.stdout.write.bind(process.stdout);
-  process.stdout.write = (chunk) => { captured2 += chunk; return true; };
+  process.stdout.write = (chunk) => { capturedStdout += chunk; return true; };
   const r = run('not valid json');
   process.stdout.write = origWrite;
   assert.strictEqual(r, 'not valid json', 'Invalid JSON should pass through');
+  assert.ok(
+    capturedStdout === '' || capturedStdout.includes('not valid json'),
+    'Invalid JSON should either be returned (pass-through) or written to stdout'
+  );
   console.log('  PASS testInvalidJsonPassThrough');
 }
 

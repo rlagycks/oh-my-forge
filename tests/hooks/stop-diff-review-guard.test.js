@@ -155,6 +155,7 @@ function testInvalidJsonPassThrough() {
   process.stdout.write = origStdout;
 
   assert.strictEqual(exitCode, 0, 'Invalid JSON should exit 0');
+  assert.ok(stdout.includes('not valid json'), 'Invalid JSON should be written to stdout');
   console.log('  PASS testInvalidJsonPassThrough');
 }
 

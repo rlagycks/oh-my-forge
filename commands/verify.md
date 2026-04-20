@@ -24,7 +24,7 @@ Execute verification in this exact order:
    - Report coverage percentage
 
 5. **Ontology Validation** (`.claude/ontology/index.json`이 있는 경우)
-   - `PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}; node "$PLUGIN_ROOT/scripts/ci/validate-ontology.js"` 실행
+   - `PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}; ONTOLOGY_INDEX="$PLUGIN_ROOT/.claude/ontology/index.json"; if [ -f "$PLUGIN_ROOT/scripts/ci/validate-ontology.js" ] && [ -f "$ONTOLOGY_INDEX" ]; then node "$PLUGIN_ROOT/scripts/ci/validate-ontology.js"; elif [ ! -f "$ONTOLOGY_INDEX" ]; then echo "Ontology: SKIPPED (.claude/ontology/index.json 없음)"; else echo "Ontology: SKIPPED (validate-ontology.js 없음 — ECC 개발 레포 전용)"; fi` 실행
    - `index.json`  `docs/features/*.md`  실제 파일 정합성 확인
    - 실패 시 `/ontology-sync --check`로 원인 파악 안내
 

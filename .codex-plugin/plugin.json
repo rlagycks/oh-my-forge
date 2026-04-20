@@ -1,6 +1,6 @@
 {
   "name": "oh-my-forge",
-  "version": "1.11.0",
+  "version": "1.11.1",
   "description": "Ontology-driven Codex harness — skills, MCP configs, and agents for TDD, security scanning, code review, and structural error prevention.",
   "author": {
     "name": "rlagycks"

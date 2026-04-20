@@ -65,13 +65,19 @@ Report:
 
 ### Phase 4.5: Ontology Validation
 
-`.claude/ontology/index.json`이 있는 경우:
+`.claude/ontology/index.json`이 있는 경우(옵션):
 
 ```bash
-node scripts/ci/validate-ontology.js 2>/dev/null && echo "ontology OK" || echo "FAIL: ontology 불일치"
+if [ -f .claude/ontology/index.json ] && [ -f scripts/ci/validate-ontology.js ]; then
+  node scripts/ci/validate-ontology.js && echo "ontology OK" || echo "FAIL: ontology 불일치"
+elif [ ! -f .claude/ontology/index.json ]; then
+  echo "Ontology: SKIPPED (.claude/ontology/index.json not present)"
+else
+  echo "Ontology: SKIPPED (validator not installed in this repo)"
+fi
 ```
 
-실패 시 `/ontology-sync --check`를 실행하고 불일치를 보고한다.
+실패 시 `/ontology-sync --check`를 실행하고 불일치를 보고한다. (`scripts/ci/validate-ontology.js`는 ECC 개발 레포에만 존재할 수 있으므로, 파일이 없으면 실패로 간주하지 않는다.)
 
 ### Phase 5: Security Scan
 ```bash

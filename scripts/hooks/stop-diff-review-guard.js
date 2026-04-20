@@ -66,9 +66,8 @@ function hasUncommittedChanges() {
 // ---- Main ----
 
 function run(rawInput) {
-  let input;
   try {
-    input = JSON.parse(rawInput);
+    JSON.parse(rawInput);
   } catch {
     process.stdout.write(rawInput || '{}');
     process.exit(0);

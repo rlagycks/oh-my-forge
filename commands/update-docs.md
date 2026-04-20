@@ -70,7 +70,14 @@ Generate or update `docs/RUNBOOK.md` with:
 
 ```bash
 PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
-node "$PLUGIN_ROOT/scripts/ci/validate-ontology.js" 2>/dev/null && echo "ontology OK" || echo "WARNING: ontology 불일치 — /ontology-sync 실행 권장"
+ONTOLOGY_INDEX="$PLUGIN_ROOT/.claude/ontology/index.json"
+if [ -f "$ONTOLOGY_INDEX" ] && [ -f "$PLUGIN_ROOT/scripts/ci/validate-ontology.js" ]; then
+  node "$PLUGIN_ROOT/scripts/ci/validate-ontology.js" 2>/dev/null && echo "ontology OK" || echo "WARNING: ontology 불일치 — /ontology-sync 실행 권장"
+elif [ ! -f "$ONTOLOGY_INDEX" ]; then
+  echo "Ontology: SKIPPED (.claude/ontology/index.json 없음)"
+else
+  echo "Ontology: SKIPPED (validate-ontology.js 없음 — ECC 개발 레포 전용)"
+fi
 ```
 
 불일치가 있으면 Summary에 경고를 포함하고 `/ontology-sync` 실행을 안내한다.
