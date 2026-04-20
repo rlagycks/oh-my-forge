@@ -52,7 +52,11 @@ Return:
 
 ```bash
 PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
-node "$PLUGIN_ROOT/scripts/ci/validate-ontology.js" 2>/dev/null && echo "ontology OK" || echo "WARNING: ontology 불일치"
+if [ -f "$PLUGIN_ROOT/scripts/ci/validate-ontology.js" ]; then
+  node "$PLUGIN_ROOT/scripts/ci/validate-ontology.js" 2>/dev/null && echo "ontology OK" || echo "WARNING: ontology 불일치"
+else
+  echo "ontology SKIPPED (validate-ontology.js 없음 — ECC 개발 레포 전용)"
+fi
 ```
 
 온톨로지 검증 결과는 스크립트 점수에 포함되지 않으므로 별도로 요약에 추가한다.

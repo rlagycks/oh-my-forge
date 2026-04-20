@@ -88,7 +88,7 @@ function testFixPatternCommits() {
         parsed.hookSpecificOutput,
         `Expected hookSpecificOutput for: ${cmd}`
       );
-    } catch (e) {
+    } catch (_error) {
       // git may not be available or no commits exist; pass-through is acceptable
       // as long as we don't crash. The important thing is no thrown error.
     }

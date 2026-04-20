@@ -60,7 +60,11 @@ docs/features/index.md      ← 라우팅 테이블 (이 스킬이 동기화)
 **6. CI 검증 실행**
 
 ```bash
-node scripts/ci/validate-ontology.js
+if [ -f scripts/ci/validate-ontology.js ]; then
+  node scripts/ci/validate-ontology.js
+else
+  echo "CI 검증: SKIPPED (scripts/ci/validate-ontology.js 없음 — ECC 개발 레포에서만 사용)"
+fi
 ```
 
 오류가 있으면 원인을 분석하고 수정한다.

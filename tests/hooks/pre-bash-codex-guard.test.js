@@ -10,7 +10,6 @@ const assert = require('assert');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
-const crypto = require('crypto');
 
 const hookPath = path.resolve(__dirname, '../../scripts/hooks/pre-bash-codex-guard.js');
 const {
@@ -60,7 +59,7 @@ function runWithSession(sessionId, command) {
 }
 
 function cleanState(sessionId) {
-  try { fs.unlinkSync(getStatePathForSession(sessionId)); } catch {}
+  try { fs.unlinkSync(getStatePathForSession(sessionId)); } catch (_error) { /* ignore */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +95,7 @@ function testPromptFileDomainCallAllowed() {
     assert.ok(typeof result === 'string', 'Dispatch with valid request file should be allowed');
     console.log('  PASS testPromptFileDomainCallAllowed');
   } finally {
-    try { fs.unlinkSync(requestFile); } catch {}
+    try { fs.unlinkSync(requestFile); } catch (_error) { /* ignore */ }
     cleanState(sessionId);
   }
 }
@@ -136,7 +135,7 @@ function testInvalidDispatchRequestBlocked() {
       'Invalid dispatch request should be blocked');
     console.log('  PASS testInvalidDispatchRequestBlocked');
   } finally {
-    try { fs.unlinkSync(requestFile); } catch {}
+    try { fs.unlinkSync(requestFile); } catch (_error) { /* ignore */ }
     cleanState(sessionId);
   }
 }
@@ -166,7 +165,7 @@ function testReadOnlyDispatchRequestBlocked() {
       'Read-only Codex dispatch request should be blocked by schema validation');
     console.log('  PASS testReadOnlyDispatchRequestBlocked');
   } finally {
-    try { fs.unlinkSync(requestFile); } catch {}
+    try { fs.unlinkSync(requestFile); } catch (_error) { /* ignore */ }
     cleanState(sessionId);
   }
 }
@@ -193,7 +192,7 @@ function testSecondCallSameDomainBlocked() {
       'Second automatic dispatch for same domain should return { exitCode: 2 }');
     console.log('  PASS testSecondCallSameDomainBlocked');
   } finally {
-    try { fs.unlinkSync(requestFile); } catch {}
+    try { fs.unlinkSync(requestFile); } catch (_error) { /* ignore */ }
     cleanState(sessionId);
   }
 }
@@ -228,8 +227,8 @@ function testSecondCallDifferentDomainAllowed() {
       'Second automatic dispatch for a different domain should be allowed');
     console.log('  PASS testSecondCallDifferentDomainAllowed');
   } finally {
-    try { fs.unlinkSync(requestFile1); } catch {}
-    try { fs.unlinkSync(requestFile2); } catch {}
+    try { fs.unlinkSync(requestFile1); } catch (_error) { /* ignore */ }
+    try { fs.unlinkSync(requestFile2); } catch (_error) { /* ignore */ }
     cleanState(sessionId);
   }
 }
@@ -254,7 +253,7 @@ function testManualBackgroundDispatchAllowed() {
       'Manual background dispatch should be allowed');
     console.log('  PASS testManualBackgroundDispatchAllowed');
   } finally {
-    try { fs.unlinkSync(requestFile); } catch {}
+    try { fs.unlinkSync(requestFile); } catch (_error) { /* ignore */ }
     cleanState(sessionId);
   }
 }
@@ -284,7 +283,7 @@ function testPlanAutoBackgroundDispatchBlocked() {
       'Automatic plan dispatch should reject background mode');
     console.log('  PASS testPlanAutoBackgroundDispatchBlocked');
   } finally {
-    try { fs.unlinkSync(requestFile); } catch {}
+    try { fs.unlinkSync(requestFile); } catch (_error) { /* ignore */ }
     cleanState(sessionId);
   }
 }
@@ -311,7 +310,7 @@ function testStateFileHasDomainsKey() {
   assert.strictEqual(state.domains['domain_qa'], 1, 'domains.domain_qa should equal 1');
   assert.ok(!('invocations' in state), 'Old "invocations" key should not exist');
   console.log('  PASS testStateFileHasDomainsKey');
-  try { fs.unlinkSync(requestFile); } catch {}
+  try { fs.unlinkSync(requestFile); } catch (_error) { /* ignore */ }
   cleanState(sessionId);
 }
 
@@ -340,7 +339,7 @@ function testRedirectionOutputNotTreatedAsPositional() {
       'Redirection output target should not be treated as a positional argument');
     console.log('  PASS testRedirectionOutputNotTreatedAsPositional');
   } finally {
-    try { fs.unlinkSync(requestFile); } catch {}
+    try { fs.unlinkSync(requestFile); } catch (_error) { /* ignore */ }
     cleanState(sessionId);
   }
 }
@@ -366,7 +365,7 @@ function testRedirectionInputNotTreatedAsPositional() {
       'Redirection input target should not be treated as a positional argument');
     console.log('  PASS testRedirectionInputNotTreatedAsPositional');
   } finally {
-    try { fs.unlinkSync(requestFile); } catch {}
+    try { fs.unlinkSync(requestFile); } catch (_error) { /* ignore */ }
     cleanState(sessionId);
   }
 }
@@ -398,7 +397,7 @@ function testSingleQuotedRequestFileValidated() {
       'Single-quoted request file path should be validated and allowed');
     console.log('  PASS testSingleQuotedRequestFileValidated');
   } finally {
-    try { fs.unlinkSync(requestFile); } catch {}
+    try { fs.unlinkSync(requestFile); } catch (_error) { /* ignore */ }
     cleanState(sessionId);
   }
 }
@@ -435,7 +434,7 @@ function testSingleQuotedPathWithDollarValidated() {
       'Single-quoted path with literal $ should be validated (not skipped as shell var)');
     console.log('  PASS testSingleQuotedPathWithDollarValidated');
   } finally {
-    try { fs.unlinkSync(literalDollarPath); } catch {}
+    try { fs.unlinkSync(literalDollarPath); } catch (_error) { /* ignore */ }
     cleanState(sessionId);
   }
 }
