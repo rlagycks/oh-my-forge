@@ -68,8 +68,10 @@ Report:
 `.claude/ontology/index.json`이 있는 경우(옵션):
 
 ```bash
-if [ -f scripts/ci/validate-ontology.js ]; then
+if [ -f .claude/ontology/index.json ] && [ -f scripts/ci/validate-ontology.js ]; then
   node scripts/ci/validate-ontology.js && echo "ontology OK" || echo "FAIL: ontology 불일치"
+elif [ ! -f .claude/ontology/index.json ]; then
+  echo "Ontology: SKIPPED (.claude/ontology/index.json not present)"
 else
   echo "Ontology: SKIPPED (validator not installed in this repo)"
 fi
