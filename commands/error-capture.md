@@ -76,7 +76,7 @@ PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
 if [ -f "$PLUGIN_ROOT/scripts/ci/validate-ontology.js" ]; then
   node "$PLUGIN_ROOT/scripts/ci/validate-ontology.js"
 else
-  echo "Ontology 검증: SKIPPED (scripts/ci/validate-ontology.js 없음 — ECC 개발 레포 전용)"
+  echo "Ontology 검증: SKIPPED (scripts/ci/validate-ontology.js 없음 — OMF 개발 레포 전용)"
 fi
 ```
 

@@ -76,7 +76,7 @@ if [ -f "$ONTOLOGY_INDEX" ] && [ -f "$PLUGIN_ROOT/scripts/ci/validate-ontology.j
 elif [ ! -f "$ONTOLOGY_INDEX" ]; then
   echo "Ontology: SKIPPED (.claude/ontology/index.json 없음)"
 else
-  echo "Ontology: SKIPPED (validate-ontology.js 없음 — ECC 개발 레포 전용)"
+  echo "Ontology: SKIPPED (validate-ontology.js 없음 — OMF 개발 레포 전용)"
 fi
 ```
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ECC Codex Git Hook: pre-push
+# OMF Codex Git Hook: pre-push
 # Runs a lightweight verification flow before pushes.
 
 if [[ "${ECC_SKIP_GIT_HOOKS:-0}" == "1" || "${ECC_SKIP_PREPUSH:-0}" == "1" ]]; then
@@ -33,11 +33,11 @@ fi
 ran_any_check=0
 
 log() {
-  printf '[ECC pre-push] %s\n' "$*"
+  printf '[OMF pre-push] %s\n' "$*"
 }
 
 fail() {
-  printf '[ECC pre-push] FAILED: %s\n' "$*" >&2
+  printf '[OMF pre-push] FAILED: %s\n' "$*" >&2
   exit 1
 }
 

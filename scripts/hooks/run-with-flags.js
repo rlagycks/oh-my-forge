@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 /**
- * Executes a hook script only when enabled by ECC hook profile flags.
+ * Executes a hook script only when enabled by OMF hook profile flags.
  *
  * Usage:
  *   node run-with-flags.js <hookId> <scriptRelativePath> [profilesCsv]
+ *   node run-with-flags.js <hookId> <scriptRelativePath> --profiles <csv>
+ *   node run-with-flags.js <hookId> <scriptRelativePath> --request-file <json>
  */
 
 'use strict';
@@ -14,6 +16,42 @@ const { spawnSync } = require('child_process');
 const { isHookEnabled } = require('../lib/hook-flags');
 
 const MAX_STDIN = 1024 * 1024;
+
+function parseRunnerArgs(argv) {
+  const args = Array.isArray(argv) ? [...argv] : [];
+  const hookId = args.shift() || '';
+  const relScriptPath = args.shift() || '';
+
+  let legacyProfilesCsv = null;
+  let profilesCsv = null;
+  let requestFile = null;
+
+  for (let i = 0; i < args.length; i++) {
+    const tok = args[i];
+    if (tok === '--profiles') {
+      profilesCsv = args[i + 1] || null;
+      i++;
+      continue;
+    }
+    if (tok === '--request-file') {
+      requestFile = args[i + 1] || null;
+      i++;
+      continue;
+    }
+
+    if (!tok.startsWith('--') && legacyProfilesCsv === null) {
+      legacyProfilesCsv = tok;
+      continue;
+    }
+  }
+
+  return {
+    hookId,
+    relScriptPath,
+    profilesCsv: profilesCsv ?? legacyProfilesCsv,
+    requestFile,
+  };
+}
 
 function readStdinRaw() {
   return new Promise(resolve => {
@@ -85,8 +123,25 @@ function getPluginRoot() {
   return path.resolve(__dirname, '..', '..');
 }
 
+function resolveRequestFile(pluginRoot, requestFile) {
+  if (!requestFile || typeof requestFile !== 'string') return null;
+  const trimmed = requestFile.trim();
+  if (!trimmed) return null;
+  return path.isAbsolute(trimmed) ? path.resolve(trimmed) : path.resolve(pluginRoot, trimmed);
+}
+
+function loadRequestFile(requestFilePath) {
+  try {
+    return JSON.parse(fs.readFileSync(requestFilePath, 'utf8'));
+  } catch (error) {
+    return { error: `Failed to read request file: ${error.message}` };
+  }
+}
+
 async function main() {
-  const [, , hookId, relScriptPath, profilesCsv] = process.argv;
+  const parsed = parseRunnerArgs(process.argv.slice(2));
+  const hookId = parsed.hookId;
+  const relScriptPath = parsed.relScriptPath;
   const { raw, truncated } = await readStdinRaw();
 
   if (!hookId || !relScriptPath) {
@@ -94,13 +149,29 @@ async function main() {
     process.exit(0);
   }
 
+  const pluginRoot = getPluginRoot();
+  const resolvedRoot = path.resolve(pluginRoot);
+
+  let profilesCsv = parsed.profilesCsv;
+  if (parsed.requestFile) {
+    const requestFilePath = resolveRequestFile(pluginRoot, parsed.requestFile);
+    const requestPayload = requestFilePath ? loadRequestFile(requestFilePath) : { error: 'Missing request file path.' };
+    if (requestPayload && requestPayload.error) {
+      writeStderr(`[Hook] ${requestPayload.error}`);
+      process.stdout.write(raw);
+      process.exit(0);
+    }
+
+    if (requestPayload && Object.prototype.hasOwnProperty.call(requestPayload, 'profiles')) {
+      profilesCsv = requestPayload.profiles;
+    }
+  }
+
   if (!isHookEnabled(hookId, { profiles: profilesCsv })) {
     process.stdout.write(raw);
     process.exit(0);
   }
 
-  const pluginRoot = getPluginRoot();
-  const resolvedRoot = path.resolve(pluginRoot);
   const scriptPath = path.resolve(pluginRoot, relScriptPath);
 
   // Prevent path traversal outside the plugin root

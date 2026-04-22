@@ -34,7 +34,7 @@ The script computes 7 fixed categories (`0-10` normalized each):
 7. Cost Efficiency
 
 Scores are derived from explicit file/rule checks and are reproducible for the same commit.
-The script audits the current working directory by default and auto-detects whether the target is the ECC repo itself or a consumer project using ECC.
+The script audits the current working directory by default and auto-detects whether the target is the OMF repo itself or a consumer project using OMF.
 
 ## Output Contract
 
@@ -44,7 +44,7 @@ Return:
 2. Category scores and concrete findings
 3. Failed checks with exact file paths
 4. Top 3 actions from the deterministic output (`top_actions`)
-5. Suggested ECC skills to apply next
+5. Suggested OMF skills to apply next
 
 ## Ontology Check
 
@@ -58,7 +58,7 @@ if [ -f "$ONTOLOGY_INDEX" ] && [ -f "$PLUGIN_ROOT/scripts/ci/validate-ontology.j
 elif [ ! -f "$ONTOLOGY_INDEX" ]; then
   echo "ontology SKIPPED (.claude/ontology/index.json 없음)"
 else
-  echo "ontology SKIPPED (validate-ontology.js 없음 — ECC 개발 레포 전용)"
+  echo "ontology SKIPPED (validate-ontology.js 없음 — OMF 개발 레포 전용)"
 fi
 ```
 

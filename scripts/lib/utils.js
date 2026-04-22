@@ -43,7 +43,7 @@ function getSessionsDir() {
 }
 
 /**
- * Get the legacy sessions directory used by older ECC installs
+ * Get the legacy sessions directory used by older installs
  */
 function getLegacySessionsDir() {
   return path.join(getClaudeDir(), LEGACY_SESSIONS_DIR_NAME);

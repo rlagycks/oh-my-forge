@@ -1,7 +1,7 @@
 # [기능 이름]
 
 <!--
-  ECC 기능 문서 템플릿
+  OMF 기능 문서 템플릿
   이 파일을 복사해서 docs/features/[domain].md 를 만드세요.
   4개 H2 섹션은 반드시 유지하세요 — Claude JIT 쿼리가 이 섹션명을 파싱합니다.
   섹션명 변경 시 validate-ontology.js CI 검증이 실패합니다.

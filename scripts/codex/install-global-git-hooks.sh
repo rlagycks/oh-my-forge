@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Install ECC git safety hooks globally via core.hooksPath.
+# Install OMF git safety hooks globally via core.hooksPath.
 # Usage:
 #   ./scripts/codex/install-global-git-hooks.sh
 #   ./scripts/codex/install-global-git-hooks.sh --dry-run
@@ -60,6 +60,6 @@ if [[ "$MODE" == "apply" ]]; then
 fi
 run_or_echo git config --global core.hooksPath "$DEST_DIR"
 
-log "Installed ECC global git hooks."
+log "Installed OMF global git hooks."
 log "Disable per repo by creating .ecc-hooks-disable in project root."
 log "Temporary bypass: ECC_SKIP_PRECOMMIT=1 or ECC_SKIP_PREPUSH=1"

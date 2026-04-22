@@ -17,7 +17,7 @@ const { normalizeInstallRequest } = require('./lib/install/request');
 
 function showHelp() {
   console.log(`
-Inspect ECC selective-install manifests
+Inspect OMF selective-install manifests
 
 Usage:
   node scripts/install-plan.js --list-profiles

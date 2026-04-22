@@ -110,7 +110,7 @@ If you want changes, respond with:
 
 ## Related Agents
 
-This command invokes the `planner` agent provided by ECC.
+This command invokes the `planner` agent provided by OMF.
 
 For manual installs, the source file lives at:
 `agents/planner.md`

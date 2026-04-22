@@ -2,7 +2,7 @@
 
 ## 목적
 
-ECC 컴포넌트(agents, skills, hooks, rules, commands, .codex 등)를 대상 환경(claude-home, codex-home, cursor-project 등)에 선택적으로 설치하는 시스템. `install-plan.js`가 설치 계획을 산출하고 `install-apply.js`가 실행한다. 매니페스트 기반으로 설치 범위를 선언적으로 관리한다.
+OMF 컴포넌트(agents, skills, hooks, rules, commands, .codex 등)를 대상 환경(claude-home, codex-home, cursor-project 등)에 선택적으로 설치하는 시스템. `install-plan.js`가 설치 계획을 산출하고 `install-apply.js`가 실행한다. 매니페스트 기반으로 설치 범위를 선언적으로 관리한다.
 
 ## 진입점
 

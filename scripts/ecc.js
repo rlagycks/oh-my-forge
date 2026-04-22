@@ -7,7 +7,7 @@ const { listAvailableLanguages } = require('./lib/install-executor');
 const COMMANDS = {
   install: {
     script: 'install-apply.js',
-    description: 'Install ECC content into a supported target',
+    description: 'Install OMF content into a supported target',
   },
   plan: {
     script: 'install-plan.js',
@@ -27,27 +27,27 @@ const COMMANDS = {
   },
   doctor: {
     script: 'doctor.js',
-    description: 'Diagnose missing or drifted ECC-managed files',
+    description: 'Diagnose missing or drifted OMF-managed files',
   },
   repair: {
     script: 'repair.js',
-    description: 'Restore drifted or missing ECC-managed files',
+    description: 'Restore drifted or missing OMF-managed files',
   },
   status: {
     script: 'status.js',
-    description: 'Query the ECC SQLite state store status summary',
+    description: 'Query the OMF SQLite state store status summary',
   },
   sessions: {
     script: 'sessions-cli.js',
-    description: 'List or inspect ECC sessions from the SQLite state store',
+    description: 'List or inspect OMF sessions from the SQLite state store',
   },
   'session-inspect': {
     script: 'session-inspect.js',
-    description: 'Emit canonical ECC session snapshots from dmux or Claude history targets',
+    description: 'Emit canonical OMF session snapshots from dmux or Claude history targets',
   },
   uninstall: {
     script: 'uninstall.js',
-    description: 'Remove ECC-managed files recorded in install-state',
+    description: 'Remove OMF-managed files recorded in install-state',
   },
 };
 
@@ -66,7 +66,7 @@ const PRIMARY_COMMANDS = [
 
 function showHelp(exitCode = 0) {
   console.log(`
-ECC selective-install CLI
+OMF selective-install CLI
 
 Usage:
   ecc <command> [args...]

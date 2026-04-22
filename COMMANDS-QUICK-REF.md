@@ -109,7 +109,7 @@
 | Command | What it does |
 |---------|-------------|
 | `/refactor-clean` | Remove dead code, consolidate duplicates, clean up structure |
-| `/prompt-optimize` | Analyse a draft prompt and output an optimised ECC-enriched version |
+| `/prompt-optimize` | Analyse a draft prompt and output an optimised OMF-enriched version |
 
 ---
 

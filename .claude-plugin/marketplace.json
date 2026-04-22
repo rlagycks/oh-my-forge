@@ -3,16 +3,16 @@
   "owner": {
     "name": "rlagycks"
   },
-  "metadata": {
-    "description": "Battle-tested Claude Code workflows — skills, agents, commands, and hooks for professional development.",
-    "version": "1.11.1"
+    "metadata": {
+      "description": "Battle-tested Claude Code workflows — skills, agents, commands, and hooks for professional development.",
+    "version": "1.11.2"
   },
   "plugins": [
     {
       "name": "oh-my-forge",
       "source": "./",
       "description": "125 battle-tested skills, agents, commands, and hooks for TDD, security scanning, code review, and autonomous development.",
-      "version": "1.11.1",
+      "version": "1.11.2",
       "author": {
         "name": "gimhyochan"
       },

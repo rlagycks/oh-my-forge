@@ -2,13 +2,13 @@
 'use strict';
 
 /**
- * Merge ECC-recommended MCP servers into a Codex config.toml.
+ * Merge OMF-recommended MCP servers into a Codex config.toml.
  *
  * Strategy: ADD-ONLY by default.
  *   - Parse the TOML to detect which mcp_servers.* sections exist.
  *   - Append raw TOML text for any missing servers (preserves existing file byte-for-byte).
- *   - Log warnings when an existing server's config differs from the ECC recommendation.
- *   - With --update-mcp, also replace existing ECC-managed servers.
+ *   - Log warnings when an existing server's config differs from the OMF recommendation.
+ *   - With --update-mcp, also replace existing OMF-managed servers.
  *
  * Uses the repo's package-manager abstraction (scripts/lib/package-manager.js)
  * so MCP launcher commands respect the user's configured package manager.
@@ -25,7 +25,7 @@ try {
   TOML = require('@iarna/toml');
 } catch {
   console.error('[ecc-mcp] Missing dependency: @iarna/toml');
-  console.error('[ecc-mcp] Run: npm install   (from the ECC repo root)');
+  console.error('[omf-mcp] Run: npm install   (from the OMF repo root)');
   process.exit(1);
 }
 
@@ -61,7 +61,7 @@ const PM_EXEC = resolvedExecCmd; // e.g. "pnpm dlx", "npx", "bunx", "yarn dlx"
 const PM_EXEC_PARTS = PM_EXEC.split(/\s+/); // ["pnpm", "dlx"] or ["npx"] or ["bunx"]
 
 // ---------------------------------------------------------------------------
-// ECC-recommended MCP servers
+// OMF-recommended MCP servers
 // ---------------------------------------------------------------------------
 
 // GitHub bootstrap uses bash for token forwarding — this is intentionally
@@ -106,7 +106,7 @@ const ECC_SERVERS = {
 ECC_SERVERS.supabase.fields.args.push('--features=account,docs,database,debugging,development,functions,storage,branching');
 ECC_SERVERS.supabase.toml = ECC_SERVERS.supabase.toml.replace(/^(args = \[.*)\]$/m, '$1, "--features=account,docs,database,debugging,development,functions,storage,branching"]');
 
-// Legacy section names that should be treated as an existing ECC server.
+// Legacy section names that should be treated as an existing OMF server.
 // e.g. older configs shipped [mcp_servers.context7-mcp] instead of [mcp_servers.context7].
 const LEGACY_ALIASES = {
   context7: ['context7-mcp']
@@ -267,7 +267,7 @@ function main() {
         if (legacyName && !hasCanonical) {
           warn(`mcp_servers.${legacyName} is a legacy name for ${name} (run with --update-mcp to migrate)`);
         } else if (configDiffers(finalEntry, spec.fields)) {
-          warn(`mcp_servers.${name} differs from ECC recommendation (run with --update-mcp to refresh)`);
+          warn(`mcp_servers.${name} differs from OMF recommendation (run with --update-mcp to refresh)`);
         } else {
           log(`  [ok] mcp_servers.${name}`);
         }
@@ -279,7 +279,7 @@ function main() {
   }
 
   if (toAppend.length === 0) {
-    log('All ECC MCP servers already present. Nothing to do.');
+    log('All OMF MCP servers already present. Nothing to do.');
     return;
   }
 
