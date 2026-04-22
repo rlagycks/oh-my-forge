@@ -195,9 +195,9 @@ fi
 
 command_prompts_count="$(find "$PROMPTS_DIR" -maxdepth 1 -type f -name 'ecc-*.md' 2>/dev/null | wc -l | tr -d ' ')"
 if [[ "$command_prompts_count" -ge 43 ]]; then
-  ok "OMF prompts count is $command_prompts_count (expected >= 43)"
+  ok "OMF prompts (legacy ecc-*.md) count is $command_prompts_count (expected >= 43)"
 else
-  fail "OMF prompts count is $command_prompts_count (expected >= 43)"
+  fail "OMF prompts (legacy ecc-*.md) count is $command_prompts_count (expected >= 43)"
 fi
 
 hooks_path="$(git config --global --get core.hooksPath || true)"

@@ -24,7 +24,7 @@ let TOML;
 try {
   TOML = require('@iarna/toml');
 } catch {
-  console.error('[ecc-mcp] Missing dependency: @iarna/toml');
+  console.error('[omf-mcp] Missing dependency: @iarna/toml');
   console.error('[omf-mcp] Run: npm install   (from the OMF repo root)');
   process.exit(1);
 }

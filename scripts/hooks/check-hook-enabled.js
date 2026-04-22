@@ -1,30 +1,15 @@
 #!/usr/bin/env node
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
 const { isHookEnabled } = require('../lib/hook-flags');
+const { resolveRequestFilePath, loadJsonFile } = require('../lib/request-file');
 
 function getPluginRoot() {
   if (process.env.CLAUDE_PLUGIN_ROOT && process.env.CLAUDE_PLUGIN_ROOT.trim()) {
     return process.env.CLAUDE_PLUGIN_ROOT;
   }
   return path.resolve(__dirname, '..', '..');
-}
-
-function resolveRequestFile(pluginRoot, requestFile) {
-  if (!requestFile || typeof requestFile !== 'string') return null;
-  const trimmed = requestFile.trim();
-  if (!trimmed) return null;
-  return path.isAbsolute(trimmed) ? path.resolve(trimmed) : path.resolve(pluginRoot, trimmed);
-}
-
-function loadRequestFile(requestFilePath) {
-  try {
-    return JSON.parse(fs.readFileSync(requestFilePath, 'utf8'));
-  } catch (error) {
-    return { error: `Failed to read request file: ${error.message}` };
-  }
 }
 
 function parseArgs(argv) {
@@ -71,14 +56,18 @@ if (!hookId) {
 let profilesCsv = parsed.profilesCsv;
 if (parsed.requestFile) {
   const pluginRoot = getPluginRoot();
-  const requestFilePath = resolveRequestFile(pluginRoot, parsed.requestFile);
-  const requestPayload = requestFilePath ? loadRequestFile(requestFilePath) : { error: 'Missing request file path.' };
-  if (requestPayload && requestPayload.error) {
-    process.stdout.write('yes');
+  const requestFilePath = resolveRequestFilePath(pluginRoot, parsed.requestFile);
+  const requestFile = requestFilePath
+    ? loadJsonFile(requestFilePath, 'request file')
+    : { payload: null, error: 'Missing request file path.' };
+
+  if (requestFile && requestFile.error) {
+    process.stdout.write('no');
     process.exit(0);
   }
-  if (requestPayload && Object.prototype.hasOwnProperty.call(requestPayload, 'profiles')) {
-    profilesCsv = requestPayload.profiles;
+
+  if (requestFile.payload && Object.prototype.hasOwnProperty.call(requestFile.payload, 'profiles')) {
+    profilesCsv = requestFile.payload.profiles;
   }
 }
 

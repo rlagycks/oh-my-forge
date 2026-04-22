@@ -16,11 +16,11 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --profiles)
       PROFILES_CSV="${2:-}"
-      shift 2
+      shift $(( $# >= 2 ? 2 : 1 ))
       ;;
     --request-file)
       REQUEST_FILE="${2:-}"
-      shift 2
+      shift $(( $# >= 2 ? 2 : 1 ))
       ;;
     *)
       # Legacy positional profilesCsv (deprecated)

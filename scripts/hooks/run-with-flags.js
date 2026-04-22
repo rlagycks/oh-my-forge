@@ -14,6 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { isHookEnabled } = require('../lib/hook-flags');
+const { resolveRequestFilePath, loadJsonFile } = require('../lib/request-file');
 
 const MAX_STDIN = 1024 * 1024;
 
@@ -123,21 +124,6 @@ function getPluginRoot() {
   return path.resolve(__dirname, '..', '..');
 }
 
-function resolveRequestFile(pluginRoot, requestFile) {
-  if (!requestFile || typeof requestFile !== 'string') return null;
-  const trimmed = requestFile.trim();
-  if (!trimmed) return null;
-  return path.isAbsolute(trimmed) ? path.resolve(trimmed) : path.resolve(pluginRoot, trimmed);
-}
-
-function loadRequestFile(requestFilePath) {
-  try {
-    return JSON.parse(fs.readFileSync(requestFilePath, 'utf8'));
-  } catch (error) {
-    return { error: `Failed to read request file: ${error.message}` };
-  }
-}
-
 async function main() {
   const parsed = parseRunnerArgs(process.argv.slice(2));
   const hookId = parsed.hookId;
@@ -154,16 +140,19 @@ async function main() {
 
   let profilesCsv = parsed.profilesCsv;
   if (parsed.requestFile) {
-    const requestFilePath = resolveRequestFile(pluginRoot, parsed.requestFile);
-    const requestPayload = requestFilePath ? loadRequestFile(requestFilePath) : { error: 'Missing request file path.' };
-    if (requestPayload && requestPayload.error) {
-      writeStderr(`[Hook] ${requestPayload.error}`);
+    const requestFilePath = resolveRequestFilePath(pluginRoot, parsed.requestFile);
+    const requestFile = requestFilePath
+      ? loadJsonFile(requestFilePath, 'request file')
+      : { payload: null, error: 'Missing request file path.' };
+
+    if (requestFile && requestFile.error) {
+      writeStderr(`[Hook] ${requestFile.error}`);
       process.stdout.write(raw);
       process.exit(0);
     }
 
-    if (requestPayload && Object.prototype.hasOwnProperty.call(requestPayload, 'profiles')) {
-      profilesCsv = requestPayload.profiles;
+    if (requestFile.payload && Object.prototype.hasOwnProperty.call(requestFile.payload, 'profiles')) {
+      profilesCsv = requestFile.payload.profiles;
     }
   }
 

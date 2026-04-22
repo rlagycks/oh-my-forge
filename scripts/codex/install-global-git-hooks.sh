@@ -61,5 +61,5 @@ fi
 run_or_echo git config --global core.hooksPath "$DEST_DIR"
 
 log "Installed OMF global git hooks."
-log "Disable per repo by creating .ecc-hooks-disable in project root."
-log "Temporary bypass: ECC_SKIP_PRECOMMIT=1 or ECC_SKIP_PREPUSH=1"
+log "Disable per repo by creating .ecc-hooks-disable in project root (legacy name)."
+log "Temporary bypass: ECC_SKIP_PRECOMMIT=1 or ECC_SKIP_PREPUSH=1 (legacy env vars)"
