@@ -4,7 +4,7 @@
 /**
  * session-start-bootstrap.js
  *
- * Bootstrap loader for the ECC SessionStart hook.
+ * Bootstrap loader for the OMF SessionStart hook.
  *
  * Problem this solves: the previous approach embedded this logic as an inline
  * `node -e "..."` string inside hooks.json. Characters like `!` (used in
@@ -17,7 +17,7 @@
  *
  * How it works:
  *   1. Reads the raw JSON event from stdin (passed by Claude Code).
- *   2. Resolves the ECC plugin root directory (via CLAUDE_PLUGIN_ROOT env var
+ *   2. Resolves the OMF plugin root directory (via CLAUDE_PLUGIN_ROOT env var
  *      or a set of well-known fallback paths).
  *   3. Delegates to `scripts/hooks/run-with-flags.js` with the `session:start`
  *      event, which applies hook-profile gating and then runs session-start.js.
@@ -37,7 +37,7 @@ const raw = fs.readFileSync(0, 'utf8');
 const rel = path.join('scripts', 'hooks', 'run-with-flags.js');
 
 /**
- * Returns true when `candidate` looks like a valid ECC plugin root, i.e. the
+ * Returns true when `candidate` looks like a valid OMF plugin root, i.e. the
  * run-with-flags.js runner exists inside it.
  *
  * @param {unknown} candidate
@@ -49,7 +49,7 @@ function hasRunnerRoot(candidate) {
 }
 
 /**
- * Resolves the ECC plugin root using the following priority order:
+ * Resolves the OMF plugin root using the following priority order:
  *   1. CLAUDE_PLUGIN_ROOT environment variable
  *   2. ~/.claude (direct install)
  *   3. Several well-known plugin sub-paths under ~/.claude/plugins/
@@ -149,6 +149,6 @@ if (fs.existsSync(script)) {
 }
 
 process.stderr.write(
-  '[SessionStart] WARNING: could not resolve ECC plugin root; skipping session-start hook\n'
+  '[SessionStart] WARNING: could not resolve OMF plugin root; skipping session-start hook\n'
 );
 process.stdout.write(raw);

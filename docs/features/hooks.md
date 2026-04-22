@@ -21,7 +21,7 @@ Claude Code 이벤트(PreToolUse, PostToolUse, Stop, SessionStart 등)에 반응
 - `ECC_HOOK_PROFILE`이 `allowedProfiles`에 포함될 때만 실행 (기본: standard)
 - stdin은 최대 1MB, 파싱 실패 시 원본 그대로 통과
 - routing 계열 훅(`domain-context-inject`, `constraint-guard`, `qa-context-inject`, `pre-write-edit-codex-guard`)은 `file_path → cwd` 순서로 현재 프로젝트의 ontology root를 찾는다
-- `CLAUDE_PLUGIN_ROOT`는 ECC 자산 위치 해석용이지 현재 프로젝트 routing 기준이 아니다. project file routing fallback으로 직접 사용하지 않는다
+- `CLAUDE_PLUGIN_ROOT`는 OMF 자산 위치 해석용이지 현재 프로젝트 routing 기준이 아니다. project file routing fallback으로 직접 사용하지 않는다
 - ontology packet은 `deprecated`, `stale`, `superseded`, `expiresAt` 지난 항목을 제외하고,
   `updatedAt`/`lastSeenAt`/`createdAt`/`date` 기준 최신 active 항목을 먼저 선택한 뒤
   profile limit을 적용한다

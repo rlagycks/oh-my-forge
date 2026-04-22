@@ -5,7 +5,7 @@ const path = require('path');
 const os = require('os');
 
 /**
- * Resolve the ECC source root directory.
+ * Resolve the OMF source root directory.
  *
  * Tries, in order:
  *   1. CLAUDE_PLUGIN_ROOT env var (set by Claude Code for hooks, or by user)
@@ -18,8 +18,8 @@ const os = require('os');
  * @param {string} [options.homeDir]  Override home directory (for testing)
  * @param {string} [options.envRoot]  Override CLAUDE_PLUGIN_ROOT (for testing)
  * @param {string} [options.probe]    Relative path used to verify a candidate root
- *                                    contains ECC scripts. Default: 'scripts/lib/utils.js'
- * @returns {string} Resolved ECC root path
+ *                                    contains OMF scripts. Default: 'scripts/lib/utils.js'
+ * @returns {string} Resolved OMF root path
  */
 function resolveEccRoot(options = {}) {
   const envRoot = options.envRoot !== undefined

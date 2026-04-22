@@ -1,8 +1,8 @@
-# Everything Claude Code (ECC) — Agent Instructions
+# Oh My Forge (OMF) — Agent Instructions
 
-This is a **production-ready AI coding plugin** providing 36 specialized agents, 144+ skills, 76 commands, and automated hook workflows for software development.
+This is a **production-ready AI coding plugin** (Oh My Forge, OMF) providing 36 specialized agents, 144+ skills, 76 commands, and automated hook workflows for software development.
 
-**Version:** 1.11.1
+**Version:** 1.11.2
 
 ## Core Principles
 

@@ -2,7 +2,7 @@
 
 ## 목적
 
-ECC 세션 데이터, 스킬 이력, 오케스트레이션 상태를 SQLite(sql.js WASM)로 영속화하는 시스템. `wrapSqlJsDatabase()`가 sql.js API를 better-sqlite3 호환 인터페이스로 래핑(어댑터 패턴)하여 상위 코드가 런타임을 의식하지 않게 한다. 트랜잭션 커밋 후까지 디스크 쓰기를 지연한다.
+OMF 세션 데이터, 스킬 이력, 오케스트레이션 상태를 SQLite(sql.js WASM)로 영속화하는 시스템. `wrapSqlJsDatabase()`가 sql.js API를 better-sqlite3 호환 인터페이스로 래핑(어댑터 패턴)하여 상위 코드가 런타임을 의식하지 않게 한다. 트랜잭션 커밋 후까지 디스크 쓰기를 지연한다.
 
 ## 진입점
 

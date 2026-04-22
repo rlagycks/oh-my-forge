@@ -321,9 +321,9 @@ Never skip the RED phase. Never write code before tests.
 
 ## Related Agents
 
-This command invokes the `tdd-guide` agent provided by ECC.
+This command invokes the `tdd-guide` agent provided by OMF.
 
-The related `tdd-workflow` skill is also bundled with ECC.
+The related `tdd-workflow` skill is also bundled with OMF.
 
 For manual installs, the source files live at:
 - `agents/tdd-guide.md`

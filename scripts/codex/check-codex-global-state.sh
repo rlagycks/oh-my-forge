@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ECC Codex global regression sanity check.
-# Validates that global ~/.codex state matches expected ECC integration.
+# OMF Codex global regression sanity check.
+# Validates that global ~/.codex state matches expected OMF integration.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -73,7 +73,7 @@ check_config_absent() {
   fi
 }
 
-printf 'ECC GLOBAL SANITY CHECK\n'
+printf 'OMF GLOBAL SANITY CHECK\n'
 printf 'Repo: %s\n' "$REPO_ROOT"
 printf 'Codex home: %s\n\n' "$CODEX_HOME"
 
@@ -81,16 +81,16 @@ require_file "$CONFIG_FILE" "Global config.toml"
 require_file "$AGENTS_FILE" "Global AGENTS.md"
 
 if [[ -f "$AGENTS_FILE" ]]; then
-  if search_file '^# Everything Claude Code \(ECC\)' "$AGENTS_FILE"; then
-    ok "AGENTS contains ECC root instructions"
+  if search_file '^# Oh My Forge \(OMF\)' "$AGENTS_FILE"; then
+    ok "AGENTS contains OMF root instructions"
   else
-    fail "AGENTS missing ECC root instructions"
+    fail "AGENTS missing OMF root instructions"
   fi
 
-  if search_file '^# Codex Supplement \(From ECC \.codex/AGENTS\.md\)' "$AGENTS_FILE"; then
-    ok "AGENTS contains ECC Codex supplement"
+  if search_file '^# Codex Supplement \(From OMF \.codex/AGENTS\.md\)' "$AGENTS_FILE"; then
+    ok "AGENTS contains OMF Codex supplement"
   else
-    fail "AGENTS missing ECC Codex supplement"
+    fail "AGENTS missing OMF Codex supplement"
   fi
 fi
 
@@ -173,12 +173,12 @@ if [[ -d "$SKILLS_DIR" ]]; then
   done
 
   if [[ "$missing_skills" -eq 0 ]]; then
-    ok "All 16 ECC skills are present in $SKILLS_DIR"
+    ok "All 16 OMF skills are present in $SKILLS_DIR"
   else
-    warn "$missing_skills ECC skills missing from $SKILLS_DIR (install via ECC installer or npx skills)"
+    warn "$missing_skills OMF skills missing from $SKILLS_DIR (install via OMF installer or npx skills)"
   fi
 else
-  warn "Skills directory missing ($SKILLS_DIR) — install via ECC installer or npx skills"
+  warn "Skills directory missing ($SKILLS_DIR) — install via OMF installer or npx skills"
 fi
 
 if [[ -f "$PROMPTS_DIR/ecc-prompts-manifest.txt" ]]; then
@@ -195,9 +195,9 @@ fi
 
 command_prompts_count="$(find "$PROMPTS_DIR" -maxdepth 1 -type f -name 'ecc-*.md' 2>/dev/null | wc -l | tr -d ' ')"
 if [[ "$command_prompts_count" -ge 43 ]]; then
-  ok "ECC prompts count is $command_prompts_count (expected >= 43)"
+  ok "OMF prompts (legacy ecc-*.md) count is $command_prompts_count (expected >= 43)"
 else
-  fail "ECC prompts count is $command_prompts_count (expected >= 43)"
+  fail "OMF prompts (legacy ecc-*.md) count is $command_prompts_count (expected >= 43)"
 fi
 
 hooks_path="$(git config --global --get core.hooksPath || true)"
@@ -243,8 +243,8 @@ fi
 
 printf '\nSummary: checks=%d, warnings=%d, failures=%d\n' "$checks" "$warnings" "$failures"
 if [[ "$failures" -eq 0 ]]; then
-  printf 'ECC GLOBAL SANITY: PASS\n'
+  printf 'OMF GLOBAL SANITY: PASS\n'
 else
-  printf 'ECC GLOBAL SANITY: FAIL\n'
+  printf 'OMF GLOBAL SANITY: FAIL\n'
   exit 1
 fi

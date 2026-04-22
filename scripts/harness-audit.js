@@ -483,7 +483,7 @@ function getConsumerChecks(rootDir) {
       path: '~/.claude/plugins/everything-claude-code/',
       description: 'Everything Claude Code is installed for the active user or project',
       pass: Boolean(pluginInstall),
-      fix: 'Install the ECC plugin for this user or project before auditing project-specific harness quality.',
+      fix: 'Install the OMF plugin for this user or project before auditing project-specific harness quality.',
     },
     {
       id: 'consumer-project-overrides',
@@ -497,7 +497,7 @@ function getConsumerChecks(rootDir) {
         countFiles(rootDir, '.claude/commands', '.md') > 0 ||
         fileExists(rootDir, '.claude/settings.json') ||
         fileExists(rootDir, '.claude/hooks.json'),
-      fix: 'Add project-local .claude hooks, commands, skills, or settings that tailor ECC to this repo.',
+      fix: 'Add project-local .claude hooks, commands, skills, or settings that tailor OMF to this repo.',
     },
     {
       id: 'consumer-instructions',
@@ -688,7 +688,7 @@ Usage: node scripts/harness-audit.js [scope] [--scope <repo|hooks|skills|command
        [--root <path>]
 
 Deterministic harness audit based on explicit file/rule checks.
-Audits the current working directory by default and auto-detects ECC repo mode vs consumer-project mode.
+Audits the current working directory by default and auto-detects OMF repo mode vs consumer-project mode.
 `);
   process.exit(exitCode);
 }

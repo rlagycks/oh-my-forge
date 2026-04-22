@@ -3,7 +3,35 @@ set -euo pipefail
 
 HOOK_ID="${1:-}"
 REL_SCRIPT_PATH="${2:-}"
-PROFILES_CSV="${3:-standard,strict}"
+if [[ $# -ge 2 ]]; then
+  shift 2
+else
+  shift $#
+fi
+
+PROFILES_CSV="standard,strict"
+REQUEST_FILE=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --profiles)
+      PROFILES_CSV="${2:-}"
+      shift $(( $# >= 2 ? 2 : 1 ))
+      ;;
+    --request-file)
+      REQUEST_FILE="${2:-}"
+      shift $(( $# >= 2 ? 2 : 1 ))
+      ;;
+    *)
+      # Legacy positional profilesCsv (deprecated)
+      if [[ -z "${PROFILES_CSV:-}" || "${PROFILES_CSV}" == "standard,strict" ]]; then
+        PROFILES_CSV="$1"
+      fi
+      shift 1
+      ;;
+  esac
+done
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 
@@ -16,7 +44,11 @@ if [[ -z "$HOOK_ID" || -z "$REL_SCRIPT_PATH" ]]; then
 fi
 
 # Ask Node helper if this hook is enabled
-ENABLED="$(node "${PLUGIN_ROOT}/scripts/hooks/check-hook-enabled.js" "$HOOK_ID" "$PROFILES_CSV" 2>/dev/null || echo yes)"
+if [[ -n "${REQUEST_FILE}" ]]; then
+  ENABLED="$(node "${PLUGIN_ROOT}/scripts/hooks/check-hook-enabled.js" "$HOOK_ID" --request-file "${REQUEST_FILE}" 2>/dev/null || echo yes)"
+else
+  ENABLED="$(node "${PLUGIN_ROOT}/scripts/hooks/check-hook-enabled.js" "$HOOK_ID" --profiles "$PROFILES_CSV" 2>/dev/null || echo yes)"
+fi
 if [[ "$ENABLED" != "yes" ]]; then
   printf '%s' "$INPUT"
   exit 0

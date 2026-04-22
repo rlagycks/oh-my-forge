@@ -1,4 +1,4 @@
-# ECC Feature Index
+# OMF Feature Index
 
 Claude의 도메인 라우팅 인덱스. 각 `domain_*` 키는 `.claude/ontology/index.json`과 1:1 대응한다.
 
@@ -14,7 +14,7 @@ Claude의 도메인 라우팅 인덱스. 각 `domain_*` 키는 `.claude/ontology
 | `domain_orchestration` | tmux 워크트리 멀티 에이전트 오케스트레이션 | [orchestration.md](orchestration.md) | platform |
 | `domain_package_manager` | npm/pnpm/yarn/bun 자동 감지 | [package-manager.md](package-manager.md) | infra |
 | `domain_state_store` | SQLite 기반 세션/스킬/상태 영속성 | [state-store.md](state-store.md) | infra |
-| `domain_install` | ECC 컴포넌트 선택적 설치 시스템 | [install.md](install.md) | platform |
+| `domain_install` | OMF 컴포넌트 선택적 설치 시스템 | [install.md](install.md) | platform |
 | `domain_codex` | Codex CLI 통합 및 하이브리드 에이전트 설정 | [codex.md](codex.md) | platform |
 | `domain_qa` | QA 지식 계층 (버그 히스토리, RCA, qa-context-inject) | [qa-knowledge-layer.md](qa-knowledge-layer.md) | oh-my-forge |
 

@@ -8,7 +8,7 @@ function showHelp(exitCode = 0) {
   console.log(`
 Usage: node scripts/status.js [--db <path>] [--json] [--limit <n>]
 
-Query the ECC SQLite state store for active sessions, recent skill runs,
+Query the OMF SQLite state store for active sessions, recent skill runs,
 install health, and pending governance events.
 `);
   process.exit(exitCode);
@@ -118,7 +118,7 @@ function printGovernance(section) {
 }
 
 function printHuman(payload) {
-  console.log('ECC status\n');
+  console.log('OMF status\n');
   console.log(`Database: ${payload.dbPath}\n`);
   printActiveSessions(payload.activeSessions);
   console.log();
