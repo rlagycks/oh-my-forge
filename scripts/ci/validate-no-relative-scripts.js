@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '../..');
-const TARGET_DIRS = ['commands', 'agents'];
+const TARGET_DIRS = ['commands', 'agents', 'skills'];
 const RELATIVE_PATTERN = /\bnode\s+["']?(?:\.\/)?(scripts|hooks)\//i;
 const VARIABLE_PREFIX_PATTERN = /\bnode\s+["']?\$/;
 
@@ -44,4 +44,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Validated: no relative script invocations in commands/ or agents/ docs');
+console.log('Validated: no relative script invocations in commands/, agents/, or skills/ docs');
