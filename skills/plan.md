@@ -45,7 +45,8 @@ The plan must include:
 When the user confirms:
 
 ```bash
-node scripts/lib/save-plan.js "<feature-name>" --content "<full plan markdown>"
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+node "$PLUGIN_ROOT/scripts/lib/save-plan.js" "<feature-name>" --content "<full plan markdown>"
 ```
 
 Store the path as `PLAN_FILE`.
@@ -53,7 +54,8 @@ Store the path as `PLAN_FILE`.
 ### Step 3 — Detect Engine
 
 ```bash
-node -e "const { detectImplementationEngine } = require('./scripts/lib/utils.js'); console.log(detectImplementationEngine())"
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+node -e "const { detectImplementationEngine } = require(process.argv[1]); console.log(detectImplementationEngine())" "$PLUGIN_ROOT/scripts/lib/utils.js"
 ```
 
 ### Step 4 — Build the Route via `scripts/lib/codex-handoff.js`
@@ -106,6 +108,13 @@ Diff reviewed   : yes
 Code review     : /code-review complete
 Status          : ready to commit
 ```
+
+## Troubleshooting: `CLAUDE_PLUGIN_ROOT` in your shell
+
+Claude Code can inject `CLAUDE_PLUGIN_ROOT` via `~/.claude/settings.json`, but your interactive terminal may not have it exported.
+If you run verification commands manually and see paths like `/scripts/lib/...` (leading `/`), it usually means `CLAUDE_PLUGIN_ROOT` is empty in that shell.
+
+Use an absolute `PLUGIN_ROOT=...` prefix (as shown above), or export `CLAUDE_PLUGIN_ROOT` in your shell config.
 
 ## Enforcement Hooks
 

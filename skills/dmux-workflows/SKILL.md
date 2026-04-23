@@ -141,7 +141,8 @@ git merge feat/billing
 ECC now includes a helper for external tmux-pane orchestration with separate git worktrees:
 
 ```bash
-node scripts/orchestrate-worktrees.js plan.json --execute
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+node "$PLUGIN_ROOT/scripts/orchestrate-worktrees.js" plan.json --execute
 ```
 
 Example `plan.json`:

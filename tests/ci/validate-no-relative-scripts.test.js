@@ -9,10 +9,11 @@ const ROOT = path.join(__dirname, '..', '..');
 const VALIDATOR = path.join(ROOT, 'scripts/ci/validate-no-relative-scripts.js');
 const COMMANDS_DIR = path.join(ROOT, 'commands');
 const AGENTS_DIR = path.join(ROOT, 'agents');
+const SKILLS_DIR = path.join(ROOT, 'skills');
 const TMP_DIR_NAME = '.tmp-validate-no-relative-scripts';
 
 function cleanupTmpDirs() {
-  for (const dir of [COMMANDS_DIR, AGENTS_DIR]) {
+  for (const dir of [COMMANDS_DIR, AGENTS_DIR, SKILLS_DIR]) {
     const tmpPath = path.join(dir, TMP_DIR_NAME);
     fs.rmSync(tmpPath, { recursive: true, force: true });
   }
@@ -53,7 +54,7 @@ let failed = 0;
 
 console.log('\n=== validate-no-relative-scripts ===\n');
 
-if (test('commands/ and agents/ docs pass validation', () => {
+if (test('commands/, agents/, and skills/ docs pass validation', () => {
   const result = runValidator();
   assert.strictEqual(result.status, 0, `validator failed:\n${result.stdout}${result.stderr}`);
 })) passed++; else failed++;
@@ -76,6 +77,16 @@ if (test('flags bare relative node hooks path', () => {
   const expected = `FAIL: ${relative}:2: node hooks/pre-commit.js`;
   const output = `${result.stdout}${result.stderr}`;
   assert.ok(output.includes(expected), `missing expected hooks failure line: ${expected}\nOutput:\n${output}`);
+})) passed++; else failed++;
+
+if (test('flags bare relative node scripts path in skills', () => {
+  const filePath = writeFixture(SKILLS_DIR, 'bad-skill.md', 'skill example\nnode scripts/lib/foo.js\n');
+  const result = runValidator();
+  assert.notStrictEqual(result.status, 0, 'validator should fail for bare node scripts path in skills');
+  const relative = path.relative(ROOT, filePath);
+  const expected = `FAIL: ${relative}:2: node scripts/lib/foo.js`;
+  const output = `${result.stdout}${result.stderr}`;
+  assert.ok(output.includes(expected), `missing expected failure line: ${expected}\nOutput:\n${output}`);
 })) passed++; else failed++;
 
 if (test('allows resolver-based script invocations', () => {
