@@ -32,7 +32,7 @@ MD 문서(기획서, API 명세 등)를 분석하여 도메인별 JSON 온톨로
 이미 `/design-contract`로 실행 계약 마크다운이 정리돼 있다면, 전체 재추출 대신 아래 경로를 우선 고려한다:
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 node "$PLUGIN_ROOT/scripts/lib/ontology.js" promote-contract \
   --contract-file "<design-contract.md>" \
   --detail-file ".claude/ontology/domain_<name>.json" \

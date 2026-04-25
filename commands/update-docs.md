@@ -69,7 +69,7 @@ Generate or update `docs/RUNBOOK.md` with:
 `docs/features/` 하위 파일이 변경되었거나 신규 도메인 관련 문서가 추가된 경우:
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 ONTOLOGY_INDEX="$PLUGIN_ROOT/.claude/ontology/index.json"
 if [ -f "$ONTOLOGY_INDEX" ] && [ -f "$PLUGIN_ROOT/scripts/ci/validate-ontology.js" ]; then
   node "$PLUGIN_ROOT/scripts/ci/validate-ontology.js" 2>/dev/null && echo "ontology OK" || echo "WARNING: ontology 불일치 — /ontology-sync 실행 권장"

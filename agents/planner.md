@@ -295,7 +295,7 @@ If **no phase maps to any domain**, skip to **Fallback**.
 Before delegating, save the full plan to `~/.claude/plans/` using the feature name as slug:
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 node "$PLUGIN_ROOT/scripts/lib/save-plan.js" "<feature-name>" --content "<full plan markdown>"
 ```
 

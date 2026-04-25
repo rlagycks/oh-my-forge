@@ -112,11 +112,11 @@ claude -p --allowedTools "Read,Write,Edit,Bash" "Implement the fixes from securi
 
 ```bash
 # Start the default session
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 node "$PLUGIN_ROOT/scripts/claw.js"
 
 # Named session with skill context
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 CLAW_SESSION=my-project CLAW_SKILLS=tdd-workflow,security-review node "$PLUGIN_ROOT/scripts/claw.js"
 ```
 

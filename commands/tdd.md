@@ -27,7 +27,7 @@ Use `/tdd` when:
 
 The tdd-guide agent will:
 
-0. **Query ontology** (if `.claude/ontology/index.json` exists) — `node '${CLAUDE_PLUGIN_ROOT:-.}/scripts/lib/ontology.js' query --domain <id> --fields models,constraints`로 `models[]`와 `constraints[]`를 읽어 인터페이스 스캐폴딩과 테스트 픽스처에 활용한다. 도메인 `constraints[]`는 엣지 케이스 테스트 항목으로 자동 추가한다.
+0. **Query ontology** (if `.claude/ontology/index.json` exists) — `node '${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}/scripts/lib/ontology.js' query --domain <id> --fields models,constraints`로 `models[]`와 `constraints[]`를 읽어 인터페이스 스캐폴딩과 테스트 픽스처에 활용한다. 도메인 `constraints[]`는 엣지 케이스 테스트 항목으로 자동 추가한다.
 
 1. **Define interfaces** for inputs/outputs
 2. **Write tests that will FAIL** (because code doesn't exist yet)

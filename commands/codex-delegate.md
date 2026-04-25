@@ -19,7 +19,7 @@ Delegate an implementation task to Codex using the ontology GPS. Claude reads on
 
 ### Step 1 — Ontology Query
 
-Run `node '${CLAUDE_PLUGIN_ROOT:-.}/scripts/lib/ontology.js' query --domain <domain_id>` (fallback to `keys` if the domain is missing).
+Run `node '${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}/scripts/lib/ontology.js' query --domain <domain_id>` (fallback to `keys` if the domain is missing).
 
 **Detect format:**
 - **Flat format**: `{ "domain_X": { files: [...], ... } }` — domain entry is inline
@@ -100,7 +100,7 @@ Return your result in the following structure:
 **If the Codex companion is available** (openai-codex plugin or legacy codex-plugin-cc; foreground delegation expected by the caller), write the request JSON to a temp file and dispatch it through the shared runtime:
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 node "$PLUGIN_ROOT/scripts/lib/codex-handoff.js" dispatch \
   --request-file "<handoff-request.json>"
 ```
@@ -108,7 +108,7 @@ node "$PLUGIN_ROOT/scripts/lib/codex-handoff.js" dispatch \
 If auto-resolution selects the wrong companion in your environment, override it explicitly:
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 node "$PLUGIN_ROOT/scripts/lib/codex-handoff.js" dispatch \
   --request-file "<handoff-request.json>" \
   --companion-path "<codex-companion.mjs>"

@@ -15,7 +15,7 @@ Run a deterministic repository harness audit and return a prioritized scorecard.
 Always run:
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 node "$PLUGIN_ROOT/scripts/harness-audit.js" <scope> --format <text|json> [--root <path>]
 ```
 
@@ -51,7 +51,7 @@ Return:
 스크립트 실행 후, `.claude/ontology/index.json`이 존재하면 별도 검증을 실행한다:
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 ONTOLOGY_INDEX="$PLUGIN_ROOT/.claude/ontology/index.json"
 if [ -f "$ONTOLOGY_INDEX" ] && [ -f "$PLUGIN_ROOT/scripts/ci/validate-ontology.js" ]; then
   node "$PLUGIN_ROOT/scripts/ci/validate-ontology.js" 2>/dev/null && echo "ontology OK" || echo "WARNING: ontology 불일치"
