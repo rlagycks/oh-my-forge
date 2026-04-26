@@ -157,7 +157,8 @@ function readInputMarkdown(argv) {
   const contentFlag = readFlag('--content', argv);
   if (contentFlag) return contentFlag;
 
-  return fs.readFileSync('/dev/stdin', 'utf8');
+  // Cross-platform stdin read (works on Windows as well).
+  return fs.readFileSync(0, 'utf8');
 }
 
 function safeJson(value) {
@@ -224,11 +225,21 @@ function runDelegate(argv) {
     const { dir, filePath } = writeTempJson(handoff);
     try {
       const result = dispatchHandoff({ request: handoff });
-      results.push({ requestFile: filePath, result });
+      results.push({
+        request: handoff.kind === 'domain'
+          ? { kind: handoff.kind, domainId: handoff.domainId, files: handoff.files }
+          : { kind: handoff.kind, files: handoff.files },
+        result,
+      });
       if (result.state !== 'COMPLETED') anyBlocked = true;
     } catch (error) {
       anyBlocked = true;
-      results.push({ requestFile: filePath, error: error.message });
+      results.push({
+        request: handoff.kind === 'domain'
+          ? { kind: handoff.kind, domainId: handoff.domainId, files: handoff.files }
+          : { kind: handoff.kind, files: handoff.files },
+        error: error.message,
+      });
     } finally {
       try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
     }
@@ -277,4 +288,3 @@ module.exports = {
 if (require.main === module) {
   runCli();
 }
-

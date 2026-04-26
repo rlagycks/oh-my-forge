@@ -86,7 +86,9 @@ if (require.main === module) {
   } else {
     // Read from stdin
     try {
-      content = fs.readFileSync('/dev/stdin', 'utf8');
+      // Cross-platform stdin read (works on Windows as well).
+      // Node allows reading from fd 0 directly.
+      content = fs.readFileSync(0, 'utf8');
     } catch {
       process.stderr.write('[save-plan] Error: no content provided via stdin or --content\n');
       process.exit(1);
