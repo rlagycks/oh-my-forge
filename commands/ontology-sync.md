@@ -185,7 +185,7 @@ appendEntry(projectRoot, {
 ## Step 6 — CI 검증
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 if [ -f "$PLUGIN_ROOT/scripts/ci/validate-ontology.js" ]; then
   node "$PLUGIN_ROOT/scripts/ci/validate-ontology.js"
 else

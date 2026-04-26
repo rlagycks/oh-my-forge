@@ -22,7 +22,7 @@ Create a detailed, self-contained implementation plan that captures all codebase
 온톨로지 인덱스 존재 여부를 확인한다:
 
 ```bash
-node '${CLAUDE_PLUGIN_ROOT:-.}/scripts/lib/ontology.js' summary 2>/dev/null
+node '${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}/scripts/lib/ontology.js' summary
 ```
 
 인덱스가 존재하면 **Ontology Mode**로 전환한다:

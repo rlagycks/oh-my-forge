@@ -31,8 +31,9 @@ const os = require('os');
 function resolveOntologyDir() {
   const local = path.join(process.cwd(), '.claude', 'ontology');
   if (fs.existsSync(local)) return local;
-  if (process.env.CLAUDE_PLUGIN_ROOT) {
-    const pluginLocal = path.join(process.env.CLAUDE_PLUGIN_ROOT, '.claude', 'ontology');
+  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || process.env.CODEX_PLUGIN_ROOT;
+  if (pluginRoot) {
+    const pluginLocal = path.join(pluginRoot, '.claude', 'ontology');
     if (fs.existsSync(pluginLocal)) return pluginLocal;
   }
   return local; // return local even if missing — errors reported at use-site

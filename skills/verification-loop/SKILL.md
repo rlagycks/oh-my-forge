@@ -69,7 +69,7 @@ Report:
 
 ```bash
 if [ -f .claude/ontology/index.json ] && [ -f scripts/ci/validate-ontology.js ]; then
-  PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+  PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
   node "$PLUGIN_ROOT/scripts/ci/validate-ontology.js" && echo "ontology OK" || echo "FAIL: ontology 불일치"
 elif [ ! -f .claude/ontology/index.json ]; then
   echo "Ontology: SKIPPED (.claude/ontology/index.json not present)"

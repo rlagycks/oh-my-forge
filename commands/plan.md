@@ -126,7 +126,7 @@ When the user responds with "yes", "proceed", "승인", or similar affirmative:
 Extract the feature name from the plan title (e.g. "Implementation Plan: Real-Time Notifications" → "real-time-notifications") and save the full plan content to `~/.claude/plans/`:
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 node "$PLUGIN_ROOT/scripts/lib/save-plan.js" "<feature-name>" --content "<full plan markdown>"
 ```
 
@@ -135,7 +135,7 @@ Store the returned absolute path as `PLAN_FILE`.
 ### Step 2 — Detect implementation engine
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 node -e "const { detectImplementationEngine } = require(process.argv[1]); console.log(detectImplementationEngine())" "$PLUGIN_ROOT/scripts/lib/utils.js"
 ```
 
@@ -166,10 +166,23 @@ For routing, treat `process.cwd()` as the active project root.
 - `domain-less `/codex-delegate` calls are invalid`; use fallback rescue instead.
 - If `ENGINE = "codex"` and you do not have a routable Codex handoff, do NOT silently switch to Claude implementation.
 
+To avoid the manual (error-prone) "extract file paths" step, use the helper:
+
+```bash
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
+node "$PLUGIN_ROOT/scripts/lib/plan-workflow.js" delegate \
+  --routing-root "$PWD" \
+  --engine "$ENGINE" \
+  --feature-name "<feature-name>" \
+  --task "<one-sentence implementation task>" \
+  --plan-file "$PLAN_FILE" \
+  --route-only
+```
+
 Example CLI usage:
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 node "$PLUGIN_ROOT/scripts/lib/codex-handoff.js" route \
   --engine "$ENGINE" \
   --routing-root "$PWD" \
@@ -188,7 +201,7 @@ If `createPlanRoute` returns Codex handoffs:
 - dispatch it through the shared runtime:
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 node "$PLUGIN_ROOT/scripts/lib/codex-handoff.js" dispatch \
   --request-file "<handoff-request.json>"
 ```

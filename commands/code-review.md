@@ -38,7 +38,7 @@ If no changed files, stop: "Nothing to review."
 변경된 파일 목록이 확인되면, `.claude/ontology/index.json`을 읽어 각 파일이 속한 도메인을 찾는다.
 
 ```bash
-node '${CLAUDE_PLUGIN_ROOT:-.}/scripts/lib/ontology.js' query --file <changed_file> 2>/dev/null
+node '${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}/scripts/lib/ontology.js' query --file <changed_file> 2>/dev/null
 ```
 
 파일이 `domain_*`의 `files[]`에 포함된 경우:

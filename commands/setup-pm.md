@@ -10,7 +10,7 @@ Configure your preferred package manager for this project or globally.
 ## Usage
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 
 # Detect current package manager
 node "$PLUGIN_ROOT/scripts/setup-package-manager.js" --detect
@@ -78,6 +78,6 @@ export CLAUDE_PACKAGE_MANAGER=pnpm
 To see current package manager detection results, run:
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 node "$PLUGIN_ROOT/scripts/setup-package-manager.js" --detect
 ```

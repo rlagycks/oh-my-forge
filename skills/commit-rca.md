@@ -73,7 +73,7 @@ Add to `constraints[]` in the domain file. Use the machine-checkable format when
 ### Step 4 — Record the Decision
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 node "$PLUGIN_ROOT/scripts/lib/decisions.js" add \
   --domain <domain_key> \
   --type bug-fix \

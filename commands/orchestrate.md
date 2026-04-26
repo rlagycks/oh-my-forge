@@ -41,7 +41,7 @@ security-reviewer -> code-reviewer -> architect
 워크플로우 실행 전 온톨로지 인덱스를 확인한다.
 
 ```bash
-node '${CLAUDE_PLUGIN_ROOT:-.}/scripts/lib/ontology.js' summary 2>/dev/null
+node '${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}/scripts/lib/ontology.js' summary 2>/dev/null
 ```
 
 인덱스가 존재하는 경우 아래 라우팅 규칙을 적용한다:
@@ -192,7 +192,7 @@ Run simultaneously:
 Combine outputs into single report
 ```
 
-For external tmux-pane workers with separate git worktrees, use `PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}; node "$PLUGIN_ROOT/scripts/orchestrate-worktrees.js" plan.json --execute`. The built-in orchestration pattern stays in-process; the helper is for long-running or cross-harness sessions.
+For external tmux-pane workers with separate git worktrees, use `PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}; node "$PLUGIN_ROOT/scripts/orchestrate-worktrees.js" plan.json --execute`. The built-in orchestration pattern stays in-process; the helper is for long-running or cross-harness sessions.
 
 When workers need to see dirty or untracked local files from the main checkout, add `seedPaths` to the plan file. OMF overlays only those selected paths into each worker worktree after `git worktree add`, which keeps the branch isolated while still exposing in-flight local scripts, plans, or docs.
 
@@ -213,7 +213,7 @@ When workers need to see dirty or untracked local files from the main checkout, 
 To export a control-plane snapshot for a live tmux/worktree session, run:
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 node "$PLUGIN_ROOT/scripts/orchestration-status.js" .claude/plan/workflow-visual-proof.json
 ```
 

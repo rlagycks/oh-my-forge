@@ -35,7 +35,7 @@ This command is automatically selected by `/plan` when:
 
 ### Step 1 — Ontology Query
 
-Run `node '${CLAUDE_PLUGIN_ROOT:-.}/scripts/lib/ontology.js' query --domain <domain_id>` (fallback to `keys` if missing).
+Run `node '${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}/scripts/lib/ontology.js' query --domain <domain_id>` (fallback to `keys` if missing).
 
 **Detect format:**
 - **Flat format**: `{ "domain_X": { files: [...], ... } }` — domain entry is inline

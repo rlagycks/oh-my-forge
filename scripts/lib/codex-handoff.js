@@ -607,7 +607,8 @@ function readInputFile(flagName, args) {
     return fs.readFileSync(args[index + 1], 'utf8');
   }
 
-  return fs.readFileSync('/dev/stdin', 'utf8');
+  // Cross-platform stdin read (works on Windows as well).
+  return fs.readFileSync(0, 'utf8');
 }
 
 function readFlag(flagName, args) {

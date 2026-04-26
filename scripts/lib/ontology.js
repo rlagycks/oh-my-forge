@@ -17,7 +17,7 @@ function resolveOntologyDir() {
   const cwdDir = path.join(process.cwd(), '.claude', 'ontology');
   if (fs.existsSync(cwdDir)) return cwdDir;
 
-  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || process.env.CODEX_PLUGIN_ROOT;
   if (pluginRoot) {
     const pluginDir = path.join(pluginRoot, '.claude', 'ontology');
     if (fs.existsSync(pluginDir)) return pluginDir;

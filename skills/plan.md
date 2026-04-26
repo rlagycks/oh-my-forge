@@ -45,7 +45,7 @@ The plan must include:
 When the user confirms:
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 node "$PLUGIN_ROOT/scripts/lib/save-plan.js" "<feature-name>" --content "<full plan markdown>"
 ```
 
@@ -54,7 +54,7 @@ Store the path as `PLAN_FILE`.
 ### Step 3 — Detect Engine
 
 ```bash
-PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-.}
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
 node -e "const { detectImplementationEngine } = require(process.argv[1]); console.log(detectImplementationEngine())" "$PLUGIN_ROOT/scripts/lib/utils.js"
 ```
 
@@ -68,6 +68,17 @@ Treat `scripts/lib/codex-handoff.js` as the single source of truth for:
 - `parseCodexResult`
 
 Extract the file paths from the confirmed plan, then route them through `createPlanRoute`.
+
+To avoid manual extraction, you can use:
+
+```bash
+PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}
+node "$PLUGIN_ROOT/scripts/lib/plan-workflow.js" delegate \
+  --routing-root "$PWD" \
+  --task "<one-sentence implementation task>" \
+  --plan-file "$PLAN_FILE" \
+  --route-only
+```
 
 If `createPlanRoute` returns Codex domain handoffs, invoke them in `dependsOn` order. For independent domains, call multiple Skill invocations **in parallel**.
 
