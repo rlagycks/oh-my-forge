@@ -40,7 +40,7 @@
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-with-flags.js\" \"pre:bash:codex-guard\" \"scripts/hooks/pre-bash-codex-guard.js\" --request-file \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/requests/standard-strict.json\""
           }
         ],
-        "description": "Require codex-handoff.js dispatch request artifacts for Codex handoffs and block raw codex-companion task calls"
+        "description": "Block shell writes to ontology-tracked files when Codex is pinned, require codex-handoff.js dispatch request artifacts, and block raw codex-companion task calls"
       },
       {
         "matcher": "Bash",
