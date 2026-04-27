@@ -2,7 +2,7 @@
 
 This is a **production-ready AI coding plugin** (Oh My Forge, OMF) providing 36 specialized agents, 144+ skills, 76 commands, and automated hook workflows for software development.
 
-**Version:** 1.11.2
+**Version:** 1.11.4
 
 ## Core Principles
 
