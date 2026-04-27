@@ -81,10 +81,10 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2), 'utf8');
 }
 
-function makeTrackedProjectFixture(initialEngine = 'codex') {
+function makeTrackedProjectFixture(initialEngine = 'codex', trackedRelPath = path.join('src', 'tracked.js')) {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pre-bash-codex-guard-'));
   const projectRoot = path.join(tempRoot, 'project');
-  const trackedFile = path.join(projectRoot, 'src', 'tracked.js');
+  const trackedFile = path.join(projectRoot, trackedRelPath);
 
   mkdirp(path.dirname(trackedFile));
   mkdirp(path.join(projectRoot, '.claude', 'ontology'));
@@ -93,7 +93,7 @@ function makeTrackedProjectFixture(initialEngine = 'codex') {
     domain_project: {
       summary: 'project-owned domain',
       owner: 'project',
-      files: ['src/tracked.js'],
+      files: [trackedRelPath.replace(/\\/g, '/')],
       spec: 'docs/features/project.md',
     },
   });
@@ -541,6 +541,78 @@ function testReadOnlyTrackedFileAllowed() {
   }
 }
 
+function testSudoTrackedWriteBlocked() {
+  const sessionId = 'test-sudo-tracked-write-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const command = `sudo mv ${fixture.trackedFile} /tmp/moved-tracked.js`;
+    const result = runWithProject(fixture.projectRoot, sessionId, command);
+    assert.deepStrictEqual(result, { exitCode: 2 },
+      'sudo-prefixed writes to ontology-tracked files should be blocked');
+    console.log('  PASS testSudoTrackedWriteBlocked');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testMvSourceMutationBlocked() {
+  const sessionId = 'test-mv-source-mutation-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const command = `mv ${fixture.trackedFile} /tmp/renamed-tracked.js`;
+    const result = runWithProject(fixture.projectRoot, sessionId, command);
+    assert.deepStrictEqual(result, { exitCode: 2 },
+      'mv should block when the tracked source path is mutated');
+    console.log('  PASS testMvSourceMutationBlocked');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testEndOfLineCommentsIgnored() {
+  const sessionId = 'test-eol-comments-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const command = `cp /tmp/source.js /tmp/dest.js # ${fixture.trackedFile}`;
+    const result = runWithProject(fixture.projectRoot, sessionId, command);
+    assert.ok(typeof result === 'string',
+      'End-of-line comments should not create false tracked-file matches');
+    console.log('  PASS testEndOfLineCommentsIgnored');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testMetaTrackedPathAllowedAtRepoRoot() {
+  const sessionId = 'test-meta-path-allowed-root-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex', path.join('tests', 'tracked.test.js'));
+
+  try {
+    const command = [
+      `cat > ${fixture.trackedFile} <<'EOF'`,
+      'module.exports = 2;',
+      'EOF',
+    ].join('\n');
+    const result = runWithProject(fixture.projectRoot, sessionId, command);
+    assert.ok(typeof result === 'string',
+      'Meta paths should remain allowed even when the command runs from the repo root');
+    console.log('  PASS testMetaTrackedPathAllowedAtRepoRoot');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
 const tests = [
   testNonCodexCommandPassThrough,
   testPromptFileDomainCallAllowed,
@@ -559,6 +631,10 @@ const tests = [
   testTrackedHeredocWriteBlocked,
   testInlinePythonTrackedWriteBlocked,
   testReadOnlyTrackedFileAllowed,
+  testSudoTrackedWriteBlocked,
+  testMvSourceMutationBlocked,
+  testEndOfLineCommentsIgnored,
+  testMetaTrackedPathAllowedAtRepoRoot,
 ];
 
 let passed = 0;
