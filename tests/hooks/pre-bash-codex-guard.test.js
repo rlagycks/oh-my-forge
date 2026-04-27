@@ -1,5 +1,5 @@
 /**
- * Tests for pre-bash-codex-guard.js — validator-only Codex bash guard
+ * Tests for pre-bash-codex-guard.js — Codex bash guard
  *
  * Run with: node tests/hooks/pre-bash-codex-guard.test.js
  */
@@ -58,8 +58,50 @@ function runWithSession(sessionId, command) {
   return result;
 }
 
+function runWithProject(projectRoot, sessionId, command) {
+  const originalCwd = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    return runWithSession(sessionId, command);
+  } finally {
+    process.chdir(originalCwd);
+  }
+}
+
 function cleanState(sessionId) {
   try { fs.unlinkSync(getStatePathForSession(sessionId)); } catch (_error) { /* ignore */ }
+}
+
+function mkdirp(dirPath) {
+  fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function writeJson(filePath, value) {
+  mkdirp(path.dirname(filePath));
+  fs.writeFileSync(filePath, JSON.stringify(value, null, 2), 'utf8');
+}
+
+function makeTrackedProjectFixture(initialEngine = 'codex', trackedRelPath = path.join('src', 'tracked.js')) {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pre-bash-codex-guard-'));
+  const projectRoot = path.join(tempRoot, 'project');
+  const trackedFile = path.join(projectRoot, trackedRelPath);
+
+  mkdirp(path.dirname(trackedFile));
+  mkdirp(path.join(projectRoot, '.claude', 'ontology'));
+  fs.writeFileSync(trackedFile, 'module.exports = 1;\n', 'utf8');
+  writeJson(path.join(projectRoot, '.claude', 'ontology', 'index.json'), {
+    domain_project: {
+      summary: 'project-owned domain',
+      owner: 'project',
+      files: [trackedRelPath.replace(/\\/g, '/')],
+      spec: 'docs/features/project.md',
+    },
+  });
+  writeJson(path.join(projectRoot, '.claude', 'settings.json'), {
+    implementationEngine: initialEngine,
+  });
+
+  return { tempRoot, projectRoot, trackedFile };
 }
 
 // ---------------------------------------------------------------------------
@@ -439,6 +481,138 @@ function testSingleQuotedPathWithDollarValidated() {
   }
 }
 
+function testTrackedHeredocWriteBlocked() {
+  const sessionId = 'test-tracked-heredoc-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const command = [
+      `cat > ${fixture.trackedFile} <<'EOF'`,
+      'module.exports = 2;',
+      'EOF',
+    ].join('\n');
+    const result = runWithProject(fixture.projectRoot, sessionId, command);
+    assert.deepStrictEqual(result, { exitCode: 2 },
+      'Heredoc writes to ontology-tracked files should be blocked');
+    console.log('  PASS testTrackedHeredocWriteBlocked');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testInlinePythonTrackedWriteBlocked() {
+  const sessionId = 'test-inline-python-write-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const command = [
+      "python3 - <<'PYEOF'",
+      `with open('${fixture.trackedFile.replace(/\\/g, '\\\\')}', 'w', encoding='utf8') as handle:`,
+      "    handle.write('module.exports = 3;\\n')",
+      'PYEOF',
+    ].join('\n');
+    const result = runWithProject(fixture.projectRoot, sessionId, command);
+    assert.deepStrictEqual(result, { exitCode: 2 },
+      'Inline interpreter writes to ontology-tracked files should be blocked');
+    console.log('  PASS testInlinePythonTrackedWriteBlocked');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testReadOnlyTrackedFileAllowed() {
+  const sessionId = 'test-read-only-tracked-file-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const command = `cat ${fixture.trackedFile}`;
+    const result = runWithProject(fixture.projectRoot, sessionId, command);
+    assert.ok(typeof result === 'string',
+      'Read-only Bash access to a tracked file should be allowed');
+    console.log('  PASS testReadOnlyTrackedFileAllowed');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testSudoTrackedWriteBlocked() {
+  const sessionId = 'test-sudo-tracked-write-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const command = `sudo mv ${fixture.trackedFile} /tmp/moved-tracked.js`;
+    const result = runWithProject(fixture.projectRoot, sessionId, command);
+    assert.deepStrictEqual(result, { exitCode: 2 },
+      'sudo-prefixed writes to ontology-tracked files should be blocked');
+    console.log('  PASS testSudoTrackedWriteBlocked');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testMvSourceMutationBlocked() {
+  const sessionId = 'test-mv-source-mutation-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const command = `mv ${fixture.trackedFile} /tmp/renamed-tracked.js`;
+    const result = runWithProject(fixture.projectRoot, sessionId, command);
+    assert.deepStrictEqual(result, { exitCode: 2 },
+      'mv should block when the tracked source path is mutated');
+    console.log('  PASS testMvSourceMutationBlocked');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testEndOfLineCommentsIgnored() {
+  const sessionId = 'test-eol-comments-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const command = `cp /tmp/source.js /tmp/dest.js # ${fixture.trackedFile}`;
+    const result = runWithProject(fixture.projectRoot, sessionId, command);
+    assert.ok(typeof result === 'string',
+      'End-of-line comments should not create false tracked-file matches');
+    console.log('  PASS testEndOfLineCommentsIgnored');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testMetaTrackedPathAllowedAtRepoRoot() {
+  const sessionId = 'test-meta-path-allowed-root-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex', path.join('tests', 'tracked.test.js'));
+
+  try {
+    const command = [
+      `cat > ${fixture.trackedFile} <<'EOF'`,
+      'module.exports = 2;',
+      'EOF',
+    ].join('\n');
+    const result = runWithProject(fixture.projectRoot, sessionId, command);
+    assert.ok(typeof result === 'string',
+      'Meta paths should remain allowed even when the command runs from the repo root');
+    console.log('  PASS testMetaTrackedPathAllowedAtRepoRoot');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
 const tests = [
   testNonCodexCommandPassThrough,
   testPromptFileDomainCallAllowed,
@@ -454,12 +628,19 @@ const tests = [
   testRedirectionInputNotTreatedAsPositional,
   testSingleQuotedRequestFileValidated,
   testSingleQuotedPathWithDollarValidated,
+  testTrackedHeredocWriteBlocked,
+  testInlinePythonTrackedWriteBlocked,
+  testReadOnlyTrackedFileAllowed,
+  testSudoTrackedWriteBlocked,
+  testMvSourceMutationBlocked,
+  testEndOfLineCommentsIgnored,
+  testMetaTrackedPathAllowedAtRepoRoot,
 ];
 
 let passed = 0;
 let failed = 0;
 
-console.log('\npre-bash-codex-guard.test.js (validator-only guard)');
+console.log('\npre-bash-codex-guard.test.js');
 
 for (const test of tests) {
   try {

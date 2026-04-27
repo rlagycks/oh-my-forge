@@ -2,18 +2,23 @@
 /**
  * PreToolUse Hook: Codex Bash Guard
  *
- * Enforces the codex handoff admission path before execution.
+ * Enforces the codex handoff admission path and blocks shell-level writes
+ * to ontology-tracked files before execution.
  *
- *   Guard 1 — Accept only `codex-handoff.js dispatch --request-file ...`
+ *   Guard 1 — Block shell-level writes (heredoc/redirection, tee, cp/mv,
+ *             inline interpreter writes, in-place edits) to ontology-tracked
+ *             files when the pinned engine is Codex.
+ *
+ *   Guard 2 — Accept only `codex-handoff.js dispatch --request-file ...`
  *             as the automatic Codex handoff entrypoint.
  *
- *   Guard 2 — Load the request artifact and validate it against the shared
+ *   Guard 3 — Load the request artifact and validate it against the shared
  *             codex handoff schema before dispatch.
  *
- *   Guard 3 — Block duplicate `plan-auto` dispatches for the same domain within
+ *   Guard 4 — Block duplicate `plan-auto` dispatches for the same domain within
  *             the same session to surface retry loops explicitly.
  *
- *   Guard 4 — Block raw `codex-companion.mjs task ...` calls so prompt-side
+ *   Guard 5 — Block raw `codex-companion.mjs task ...` calls so prompt-side
  *             command assembly cannot bypass runtime validation.
  *
  * Trigger: PreToolUse on Bash
@@ -29,6 +34,12 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { validateHandoff } = require('../lib/codex-handoff');
+const {
+  resolveProjectOntologyRoot,
+  loadOntologyMaps,
+  matchFileToDomain,
+} = require('../lib/ontology-routing');
+const { detectPinnedImplementationEngine } = require('../lib/implementation-engine');
 
 // ---- Session state helpers (same pattern as constraint-guard.js) ----
 
@@ -62,6 +73,29 @@ const DISPATCH_VALUE_FLAGS = new Set([
   'companion-path',
   'fresh',
 ]);
+const CONTROL_TOKENS = new Set(['|', '||', '&&', ';']);
+const EXPLICIT_WRITE_COMMANDS = new Set(['cp', 'mv', 'install', 'touch', 'truncate', 'rm']);
+
+function isMetaPath(relPath) {
+  const norm = String(relPath || '').replace(/\\/g, '/');
+  const metaPrefixes = [
+    '.claude/',
+    'scripts/hooks/',
+    'scripts/lib/',
+    'agents/',
+    'skills/',
+    'commands/',
+    'hooks/',
+    'tests/',
+    'docs/',
+    'node_modules/',
+  ];
+  for (const prefix of metaPrefixes) {
+    if (norm.startsWith(prefix) || norm === prefix.replace(/\/$/, '')) return true;
+  }
+  if (!norm.includes('/') && (norm.endsWith('.md') || norm.endsWith('.json'))) return true;
+  return false;
+}
 
 /**
  * Minimal argv tokeniser — handles quoted strings and --flag=value forms.
@@ -163,6 +197,232 @@ function redirectionNeedsTarget(tok) {
 function containsShellVariable(str, singleQuoted = false) {
   if (singleQuoted) return false;
   return /\$/.test(str);
+}
+
+function normalizePathString(value) {
+  return String(value || '').replace(/\\/g, '/');
+}
+
+function resolveComparablePath(filePath) {
+  const absolutePath = path.resolve(String(filePath || ''));
+  try {
+    return fs.realpathSync.native(absolutePath);
+  } catch {
+    return absolutePath;
+  }
+}
+
+function stripInlineComments(command) {
+  const value = String(command || '');
+  let result = '';
+  let inSingle = false;
+  let inDouble = false;
+
+  for (let index = 0; index < value.length; index++) {
+    const ch = value[index];
+
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+      result += ch;
+      continue;
+    }
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+      result += ch;
+      continue;
+    }
+    if (ch === '#' && !inSingle && !inDouble) {
+      while (index < value.length && value[index] !== '\n') index++;
+      if (index < value.length) result += '\n';
+      continue;
+    }
+
+    result += ch;
+  }
+
+  return result;
+}
+
+function extractRedirectionTarget(tok) {
+  const fdTargetMatch = tok.match(/^\d*>{1,2}(.+)$/);
+  if (fdTargetMatch && fdTargetMatch[1] && !fdTargetMatch[1].startsWith('&')) {
+    return fdTargetMatch[1];
+  }
+  const mergedTargetMatch = tok.match(/^&>{1,2}(.+)$/);
+  if (mergedTargetMatch && mergedTargetMatch[1]) {
+    return mergedTargetMatch[1];
+  }
+  return null;
+}
+
+function collectExplicitMutationTargets(command) {
+  const { tokens } = tokenise(stripInlineComments(command));
+  const candidates = [];
+
+  const pushTarget = value => {
+    if (!value || CONTROL_TOKENS.has(value) || value.startsWith('--')) return;
+    candidates.push(value);
+  };
+
+  for (let index = 0; index < tokens.length; index++) {
+    let token = tokens[index];
+    if (token === 'sudo') {
+      while (index + 1 < tokens.length && tokens[index + 1].startsWith('-')) {
+        index++;
+      }
+      if (index + 1 >= tokens.length) continue;
+      index++;
+      token = tokens[index];
+    }
+
+    if (CONTROL_TOKENS.has(token)) continue;
+
+    if (isShellRedirection(token)) {
+      const inlineTarget = extractRedirectionTarget(token);
+      if (inlineTarget) pushTarget(inlineTarget);
+      if (redirectionNeedsTarget(token) && index + 1 < tokens.length) {
+        pushTarget(tokens[index + 1]);
+      }
+      continue;
+    }
+
+    if (token === 'tee') {
+      for (let cursor = index + 1; cursor < tokens.length; cursor++) {
+        const candidate = tokens[cursor];
+        if (CONTROL_TOKENS.has(candidate)) break;
+        if (!candidate.startsWith('-') && !isShellRedirection(candidate)) {
+          pushTarget(candidate);
+        }
+      }
+      continue;
+    }
+
+    if (!EXPLICIT_WRITE_COMMANDS.has(token)) continue;
+
+    const commandTargets = [];
+    for (let cursor = index + 1; cursor < tokens.length; cursor++) {
+      const candidate = tokens[cursor];
+      if (CONTROL_TOKENS.has(candidate)) break;
+      if (candidate.startsWith('-') || isShellRedirection(candidate)) continue;
+      commandTargets.push(candidate);
+    }
+
+    if (token === 'cp' || token === 'install') {
+      const target = commandTargets[commandTargets.length - 1];
+      if (target) pushTarget(target);
+      continue;
+    }
+
+    for (const target of commandTargets) pushTarget(target);
+  }
+
+  return Array.from(new Set(candidates.map(normalizePathString)));
+}
+
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function commandMentionsPath(command, candidatePath) {
+  const normalizedCommand = normalizePathString(command);
+  const normalizedCandidate = normalizePathString(candidatePath);
+  if (!normalizedCommand.includes(normalizedCandidate)) return false;
+
+  const escaped = escapeRegex(normalizedCandidate);
+  const boundary = '(^|[^A-Za-z0-9_./-])';
+  const tail = '($|[^A-Za-z0-9_./-])';
+  return new RegExp(`${boundary}${escaped}${tail}`).test(normalizedCommand);
+}
+
+function collectQuotedPathCandidates(command) {
+  const candidates = [];
+  const regex = /['"]([^'"\n]+\/[^'"\n]+)['"]/g;
+  let match;
+  while ((match = regex.exec(String(command || ''))) !== null) {
+    candidates.push(match[1]);
+  }
+  return Array.from(new Set(candidates.map(normalizePathString)));
+}
+
+function isInterpreterMutation(command) {
+  const normalized = normalizePathString(command);
+  const inlineInterpreter = /\b(?:python\d*|node|perl|ruby|php|bun)\b/.test(normalized);
+  if (!inlineInterpreter) return false;
+
+  return [
+    /fs\.(?:writeFile|writeFileSync|appendFile|appendFileSync)\s*\(/,
+    /\bwrite_text\s*\(/,
+    /\bwrite_bytes\s*\(/,
+    /\bopen\s*\([^)]*,\s*['"`][wa]/,
+    /\.write\s*\(/,
+    /file_put_contents\s*\(/,
+  ].some(pattern => pattern.test(normalized));
+}
+
+function isInPlaceEditorMutation(command) {
+  const normalized = normalizePathString(command);
+  return /\bsed\b[^\n]*\s-i(?:\S*)?\b/.test(normalized) ||
+    /\bperl\b[^\n]*\s-pi(?:\S*)?\b/.test(normalized);
+}
+
+function findTrackedShellMutation(command, ontologyRoot) {
+  if (!command || !ontologyRoot) return null;
+
+  const comparableRoot = resolveComparablePath(ontologyRoot);
+  const { fileMap } = loadOntologyMaps(comparableRoot);
+  const engine = detectPinnedImplementationEngine(comparableRoot);
+  if (engine !== 'codex') return null;
+
+  const rootVariants = Array.from(new Set([
+    normalizePathString(comparableRoot),
+    normalizePathString(path.resolve(ontologyRoot)),
+  ]));
+  const explicitTargets = collectExplicitMutationTargets(command);
+
+  for (const candidate of explicitTargets) {
+    const resolvedTarget = path.isAbsolute(candidate)
+      ? resolveComparablePath(candidate)
+      : resolveComparablePath(path.resolve(process.cwd(), candidate));
+    const match = matchFileToDomain({ filePath: resolvedTarget, ontologyRoot: comparableRoot, fileMap });
+    if (!match?.domainKey) continue;
+
+    const relPath = normalizePathString(path.relative(comparableRoot, resolvedTarget));
+    if (isMetaPath(relPath)) continue;
+    return { domainKey: match.domainKey, relPath, detector: 'explicit-target' };
+  }
+
+  if (!isInterpreterMutation(command) && !isInPlaceEditorMutation(command)) {
+    return null;
+  }
+
+  for (const candidate of collectQuotedPathCandidates(command)) {
+    const resolvedTarget = path.isAbsolute(candidate)
+      ? resolveComparablePath(candidate)
+      : resolveComparablePath(path.resolve(process.cwd(), candidate));
+    const match = matchFileToDomain({ filePath: resolvedTarget, ontologyRoot: comparableRoot, fileMap });
+    if (!match?.domainKey) continue;
+
+    const relPath = normalizePathString(path.relative(comparableRoot, resolvedTarget));
+    if (isMetaPath(relPath)) continue;
+    return { domainKey: match.domainKey, relPath, detector: 'inline-mutation' };
+  }
+
+  for (const [trackedKey, entry] of Object.entries(fileMap)) {
+    if (trackedKey.startsWith('__slug__') || trackedKey.endsWith('/')) continue;
+    const relPath = normalizePathString(trackedKey);
+    if (isMetaPath(relPath)) continue;
+
+    const absolutePaths = rootVariants.map(rootVariant => normalizePathString(path.join(rootVariant, trackedKey)));
+    const mentioned = commandMentionsPath(command, relPath) ||
+      absolutePaths.some(candidate => commandMentionsPath(command, candidate));
+    if (!mentioned) {
+      continue;
+    }
+
+    return { domainKey: entry.domainKey, relPath, detector: 'inline-mutation' };
+  }
+
+  return null;
 }
 
 /**
@@ -285,6 +545,29 @@ function run(rawInput) {
 
   const command = input.tool_input?.command;
   if (typeof command !== 'string') return rawInput;
+
+  const ontologyRoot = resolveProjectOntologyRoot({ cwd: process.cwd() });
+  const trackedMutation = findTrackedShellMutation(command, ontologyRoot);
+  if (trackedMutation) {
+    const msg = [
+      '',
+      '[CODEX GUARD] Shell write blocked — tracked source file',
+      '',
+      `  File    : ${trackedMutation.relPath}`,
+      `  Domain  : ${trackedMutation.domainKey}`,
+      `  Signal  : ${trackedMutation.detector}`,
+      '',
+      '  Shell-level file mutation would bypass the Edit/Write guard for an ontology-tracked file.',
+      '  Delegate the change via /codex-delegate, or set ECC_BYPASS_CODEX_GUARD=1',
+      '  for an explicit operator override.',
+      '',
+      `    /codex-delegate ${trackedMutation.domainKey}`,
+      '',
+    ].join('\n');
+
+    process.stderr.write(msg);
+    return { exitCode: 2 };
+  }
 
   if (isCodexDispatchCall(command)) {
     const parsed = parseCall(command, 'dispatch', DISPATCH_VALUE_FLAGS);
