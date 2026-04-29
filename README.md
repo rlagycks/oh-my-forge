@@ -333,9 +333,14 @@ After either install method, confirm the plugin is loaded:
 
 ## Privacy
 
-oh-my-forge does not collect, transmit, or store any user data.
-All processing runs locally within your Claude Code session.
-No telemetry, no analytics, no external network calls are made by this plugin.
+oh-my-forge does not send local hook telemetry to a hosted analytics service, but it does persist some data locally under `~/.claude/` for workflow continuity:
+
+- session summaries and follow-up notes
+- token/cost metrics
+- optional redacted Bash command audit logs when `ECC_ENABLE_BASH_COMMAND_LOG=1`
+
+Hook processing runs locally inside Claude Code.
+Network access can still occur when you opt into MCP servers or use tools that call external services.
 
 ---
 

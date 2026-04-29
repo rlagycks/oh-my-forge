@@ -34,6 +34,7 @@ User request → Claude picks a tool → PreToolUse hook runs → Tool executes 
 |------|---------|-------------|
 | **PR logger** | `Bash` | Logs PR URL and review command after `gh pr create` |
 | **Build analysis** | `Bash` | Background analysis after build commands (async, non-blocking) |
+| **Bash command audit (opt-in)** | `Bash` | Disabled by default. Enable `ECC_ENABLE_BASH_COMMAND_LOG=1` to write redacted Bash command summaries to `~/.claude/logs/bash-commands.jsonl` |
 | **Quality gate** | `Edit\|Write\|MultiEdit` | Runs fast quality checks after edits |
 | **Prettier format** | `Edit` | Auto-formats JS/TS files with Prettier after edits |
 | **TypeScript check** | `Edit` | Runs `tsc --noEmit` after editing `.ts`/`.tsx` files |
@@ -82,6 +83,9 @@ export ECC_HOOK_PROFILE=standard
 
 # Disable specific hook IDs (comma-separated)
 export ECC_DISABLED_HOOKS="pre:bash:tmux-reminder,post:edit:typecheck"
+
+# Optional: persist redacted Bash command summaries locally
+export ECC_ENABLE_BASH_COMMAND_LOG=1
 ```
 
 Profiles:

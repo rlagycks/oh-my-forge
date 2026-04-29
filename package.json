@@ -89,6 +89,8 @@
     ".claude-plugin/plugin.json",
     ".claude-plugin/README.md",
     ".codex-plugin/plugin.json",
+    ".codex-plugin/mcp.default.json",
+    ".codex-plugin/mcp.full.json",
     ".codex-plugin/README.md",
     ".mcp.json",
     "install.sh",

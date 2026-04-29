@@ -73,7 +73,7 @@ const DISPATCH_VALUE_FLAGS = new Set([
   'companion-path',
   'fresh',
 ]);
-const CONTROL_TOKENS = new Set(['|', '||', '&&', ';']);
+const CONTROL_TOKENS = new Set(['|', '||', '&&', ';', '&']);
 const EXPLICIT_WRITE_COMMANDS = new Set(['cp', 'mv', 'install', 'touch', 'truncate', 'rm']);
 
 function isMetaPath(relPath) {
@@ -274,7 +274,6 @@ function collectExplicitMutationTargets(command) {
       index++;
       token = tokens[index];
     }
-
     if (CONTROL_TOKENS.has(token)) continue;
 
     if (isShellRedirection(token)) {

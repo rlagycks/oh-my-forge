@@ -2192,6 +2192,21 @@ async function runTests() {
     passed++;
   else failed++;
 
+  if (
+    test('Bash command audit hook is opt-in and uses the shared JS runner', () => {
+      const hooksPath = path.join(__dirname, '..', '..', 'hooks', 'hooks.json');
+      const hooks = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
+      const auditHook = hooks.hooks.PostToolUse.find(entry => entry.description && entry.description.includes('ECC_ENABLE_BASH_COMMAND_LOG=1'));
+
+      assert.ok(auditHook, 'Should define an opt-in Bash command audit hook');
+      assert.strictEqual(auditHook.matcher, 'Bash', 'Bash command audit should only match Bash tool calls');
+      assert.ok(auditHook.hooks[0].command.includes('run-with-flags.js'), 'Bash command audit should execute through run-with-flags.js');
+      assert.ok(auditHook.hooks[0].command.includes('bash-command-log.js'), 'Bash command audit should execute through the JS hook');
+    })
+  )
+    passed++;
+  else failed++;
+
   // plugin.json validation
   console.log('\nplugin.json Validation:');
 
