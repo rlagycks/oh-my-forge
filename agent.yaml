@@ -1,6 +1,6 @@
 spec_version: "0.1.0"
 name: oh-my-forge
-version: 1.9.0
+version: 1.11.3
 description: "Ontology-driven Claude Code harness — agents, skills, commands, and hooks with structural error prevention and Codex delegation."
 author: rlagycks
 license: MIT

@@ -133,6 +133,7 @@ These hooks make the Codex-first policy hard policy, not just a guideline:
 
 | Hook | Type | Trigger | Effect |
 |------|------|---------|--------|
+| `pre:bash:codex-guard` | PreToolUse | Bash | Blocks shell-level writes to ontology-tracked files when `ENGINE=codex`; only allows Codex handoff via validated dispatch requests. |
 | `pre:write-edit:codex-guard` | PreToolUse | Write\|Edit\|MultiEdit | Blocks direct edits to ontology-tracked files when ENGINE=codex. Exit 2. |
 | `post:bash:codex-diff-inject` | PostToolUse | Bash | After Codex runs, injects diff + review instruction via hookSpecificOutput. |
 | `stop:diff-review-guard` | Stop | Session end | Blocks session end if Codex ran + uncommitted changes remain. Exit 2. |
@@ -162,6 +163,7 @@ The write guard never blocks these paths regardless of engine:
 ## Constraints
 
 - Never implement source files directly when ENGINE=codex — always delegate.
+- Never mutate ontology-tracked source files through Bash (`cat >`, heredoc, `tee`, inline Python/Node writes, in-place editors) when ENGINE=codex — the Bash guard now blocks those paths too.
 - Review the diff before ending any session where Codex ran.
 - Do not skip /code-review even when the diff looks clean.
 - Ontology domain `dependsOn` order must be respected for parallel agents.

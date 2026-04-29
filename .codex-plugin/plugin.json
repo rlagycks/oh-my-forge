@@ -10,7 +10,7 @@
   "license": "MIT",
   "keywords": ["codex", "agents", "skills", "tdd", "code-review", "security", "workflow", "automation"],
   "skills": "./skills/",
-  "mcpServers": "./.mcp.json",
+  "mcpServers": "./mcp.default.json",
   "interface": {
     "displayName": "oh-my-forge",
     "shortDescription": "Ontology-driven harness with structural error prevention, Codex delegation, and battle-tested workflows.",

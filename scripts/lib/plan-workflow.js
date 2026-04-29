@@ -39,7 +39,7 @@ function looksLikeProjectPath(value) {
   if (candidate.includes('\n')) return false;
   if (candidate.length > 240) return false;
   if (candidate.includes('`')) return false;
-  if (/^\-\-?[a-zA-Z0-9_-]+$/.test(candidate)) return false;
+  if (/^--?[a-zA-Z0-9_-]+$/.test(candidate)) return false;
 
   // Must include at least one path-ish signal.
   if (!candidate.includes('/') && !candidate.includes('\\') && !candidate.includes('.')) return false;
@@ -222,7 +222,7 @@ function runDelegate(argv) {
   let anyBlocked = false;
 
   for (const handoff of route.handoffs) {
-    const { dir, filePath } = writeTempJson(handoff);
+    const { dir } = writeTempJson(handoff);
     try {
       const result = dispatchHandoff({ request: handoff });
       results.push({
