@@ -73,7 +73,7 @@ const DISPATCH_VALUE_FLAGS = new Set([
   'companion-path',
   'fresh',
 ]);
-const CONTROL_TOKENS = new Set(['|', '||', '&&', ';']);
+const CONTROL_TOKENS = new Set(['|', '||', '&&', ';', '&']);
 const EXPLICIT_WRITE_COMMANDS = new Set(['cp', 'mv', 'install', 'touch', 'truncate', 'rm']);
 
 function isMetaPath(relPath) {
@@ -213,13 +213,34 @@ function resolveComparablePath(filePath) {
 }
 
 function stripInlineComments(command) {
-  return String(command || '')
-    .split('\n')
-    .map(line => {
-      const trimmed = line.trimStart();
-      return trimmed.startsWith('#') ? '' : line;
-    })
-    .join('\n');
+  const value = String(command || '');
+  let result = '';
+  let inSingle = false;
+  let inDouble = false;
+
+  for (let index = 0; index < value.length; index++) {
+    const ch = value[index];
+
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+      result += ch;
+      continue;
+    }
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+      result += ch;
+      continue;
+    }
+    if (ch === '#' && !inSingle && !inDouble) {
+      while (index < value.length && value[index] !== '\n') index++;
+      if (index < value.length) result += '\n';
+      continue;
+    }
+
+    result += ch;
+  }
+
+  return result;
 }
 
 function extractRedirectionTarget(tok) {
@@ -244,7 +265,15 @@ function collectExplicitMutationTargets(command) {
   };
 
   for (let index = 0; index < tokens.length; index++) {
-    const token = tokens[index];
+    let token = tokens[index];
+    if (token === 'sudo') {
+      while (index + 1 < tokens.length && tokens[index + 1].startsWith('-')) {
+        index++;
+      }
+      if (index + 1 >= tokens.length) continue;
+      index++;
+      token = tokens[index];
+    }
     if (CONTROL_TOKENS.has(token)) continue;
 
     if (isShellRedirection(token)) {
@@ -277,7 +306,7 @@ function collectExplicitMutationTargets(command) {
       commandTargets.push(candidate);
     }
 
-    if (token === 'cp' || token === 'mv' || token === 'install') {
+    if (token === 'cp' || token === 'install') {
       const target = commandTargets[commandTargets.length - 1];
       if (target) pushTarget(target);
       continue;
@@ -294,10 +323,14 @@ function escapeRegex(value) {
 }
 
 function commandMentionsPath(command, candidatePath) {
-  const escaped = escapeRegex(normalizePathString(candidatePath));
+  const normalizedCommand = normalizePathString(command);
+  const normalizedCandidate = normalizePathString(candidatePath);
+  if (!normalizedCommand.includes(normalizedCandidate)) return false;
+
+  const escaped = escapeRegex(normalizedCandidate);
   const boundary = '(^|[^A-Za-z0-9_./-])';
   const tail = '($|[^A-Za-z0-9_./-])';
-  return new RegExp(`${boundary}${escaped}${tail}`).test(normalizePathString(command));
+  return new RegExp(`${boundary}${escaped}${tail}`).test(normalizedCommand);
 }
 
 function collectQuotedPathCandidates(command) {
@@ -339,7 +372,6 @@ function findTrackedShellMutation(command, ontologyRoot) {
   const engine = detectPinnedImplementationEngine(comparableRoot);
   if (engine !== 'codex') return null;
 
-  const isSelfRepo = comparableRoot === resolveComparablePath(process.cwd());
   const rootVariants = Array.from(new Set([
     normalizePathString(comparableRoot),
     normalizePathString(path.resolve(ontologyRoot)),
@@ -354,7 +386,7 @@ function findTrackedShellMutation(command, ontologyRoot) {
     if (!match?.domainKey) continue;
 
     const relPath = normalizePathString(path.relative(comparableRoot, resolvedTarget));
-    if (!isSelfRepo && isMetaPath(relPath)) continue;
+    if (isMetaPath(relPath)) continue;
     return { domainKey: match.domainKey, relPath, detector: 'explicit-target' };
   }
 
@@ -370,14 +402,14 @@ function findTrackedShellMutation(command, ontologyRoot) {
     if (!match?.domainKey) continue;
 
     const relPath = normalizePathString(path.relative(comparableRoot, resolvedTarget));
-    if (!isSelfRepo && isMetaPath(relPath)) continue;
+    if (isMetaPath(relPath)) continue;
     return { domainKey: match.domainKey, relPath, detector: 'inline-mutation' };
   }
 
   for (const [trackedKey, entry] of Object.entries(fileMap)) {
     if (trackedKey.startsWith('__slug__') || trackedKey.endsWith('/')) continue;
     const relPath = normalizePathString(trackedKey);
-    if (!isSelfRepo && isMetaPath(relPath)) continue;
+    if (isMetaPath(relPath)) continue;
 
     const absolutePaths = rootVariants.map(rootVariant => normalizePathString(path.join(rootVariant, trackedKey)));
     const mentioned = commandMentionsPath(command, relPath) ||

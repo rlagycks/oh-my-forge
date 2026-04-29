@@ -8,6 +8,7 @@ const {
   buildAuditRow,
   redactSecrets,
   summarizeCommand,
+  tokenizePreview,
 } = require('../../scripts/hooks/bash-command-log');
 
 function test(name, fn) {
@@ -50,6 +51,14 @@ if (test('summarizeCommand keeps only a short redacted preview and command famil
   assert.strictEqual(summary.hasElevatedPrivileges, true);
   assert.ok(summary.preview.includes('<REDACTED>'), summary.preview);
   assert.ok(!summary.preview.includes('abc123'), summary.preview);
+})) passed++; else failed++;
+
+if (test('tokenizePreview preserves quoted env assignments as a single token', () => {
+  const tokens = tokenizePreview('NAME="John Doe" git commit -m "ship it"');
+  assert.deepStrictEqual(tokens, ['NAME=John Doe', 'git', 'commit', '-m', 'ship it']);
+
+  const summary = summarizeCommand('NAME="John Doe" git commit -m "ship it"');
+  assert.strictEqual(summary.commandFamily, 'git');
 })) passed++; else failed++;
 
 if (test('buildAuditRow emits structured metadata without raw secrets', () => {

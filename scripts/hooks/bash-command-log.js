@@ -38,9 +38,44 @@ function redactSecrets(value) {
     .replace(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, '<REDACTED>');
 }
 
+function tokenizePreview(value) {
+  const tokens = [];
+  let current = '';
+  let inSingle = false;
+  let inDouble = false;
+
+  for (let index = 0; index < value.length; index++) {
+    const ch = value[index];
+
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+      continue;
+    }
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+      continue;
+    }
+    if (/\s/.test(ch) && !inSingle && !inDouble) {
+      if (current) {
+        tokens.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += ch;
+  }
+
+  if (current) {
+    tokens.push(current);
+  }
+
+  return tokens;
+}
+
 function summarizeCommand(command) {
   const preview = collapseWhitespace(redactSecrets(command));
-  const tokens = preview.split(' ').filter(Boolean);
+  const tokens = tokenizePreview(preview);
 
   let offset = 0;
   while (offset < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[offset])) {
@@ -113,4 +148,5 @@ module.exports = {
   redactSecrets,
   run,
   summarizeCommand,
+  tokenizePreview,
 };

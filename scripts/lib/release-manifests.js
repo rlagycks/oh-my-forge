@@ -8,13 +8,13 @@ const MANIFEST_PATHS = {
   packageLock: 'package-lock.json',
   agentYaml: 'agent.yaml',
   agentsDoc: 'AGENTS.md',
-  codexPlugin: path.join('.codex-plugin', 'plugin.json'),
-  claudeMarketplace: path.join('.claude-plugin', 'marketplace.json'),
+  codexPlugin: '.codex-plugin/plugin.json',
+  claudeMarketplace: '.claude-plugin/marketplace.json',
 };
 
 const REQUIRED_PACKAGED_PATHS = [
-  path.join('.claude-plugin', 'README.md'),
-  path.join('.codex-plugin', 'README.md'),
+  '.claude-plugin/README.md',
+  '.codex-plugin/README.md',
 ];
 
 function readJson(rootDir, relativePath) {
@@ -36,7 +36,8 @@ function normalizePackageFileEntry(entry) {
     return null;
   }
 
-  return entry.endsWith('/') ? entry.slice(0, -1) : entry;
+  const normalized = entry.replace(/\\/g, '/');
+  return normalized.endsWith('/') ? normalized.slice(0, -1) : normalized;
 }
 
 function readAgentYamlVersion(rootDir) {

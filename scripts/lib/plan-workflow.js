@@ -12,7 +12,6 @@
  */
 
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
 const { savePlan } = require('./save-plan');
@@ -40,7 +39,6 @@ function looksLikeProjectPath(value) {
   if (candidate.length > 240) return false;
   if (candidate.includes('`')) return false;
   if (/^--?[a-zA-Z0-9_-]+$/.test(candidate)) return false;
-
   // Must include at least one path-ish signal.
   if (!candidate.includes('/') && !candidate.includes('\\') && !candidate.includes('.')) return false;
 
@@ -165,14 +163,6 @@ function safeJson(value) {
   return JSON.stringify(value, null, 2);
 }
 
-function writeTempJson(payload, options = {}) {
-  const tempRoot = options.tempRoot || os.tmpdir();
-  const dir = fs.mkdtempSync(path.join(tempRoot, 'plan-workflow-'));
-  const filePath = path.join(dir, 'handoff-request.json');
-  fs.writeFileSync(filePath, safeJson(payload) + '\n', 'utf8');
-  return { dir, filePath };
-}
-
 function runDelegate(argv) {
   const routingRoot = path.resolve(readFlag('--routing-root', argv) || process.cwd());
   const task = readFlag('--task', argv);
@@ -222,7 +212,6 @@ function runDelegate(argv) {
   let anyBlocked = false;
 
   for (const handoff of route.handoffs) {
-    const { dir } = writeTempJson(handoff);
     try {
       const result = dispatchHandoff({ request: handoff });
       results.push({
@@ -240,8 +229,6 @@ function runDelegate(argv) {
           : { kind: handoff.kind, files: handoff.files },
         error: error.message,
       });
-    } finally {
-      try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
     }
   }
 

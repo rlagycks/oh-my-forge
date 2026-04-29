@@ -183,6 +183,30 @@ if (test('flags missing packaged files declared in package.json', () => {
   }
 })) passed++; else failed++;
 
+if (test('normalizes Windows-style package file entries before checking required paths', () => {
+  const rootDir = createFixture({
+    packageVersion: '1.10.2',
+    codexPluginVersion: '1.10.2',
+    marketplaceMetadataVersion: '1.10.2',
+    marketplacePluginVersion: '1.10.2',
+    packageFiles: [
+      '.claude-plugin\\README.md',
+      '.codex-plugin\\README.md',
+    ],
+    presentPackageFiles: [
+      '.claude-plugin/README.md',
+      '.codex-plugin/README.md',
+    ],
+  });
+
+  try {
+    const snapshot = readReleaseManifestVersions(rootDir);
+    assert.deepStrictEqual(findMissingPackagedPaths(snapshot), []);
+  } finally {
+    cleanup(rootDir);
+  }
+})) passed++; else failed++;
+
 if (test('current repository release manifests and packaged files are in sync', () => {
   const snapshot = readReleaseManifestVersions(repoRoot);
   const mismatches = [
