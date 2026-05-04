@@ -19,6 +19,13 @@ function writeFile(filePath, content = '// companion\n') {
   fs.writeFileSync(filePath, content, 'utf8');
 }
 
+function writeEccRoot(rootPath, options = {}) {
+  writeFile(path.join(rootPath, 'scripts', 'lib', 'utils.js'), '// utils\n');
+  const companionPath = options.companionPath || path.join(rootPath, 'scripts', 'codex-companion.mjs');
+  writeFile(companionPath);
+  return companionPath;
+}
+
 function test(name, fn) {
   try {
     fn();
@@ -43,7 +50,7 @@ if (test('resolveCodexCompanionPath prefers explicit path over env and auto cand
     const eccRoot = path.join(root, 'ecc-root');
     writeFile(explicitPath);
     writeFile(envPath);
-    writeFile(path.join(eccRoot, 'scripts', 'codex-companion.mjs'));
+    writeEccRoot(eccRoot);
 
     const resolved = resolveCodexCompanionPath({
       explicitPath,
@@ -65,7 +72,7 @@ if (test('resolveCodexCompanionPath falls back to CODEX_COMPANION_PATH before au
     const envPath = path.join(root, 'env', 'codex-companion.mjs');
     const eccRoot = path.join(root, 'ecc-root');
     writeFile(envPath);
-    writeFile(path.join(eccRoot, 'scripts', 'codex-companion.mjs'));
+    writeEccRoot(eccRoot);
 
     const resolved = resolveCodexCompanionPath({
       envPath,
@@ -84,6 +91,7 @@ if (test('collectAutoCandidates includes ECC root and codex-plugin-cc locations'
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'resolve-codex-companion-'));
   try {
     const eccRoot = path.join(root, 'ecc-root');
+    writeFile(path.join(eccRoot, 'scripts', 'lib', 'utils.js'), '// utils\n');
     const candidates = collectAutoCandidates({
       envRoot: eccRoot,
       homeDir: root,
@@ -138,8 +146,7 @@ if (test('resolveCodexCompanionPath auto-discovers a companion under the ECC roo
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'resolve-codex-companion-'));
   try {
     const eccRoot = path.join(root, 'ecc-root');
-    const candidate = path.join(eccRoot, 'scripts', 'codex-companion.mjs');
-    writeFile(candidate);
+    const candidate = writeEccRoot(eccRoot);
 
     const resolved = resolveCodexCompanionPath({
       envRoot: eccRoot,
