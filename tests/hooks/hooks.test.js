@@ -2104,7 +2104,7 @@ async function runTests() {
   else failed++;
 
   if (
-    test('SessionStart hook uses safe inline resolver without plugin-tree scanning', () => {
+    test('SessionStart hook delegates to the bootstrap script with shared root resolution', () => {
       const hooksPath = path.join(__dirname, '..', '..', 'hooks', 'hooks.json');
       const hooks = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
       const sessionStartHook = hooks.hooks.SessionStart?.[0]?.hooks?.[0];
@@ -2127,8 +2127,8 @@ async function runTests() {
       const bootstrapSrc = fs.readFileSync(bootstrapPath, 'utf8');
       assert.ok(bootstrapSrc.includes('session:start'), 'Bootstrap should invoke the session:start profile');
       assert.ok(bootstrapSrc.includes('run-with-flags.js'), 'Bootstrap should resolve the runner script');
-      assert.ok(bootstrapSrc.includes('CLAUDE_PLUGIN_ROOT'), 'Bootstrap should consult CLAUDE_PLUGIN_ROOT');
-      assert.ok(bootstrapSrc.includes('plugins'), 'Bootstrap should probe known plugin roots');
+      assert.ok(bootstrapSrc.includes('resolveEccRoot'), 'Bootstrap should use the shared plugin-root resolver');
+      assert.ok(bootstrapSrc.includes('resolvePluginRoot'), 'Bootstrap should resolve the plugin root through the shared helper');
     })
   )
     passed++;

@@ -33,12 +33,6 @@ const FEATURES_DIR_REL = path.join('docs', 'features');
  * @returns {string|null}
  */
 function resolveProjectRoot(filePath) {
-  const envRoot = process.env.CLAUDE_PLUGIN_ROOT || '';
-  if (envRoot) {
-    const marker = path.join(envRoot, '.claude', 'ontology', 'index.json');
-    if (fs.existsSync(marker)) return path.resolve(envRoot);
-  }
-
   // Walk up from the edited file
   if (filePath) {
     let dir = path.resolve(path.dirname(filePath));
@@ -138,7 +132,7 @@ function run(rawInput) {
   return rawInput; // always pass through
 }
 
-module.exports = { run };
+module.exports = { run, resolveProjectRoot, isOntologyFile };
 
 // Direct execution fallback (for testing)
 if (require.main === module) {

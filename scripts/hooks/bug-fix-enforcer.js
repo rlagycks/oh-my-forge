@@ -24,6 +24,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const { resolveEccRoot } = require('../lib/resolve-ecc-root');
+const DECISIONS_RELATIVE_PATH = path.join('scripts', 'lib', 'decisions.js');
 
 function getSessionKey() {
   if (process.env.CLAUDE_SESSION_ID) return process.env.CLAUDE_SESSION_ID;
@@ -142,6 +144,14 @@ function findMatchingError(filePath, errors) {
   return null;
 }
 
+function buildDecisionsCommand(options = {}) {
+  const pluginRoot = resolveEccRoot({
+    homeDir: options.homeDir,
+    probe: DECISIONS_RELATIVE_PATH,
+  });
+  return `node "${path.join(pluginRoot, DECISIONS_RELATIVE_PATH)}"`;
+}
+
 function run(rawInput) {
   let input;
   try {
@@ -198,10 +208,7 @@ function run(rawInput) {
   const shortCommand = matchingError.command.slice(0, 120).replace(/\n/g, ' ');
   const exitCode = matchingError.exitCode;
 
-  // Use CLAUDE_PLUGIN_ROOT for plugin installs; fall back to local path for dev
-  const decisionsScript = process.env.CLAUDE_PLUGIN_ROOT
-    ? `node "${process.env.CLAUDE_PLUGIN_ROOT}/scripts/lib/decisions.js"`
-    : 'node scripts/lib/decisions.js';
+  const decisionsScript = buildDecisionsCommand();
 
   const message = [
     `REQUIRED ACTION: You just edited \`${filename}\` after a command failure (exit code ${exitCode}).`,
@@ -234,7 +241,7 @@ function run(rawInput) {
   process.stdout.write(hookOutput);
 }
 
-module.exports = { run };
+module.exports = { run, buildDecisionsCommand };
 
 if (require.main === module) {
   const chunks = [];

@@ -89,13 +89,72 @@ if (test('flags bare relative node scripts path in skills', () => {
   assert.ok(output.includes(expected), `missing expected failure line: ${expected}\nOutput:\n${output}`);
 })) passed++; else failed++;
 
+if (test('flags plugin-root dot fallback that breaks marketplace installs', () => {
+  const filePath = writeFixture(COMMANDS_DIR, 'bad-plugin-root.md', 'PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-.}}\n');
+  const result = runValidator();
+  assert.notStrictEqual(result.status, 0, 'validator should fail for plugin-root dot fallback');
+  const relative = path.relative(ROOT, filePath);
+  const expected = `FAIL: ${relative}:1: PLUGIN_ROOT=\${CLAUDE_PLUGIN_ROOT:-\${CODEX_PLUGIN_ROOT:-.}}`;
+  const output = `${result.stdout}${result.stderr}`;
+  assert.ok(output.includes(expected), `missing expected failure line: ${expected}\nOutput:\n${output}`);
+})) passed++; else failed++;
+
+if (test('flags CLAUDE_PLUGIN_ROOT-only skill script references', () => {
+  const filePath = writeFixture(COMMANDS_DIR, 'bad-claude-only.md', 'python3 "${CLAUDE_PLUGIN_ROOT}/skills/continuous-learning-v2/scripts/instinct-cli.py" status\n');
+  const result = runValidator();
+  assert.notStrictEqual(result.status, 0, 'validator should fail for CLAUDE_PLUGIN_ROOT-only skill script path');
+  const relative = path.relative(ROOT, filePath);
+  const expected = `FAIL: ${relative}:1: python3 "\${CLAUDE_PLUGIN_ROOT}/skills/continuous-learning-v2/scripts/instinct-cli.py" status`;
+  const output = `${result.stdout}${result.stderr}`;
+  assert.ok(output.includes(expected), `missing expected failure line: ${expected}\nOutput:\n${output}`);
+})) passed++; else failed++;
+
+if (test('flags hardcoded ~/.claude skill script execution paths', () => {
+  const filePath = writeFixture(SKILLS_DIR, 'bad-global-skill.md', 'bash ~/.claude/skills/rules-distill/scripts/scan-skills.sh\n');
+  const result = runValidator();
+  assert.notStrictEqual(result.status, 0, 'validator should fail for hardcoded ~/.claude skill script path');
+  const relative = path.relative(ROOT, filePath);
+  const expected = `FAIL: ${relative}:1: bash ~/.claude/skills/rules-distill/scripts/scan-skills.sh`;
+  const output = `${result.stdout}${result.stderr}`;
+  assert.ok(output.includes(expected), `missing expected failure line: ${expected}\nOutput:\n${output}`);
+})) passed++; else failed++;
+
+if (test('flags shell snippets that escape double quotes inside single-quoted node -p payloads', () => {
+  const filePath = writeFixture(
+    COMMANDS_DIR,
+    'bad-node-p-escaping.md',
+    [
+      '```bash',
+      'PLUGIN_ROOT="$(node -p \'(()=>{var p=require(\\"path\\");return p.join(\\"/tmp\\",\\"omf\\")})()\')"',
+      '```',
+    ].join('\n')
+  );
+  const result = runValidator();
+  assert.notStrictEqual(result.status, 0, 'validator should fail for invalid escaping inside single-quoted node -p payloads');
+  const relative = path.relative(ROOT, filePath);
+  const expected = `FAIL: ${relative}:2: PLUGIN_ROOT="$(node -p '(()=>{var p=require(\\"path\\");return p.join(\\"/tmp\\",\\"omf\\")})()')"`;
+  const output = `${result.stdout}${result.stderr}`;
+  assert.ok(output.includes(expected), `missing expected failure line: ${expected}\nOutput:\n${output}`);
+})) passed++; else failed++;
+
+if (test('flags relative script executions even when other shell variables appear on the same line', () => {
+  const filePath = writeFixture(COMMANDS_DIR, 'bad-mixed-shell.md', 'echo "$HOME"; node scripts/lib/foo.js\n');
+  const result = runValidator();
+  assert.notStrictEqual(result.status, 0, 'validator should fail for relative node scripts path even when unrelated shell variables are present');
+  const relative = path.relative(ROOT, filePath);
+  const expected = `FAIL: ${relative}:1: echo "$HOME"; node scripts/lib/foo.js`;
+  const output = `${result.stdout}${result.stderr}`;
+  assert.ok(output.includes(expected), `missing expected failure line: ${expected}\nOutput:\n${output}`);
+})) passed++; else failed++;
+
 if (test('allows resolver-based script invocations', () => {
   writeFixture(
     COMMANDS_DIR,
     'resolver.md',
     [
       'node "$DECISIONS_JS" query --domain domain_commands',
-      'node "${CLAUDE_PLUGIN_ROOT:-.}/scripts/lib/foo.js" --help',
+      'PLUGIN_ROOT="$(node -p \'(()=>{var e=(process.env.CLAUDE_PLUGIN_ROOT||process.env.CODEX_PLUGIN_ROOT);return e&&e.trim()?e.trim():require(`os`).homedir()})()\')"',
+      'node "$PLUGIN_ROOT/scripts/lib/foo.js" --help',
     ].join('\n'),
   );
   const result = runValidator();
