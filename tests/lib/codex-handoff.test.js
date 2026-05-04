@@ -333,7 +333,10 @@ if (test('dispatchHandoff auto-resolves the companion when no explicit path or e
 
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-dispatch-auto-'));
   const eccRoot = path.join(fixtureDir, 'ecc-root');
+  const utilsPath = path.join(eccRoot, 'scripts', 'lib', 'utils.js');
   const companionPath = path.join(eccRoot, 'scripts', 'codex-companion.mjs');
+  fs.mkdirSync(path.dirname(utilsPath), { recursive: true });
+  fs.writeFileSync(utilsPath, '// utils\n', 'utf8');
   fs.mkdirSync(path.dirname(companionPath), { recursive: true });
   fs.writeFileSync(companionPath, [
     'console.log("RESULT: DONE");',
