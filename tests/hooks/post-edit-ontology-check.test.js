@@ -7,9 +7,14 @@
  */
 
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
-const { run } = require('../../scripts/hooks/post-edit-ontology-check');
+const {
+  run,
+  resolveProjectRoot,
+} = require('../../scripts/hooks/post-edit-ontology-check');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 
@@ -30,6 +35,33 @@ function makeInput(filePath) {
     tool_name: 'Edit',
     tool_input: { file_path: filePath, old_string: 'a', new_string: 'b' },
   });
+}
+
+function mkdirp(dirPath) {
+  fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function withEnv(vars, fn) {
+  const snapshot = {};
+  for (const key of Object.keys(vars)) {
+    snapshot[key] = process.env[key];
+    const next = vars[key];
+    if (next === null || next === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = String(next);
+    }
+  }
+
+  try {
+    return fn();
+  } finally {
+    for (const key of Object.keys(vars)) {
+      const prev = snapshot[key];
+      if (prev === undefined) delete process.env[key];
+      else process.env[key] = prev;
+    }
+  }
 }
 
 let passed = 0;
@@ -74,6 +106,25 @@ run_('returns raw input for a spec file (docs/features/hooks.md)', () => {
   const raw = makeInput(path.join(REPO_ROOT, 'docs', 'features', 'hooks.md'));
   const result = run(raw);
   assert.strictEqual(result, raw, 'hook must always return rawInput');
+});
+
+run_('resolves the project root from the edited file even when plugin-root env vars point elsewhere', () => {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'post-edit-ontology-'));
+  const pluginRoot = path.join(fixtureRoot, 'plugin-root');
+  const projectRoot = path.join(fixtureRoot, 'project-root');
+  const editedFile = path.join(projectRoot, 'docs', 'features', 'hooks.md');
+
+  mkdirp(path.join(pluginRoot, '.claude', 'ontology'));
+  mkdirp(path.join(projectRoot, '.claude', 'ontology'));
+  mkdirp(path.dirname(editedFile));
+  fs.writeFileSync(path.join(pluginRoot, '.claude', 'ontology', 'index.json'), '{}\n', 'utf8');
+  fs.writeFileSync(path.join(projectRoot, '.claude', 'ontology', 'index.json'), '{}\n', 'utf8');
+  fs.writeFileSync(editedFile, '# hooks\n', 'utf8');
+
+  withEnv({ CLAUDE_PLUGIN_ROOT: pluginRoot, CODEX_PLUGIN_ROOT: path.join(fixtureRoot, 'codex-root') }, () => {
+    const resolved = resolveProjectRoot(editedFile);
+    assert.strictEqual(resolved, projectRoot);
+  });
 });
 
 run_('handles tool_input.path fallback (Write tool format)', () => {

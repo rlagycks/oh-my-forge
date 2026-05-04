@@ -113,10 +113,12 @@ if (test('reports no mismatches when all shipped versions match', () => {
     packageFiles: [
       '.claude-plugin/README.md',
       '.codex-plugin/README.md',
+      'scripts/gan-harness.sh',
     ],
     presentPackageFiles: [
       '.claude-plugin/README.md',
       '.codex-plugin/README.md',
+      'scripts/gan-harness.sh',
     ],
   });
 
@@ -166,6 +168,7 @@ if (test('flags missing packaged files declared in package.json', () => {
     packageFiles: [
       '.claude-plugin/README.md',
       '.codex-plugin/README.md',
+      'scripts/gan-harness.sh',
     ],
     presentPackageFiles: [
       '.codex-plugin/README.md',
@@ -177,6 +180,7 @@ if (test('flags missing packaged files declared in package.json', () => {
     const missing = findMissingPackagedPaths(snapshot);
     assert.deepStrictEqual(missing, [
       '.claude-plugin/README.md is listed in package.json files but does not exist',
+      'scripts/gan-harness.sh is listed in package.json files but does not exist',
     ]);
   } finally {
     cleanup(rootDir);
@@ -192,10 +196,12 @@ if (test('normalizes Windows-style package file entries before checking required
     packageFiles: [
       '.claude-plugin\\README.md',
       '.codex-plugin\\README.md',
+      'scripts\\gan-harness.sh',
     ],
     presentPackageFiles: [
       '.claude-plugin/README.md',
       '.codex-plugin/README.md',
+      'scripts/gan-harness.sh',
     ],
   });
 

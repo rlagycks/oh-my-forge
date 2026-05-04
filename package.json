@@ -65,6 +65,7 @@
     "schemas/",
     "scripts/ci/",
     "scripts/ecc.js",
+    "scripts/gan-harness.sh",
     "scripts/hooks/",
     "scripts/lib/",
     "scripts/claw.js",

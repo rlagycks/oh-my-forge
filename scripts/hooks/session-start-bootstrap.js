@@ -29,9 +29,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-
-// Read the raw JSON event from stdin
-const raw = fs.readFileSync(0, 'utf8');
+const { resolveEccRoot } = require('../lib/resolve-ecc-root');
 
 // Path (relative to plugin root) to the hook runner
 const rel = path.join('scripts', 'hooks', 'run-with-flags.js');
@@ -49,106 +47,75 @@ function hasRunnerRoot(candidate) {
 }
 
 /**
- * Resolves the OMF plugin root using the following priority order:
- *   1. CLAUDE_PLUGIN_ROOT environment variable
- *   2. ~/.claude (direct install)
- *   3. Several well-known plugin sub-paths under ~/.claude/plugins/
- *   4. Versioned cache directories under ~/.claude/plugins/cache/everything-claude-code/
- *   5. Falls back to ~/.claude if nothing else matches
+ * Resolves the OMF plugin root using the shared resolver so Claude/Codex/plugin
+ * cache installs all behave the same way.
  *
+ * @param {object} [options]
+ * @param {string} [options.homeDir]
  * @returns {string}
  */
-function resolvePluginRoot() {
-  const envRoot = process.env.CLAUDE_PLUGIN_ROOT || '';
-  if (hasRunnerRoot(envRoot)) {
-    return path.resolve(envRoot.trim());
-  }
+function resolvePluginRoot(options = {}) {
+  const root = resolveEccRoot({
+    homeDir: options.homeDir,
+    probe: rel,
+  });
+  return path.resolve(root);
+}
 
-  const home = require('os').homedir();
-  const claudeDir = path.join(home, '.claude');
+function main() {
+  const raw = fs.readFileSync(0, 'utf8');
+  const root = resolvePluginRoot();
+  const script = path.join(root, rel);
 
-  if (hasRunnerRoot(claudeDir)) {
-    return claudeDir;
-  }
-
-  const knownPaths = [
-    path.join(claudeDir, 'plugins', 'oh-my-forge'),
-    path.join(claudeDir, 'plugins', 'oh-my-forge@rlagycks'),
-    path.join(claudeDir, 'plugins', 'marketplace', 'oh-my-forge'),
-    path.join(claudeDir, 'plugins', 'everything-claude-code'),
-    path.join(claudeDir, 'plugins', 'everything-claude-code@everything-claude-code'),
-    path.join(claudeDir, 'plugins', 'marketplace', 'everything-claude-code'),
-  ];
-
-  for (const candidate of knownPaths) {
-    if (hasRunnerRoot(candidate)) {
-      return candidate;
-    }
-  }
-
-  // Walk versioned cache: ~/.claude/plugins/cache/<plugin-name>/<org>/<version>/
-  for (const cachePluginName of ['oh-my-forge', 'everything-claude-code']) {
-  try {
-    const cacheBase = path.join(claudeDir, 'plugins', 'cache', cachePluginName);
-    for (const org of fs.readdirSync(cacheBase, { withFileTypes: true })) {
-      if (!org.isDirectory()) continue;
-      for (const version of fs.readdirSync(path.join(cacheBase, org.name), { withFileTypes: true })) {
-        if (!version.isDirectory()) continue;
-        const candidate = path.join(cacheBase, org.name, version.name);
-        if (hasRunnerRoot(candidate)) {
-          return candidate;
-        }
+  if (fs.existsSync(script)) {
+    const result = spawnSync(
+      process.execPath,
+      [script, 'session:start', 'scripts/hooks/session-start.js', 'minimal,standard,strict'],
+      {
+        input: raw,
+        encoding: 'utf8',
+        env: process.env,
+        cwd: process.cwd(),
+        timeout: 30000,
       }
+    );
+
+    const stdout = typeof result.stdout === 'string' ? result.stdout : '';
+    if (stdout) {
+      process.stdout.write(stdout);
+    } else {
+      process.stdout.write(raw);
     }
-  } catch {
-    // cache directory may not exist; that's fine
+
+    if (result.stderr) {
+      process.stderr.write(result.stderr);
+    }
+
+    if (result.error || result.status === null || result.signal) {
+      const reason = result.error
+        ? result.error.message
+        : result.signal
+          ? 'signal ' + result.signal
+          : 'missing exit status';
+      process.stderr.write('[SessionStart] ERROR: session-start hook failed: ' + reason + '\n');
+      process.exit(1);
+    }
+
+    process.exit(Number.isInteger(result.status) ? result.status : 0);
   }
-  } // end for cachePluginName
 
-  return claudeDir;
-}
-
-const root = resolvePluginRoot();
-const script = path.join(root, rel);
-
-if (fs.existsSync(script)) {
-  const result = spawnSync(
-    process.execPath,
-    [script, 'session:start', 'scripts/hooks/session-start.js', 'minimal,standard,strict'],
-    {
-      input: raw,
-      encoding: 'utf8',
-      env: process.env,
-      cwd: process.cwd(),
-      timeout: 30000,
-    }
+  process.stderr.write(
+    '[SessionStart] WARNING: could not resolve OMF plugin root; skipping session-start hook\n'
   );
-
-  const stdout = typeof result.stdout === 'string' ? result.stdout : '';
-  if (stdout) {
-    process.stdout.write(stdout);
-  } else {
-    process.stdout.write(raw);
-  }
-
-  if (result.stderr) {
-    process.stderr.write(result.stderr);
-  }
-
-  if (result.error || result.status === null || result.signal) {
-    const reason = result.error
-      ? result.error.message
-      : result.signal
-        ? 'signal ' + result.signal
-        : 'missing exit status';
-    process.stderr.write('[SessionStart] ERROR: session-start hook failed: ' + reason + '\n');
-    process.exit(1);
-  }
-
-  process.exit(Number.isInteger(result.status) ? result.status : 0);
+  process.stdout.write(raw);
 }
 
-process.stderr.write(
-  '[SessionStart] WARNING: could not resolve OMF plugin root; skipping session-start hook\n'
-);
-process.stdout.write(raw);
+module.exports = {
+  hasRunnerRoot,
+  resolvePluginRoot,
+  main,
+};
+
+if (require.main === module) {
+  main();
+}

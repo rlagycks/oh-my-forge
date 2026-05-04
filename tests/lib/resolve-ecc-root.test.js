@@ -80,6 +80,31 @@ if (test('detects standard ~/.codex install when probe exists', () => {
   });
 })) passed++; else failed++;
 
+if (test('detects marketplace cache install under ~/.codex/plugins/cache/oh-my-forge', () => {
+  withEnv({ CLAUDE_PLUGIN_ROOT: null, CODEX_PLUGIN_ROOT: null }, () => {
+    const cleanHome = path.join(fixtureRoot, 'cache-home');
+    mkdirp(cleanHome);
+    const probePath = path.join(
+      cleanHome,
+      '.codex',
+      'plugins',
+      'cache',
+      'oh-my-forge',
+      'rlagycks',
+      '1.11.4',
+      'scripts',
+      'lib',
+      'utils.js'
+    );
+    touch(probePath, '// probe\n');
+    const resolved = resolveEccRoot({ homeDir: cleanHome });
+    assert.strictEqual(
+      resolved,
+      path.join(cleanHome, '.codex', 'plugins', 'cache', 'oh-my-forge', 'rlagycks', '1.11.4')
+    );
+  });
+})) passed++; else failed++;
+
 if (test('defaults to ~/.claude when no candidates found', () => {
   withEnv({ CLAUDE_PLUGIN_ROOT: null, CODEX_PLUGIN_ROOT: null }, () => {
     const cleanHome = path.join(fixtureRoot, 'clean-home');
@@ -92,4 +117,3 @@ if (test('defaults to ~/.claude when no candidates found', () => {
 console.log(`\nPassed: ${passed}`);
 console.log(`Failed: ${failed}`);
 process.exit(failed > 0 ? 1 : 0);
-

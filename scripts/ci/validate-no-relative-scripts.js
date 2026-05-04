@@ -10,8 +10,11 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '../..');
 const TARGET_DIRS = ['commands', 'agents', 'skills'];
-const RELATIVE_PATTERN = /\bnode\s+["']?(?:\.\/)?(scripts|hooks)\//i;
-const VARIABLE_PREFIX_PATTERN = /\bnode\s+["']?\$/;
+const EXECUTABLE_RELATIVE_PATTERN = /\b(?:node|bash|sh|python3?)\s+["']?(?:\.\/)?(scripts|hooks)\//i;
+const ROOT_DOT_FALLBACK_PATTERN = /CLAUDE_PLUGIN_ROOT:-\$\{CODEX_PLUGIN_ROOT:-\.\}/;
+const CLAUDE_ONLY_SCRIPT_PATTERN = /CLAUDE_PLUGIN_ROOT[^$\n]*(?:\/scripts\/|\/skills\/)/;
+const CODEX_PLUGIN_ROOT_PATTERN = /CODEX_PLUGIN_ROOT/;
+const GLOBAL_SKILL_EXEC_PATTERN = /(?:^|\s)(?:node|bash|sh|python3?)\s+["']?~\/\.claude\/skills\/.+\/(?:scripts|hooks|commands)\//i;
 
 function collectMarkdownFiles(targetPath) {
   if (!fs.existsSync(targetPath)) return [];
@@ -35,7 +38,12 @@ const failures = files.flatMap(file => {
 
   return lines
     .map((line, index) => ({ line, lineNumber: index + 1 }))
-    .filter(({ line }) => RELATIVE_PATTERN.test(line) && !line.includes('CLAUDE_PLUGIN_ROOT') && !VARIABLE_PREFIX_PATTERN.test(line))
+    .filter(({ line }) => (
+      (EXECUTABLE_RELATIVE_PATTERN.test(line) && !line.includes('$'))
+      || ROOT_DOT_FALLBACK_PATTERN.test(line)
+      || (CLAUDE_ONLY_SCRIPT_PATTERN.test(line) && !CODEX_PLUGIN_ROOT_PATTERN.test(line))
+      || GLOBAL_SKILL_EXEC_PATTERN.test(line)
+    ))
     .map(({ line, lineNumber }) => `FAIL: ${relativePath}:${lineNumber}: ${line}`);
 });
 

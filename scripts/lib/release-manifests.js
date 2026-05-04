@@ -15,6 +15,7 @@ const MANIFEST_PATHS = {
 const REQUIRED_PACKAGED_PATHS = [
   '.claude-plugin/README.md',
   '.codex-plugin/README.md',
+  'scripts/gan-harness.sh',
 ];
 
 function readJson(rootDir, relativePath) {
