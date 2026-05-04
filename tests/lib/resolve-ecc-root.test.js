@@ -58,16 +58,40 @@ const fakeHome = path.join(fixtureRoot, 'home');
 mkdirp(fakeHome);
 
 if (test('prefers CLAUDE_PLUGIN_ROOT when set', () => {
-  withEnv({ CLAUDE_PLUGIN_ROOT: '/tmp/omf-claude', CODEX_PLUGIN_ROOT: null }, () => {
+  const claudeRoot = path.join(fixtureRoot, 'env-claude-root');
+  touch(path.join(claudeRoot, 'scripts', 'lib', 'utils.js'), '// probe\n');
+  withEnv({ CLAUDE_PLUGIN_ROOT: claudeRoot, CODEX_PLUGIN_ROOT: null }, () => {
     const resolved = resolveEccRoot({ homeDir: fakeHome });
-    assert.strictEqual(resolved, '/tmp/omf-claude');
+    assert.strictEqual(resolved, claudeRoot);
   });
 })) passed++; else failed++;
 
 if (test('falls back to CODEX_PLUGIN_ROOT when CLAUDE_PLUGIN_ROOT is unset', () => {
-  withEnv({ CLAUDE_PLUGIN_ROOT: null, CODEX_PLUGIN_ROOT: '/tmp/omf-codex' }, () => {
+  const codexRoot = path.join(fixtureRoot, 'env-codex-root');
+  touch(path.join(codexRoot, 'scripts', 'lib', 'utils.js'), '// probe\n');
+  withEnv({ CLAUDE_PLUGIN_ROOT: null, CODEX_PLUGIN_ROOT: codexRoot }, () => {
     const resolved = resolveEccRoot({ homeDir: fakeHome });
-    assert.strictEqual(resolved, '/tmp/omf-codex');
+    assert.strictEqual(resolved, codexRoot);
+  });
+})) passed++; else failed++;
+
+if (test('ignores invalid env roots and falls back to discovered marketplace cache installs', () => {
+  const cleanHome = path.join(fixtureRoot, 'invalid-env-home');
+  mkdirp(cleanHome);
+  const cacheRoot = path.join(
+    cleanHome,
+    '.codex',
+    'plugins',
+    'cache',
+    'oh-my-forge',
+    'rlagycks',
+    '1.11.4'
+  );
+  touch(path.join(cacheRoot, 'scripts', 'lib', 'utils.js'), '// probe\n');
+
+  withEnv({ CLAUDE_PLUGIN_ROOT: '/tmp/not-a-plugin-root', CODEX_PLUGIN_ROOT: null }, () => {
+    const resolved = resolveEccRoot({ homeDir: cleanHome });
+    assert.strictEqual(resolved, cacheRoot);
   });
 })) passed++; else failed++;
 

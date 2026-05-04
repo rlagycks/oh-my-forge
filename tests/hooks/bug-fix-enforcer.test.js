@@ -63,17 +63,30 @@ let failed = 0;
 console.log('\n=== bug-fix-enforcer ===\n');
 
 if (test('uses CODEX_PLUGIN_ROOT when building the /decide helper command', () => {
-  withEnv({ CLAUDE_PLUGIN_ROOT: null, CODEX_PLUGIN_ROOT: '/tmp/omf-codex' }, () => {
+  const codexRoot = path.join(fixtureRoot, 'env-codex-root');
+  touch(path.join(codexRoot, 'scripts', 'lib', 'decisions.js'));
+  withEnv({ CLAUDE_PLUGIN_ROOT: null, CODEX_PLUGIN_ROOT: codexRoot }, () => {
     const command = buildDecisionsCommand({ homeDir: fakeHome });
-    assert.strictEqual(command, 'node "/tmp/omf-codex/scripts/lib/decisions.js"');
+    assert.strictEqual(command, `node "${path.join(codexRoot, 'scripts', 'lib', 'decisions.js')}"`);
   });
 })) passed++; else failed++;
 
 if (test('falls back to resolved ~/.codex install instead of local repo-relative scripts path', () => {
   const codexRoot = path.join(fakeHome, '.codex');
-  touch(path.join(codexRoot, 'scripts', 'lib', 'utils.js'));
+  touch(path.join(codexRoot, 'scripts', 'lib', 'decisions.js'));
   withEnv({ CLAUDE_PLUGIN_ROOT: null, CODEX_PLUGIN_ROOT: null }, () => {
     const command = buildDecisionsCommand({ homeDir: fakeHome });
+    assert.strictEqual(command, `node "${path.join(codexRoot, 'scripts', 'lib', 'decisions.js')}"`);
+  });
+})) passed++; else failed++;
+
+if (test('ignores invalid env roots and falls back to discovered decisions.js installs', () => {
+  const cleanHome = path.join(fixtureRoot, 'invalid-env-home');
+  mkdirp(cleanHome);
+  const codexRoot = path.join(cleanHome, '.codex', 'plugins', 'cache', 'oh-my-forge', 'rlagycks', '1.11.4');
+  touch(path.join(codexRoot, 'scripts', 'lib', 'decisions.js'));
+  withEnv({ CLAUDE_PLUGIN_ROOT: '/tmp/not-a-plugin-root', CODEX_PLUGIN_ROOT: null }, () => {
+    const command = buildDecisionsCommand({ homeDir: cleanHome });
     assert.strictEqual(command, `node "${path.join(codexRoot, 'scripts', 'lib', 'decisions.js')}"`);
   });
 })) passed++; else failed++;

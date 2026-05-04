@@ -72,6 +72,23 @@ if (test('prefers CODEX_PLUGIN_ROOT when it points to a valid plugin root', () =
   });
 })) passed++; else failed++;
 
+if (test('ignores invalid env roots and falls back to discovered marketplace cache roots', () => {
+  const cacheRoot = path.join(
+    fakeHome,
+    '.codex',
+    'plugins',
+    'cache',
+    'oh-my-forge',
+    'rlagycks',
+    '1.11.4'
+  );
+  touchRunner(cacheRoot);
+  withEnv({ CLAUDE_PLUGIN_ROOT: '/tmp/not-a-plugin-root', CODEX_PLUGIN_ROOT: null }, () => {
+    const resolved = resolvePluginRoot({ homeDir: fakeHome });
+    assert.strictEqual(resolved, cacheRoot);
+  });
+})) passed++; else failed++;
+
 if (test('detects ~/.codex marketplace cache roots when env vars are unset', () => {
   const cacheRoot = path.join(
     fakeHome,

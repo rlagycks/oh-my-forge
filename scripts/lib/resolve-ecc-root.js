@@ -22,18 +22,21 @@ const os = require('os');
  * @returns {string} Resolved OMF root path
  */
 function resolveEccRoot(options = {}) {
+  const probe = options.probe || path.join('scripts', 'lib', 'utils.js');
   const envRoot = options.envRoot !== undefined
     ? options.envRoot
     : (process.env.CLAUDE_PLUGIN_ROOT || process.env.CODEX_PLUGIN_ROOT || '');
 
   if (envRoot && envRoot.trim()) {
-    return envRoot.trim();
+    const candidate = envRoot.trim();
+    if (fs.existsSync(path.join(candidate, probe))) {
+      return candidate;
+    }
   }
 
   const homeDir = options.homeDir || os.homedir();
   const claudeDir = path.join(homeDir, '.claude');
   const codexDir = path.join(homeDir, '.codex');
-  const probe = options.probe || path.join('scripts', 'lib', 'utils.js');
 
   // Standard install — files are copied directly into ~/.claude/
   if (fs.existsSync(path.join(claudeDir, probe))) {

@@ -25,6 +25,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { resolveEccRoot } = require('../lib/resolve-ecc-root');
+const DECISIONS_RELATIVE_PATH = path.join('scripts', 'lib', 'decisions.js');
 
 function getSessionKey() {
   if (process.env.CLAUDE_SESSION_ID) return process.env.CLAUDE_SESSION_ID;
@@ -144,8 +145,11 @@ function findMatchingError(filePath, errors) {
 }
 
 function buildDecisionsCommand(options = {}) {
-  const pluginRoot = resolveEccRoot({ homeDir: options.homeDir });
-  return `node "${path.join(pluginRoot, 'scripts', 'lib', 'decisions.js')}"`;
+  const pluginRoot = resolveEccRoot({
+    homeDir: options.homeDir,
+    probe: DECISIONS_RELATIVE_PATH,
+  });
+  return `node "${path.join(pluginRoot, DECISIONS_RELATIVE_PATH)}"`;
 }
 
 function run(rawInput) {
