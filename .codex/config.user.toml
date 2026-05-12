@@ -1,0 +1,86 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+# Everything Claude Code (ECC) — Codex User-Level Configuration Template
+#
+# Install this file to `~/.codex/config.toml` when you want ECC defaults to
+# apply globally. Unlike the project-local `.codex/config.toml`, this template
+# can safely include user-level-only keys such as `notify` and `[profiles.*]`.
+#
+# Official docs:
+# - https://developers.openai.com/codex/config-reference
+# - https://developers.openai.com/codex/hooks
+
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+web_search = "live"
+
+notify = [
+  "terminal-notifier",
+  "-title", "Codex ECC",
+  "-message", "Task completed!",
+  "-sound", "default",
+]
+
+persistent_instructions = "Follow project AGENTS.md guidelines. Use available MCP servers when they can help."
+
+[mcp_servers.github]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+startup_timeout_sec = 30
+
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp@latest"]
+startup_timeout_sec = 30
+
+[mcp_servers.exa]
+url = "https://mcp.exa.ai/mcp"
+
+[mcp_servers.memory]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-memory"]
+startup_timeout_sec = 30
+
+[mcp_servers.playwright]
+command = "npx"
+args = ["-y", "@playwright/mcp@latest", "--extension"]
+startup_timeout_sec = 30
+
+[mcp_servers.sequential-thinking]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+startup_timeout_sec = 30
+
+[features]
+multi_agent = true
+codex_hooks = true
+
+[profiles.strict]
+approval_policy = "on-request"
+sandbox_mode = "read-only"
+web_search = "cached"
+
+[profiles.yolo]
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+web_search = "live"
+
+[agents]
+max_threads = 6
+max_depth = 1
+
+[agents.explorer]
+description = "Read-only codebase explorer for gathering evidence before changes are proposed."
+config_file = "agents/explorer.toml"
+
+[agents.reviewer]
+description = "PR reviewer focused on correctness, security, and missing tests."
+config_file = "agents/reviewer.toml"
+
+[agents.docs_researcher]
+description = "Documentation specialist that verifies APIs, framework behavior, and release notes."
+config_file = "agents/docs-researcher.toml"
+
+[agents.implementer]
+description = "ECC implementation worker. Receives structured BRIEFs from Claude via /codex-delegate, writes code, runs tests, returns HANDOFF."
+config_file = "agents/implementer.toml"

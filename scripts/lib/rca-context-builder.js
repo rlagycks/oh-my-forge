@@ -23,6 +23,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawnSync } = require('child_process');
+const { resolveEccRoot } = require('./resolve-ecc-root');
 
 // ---------------------------------------------------------------------------
 // Git helpers
@@ -57,10 +58,17 @@ function getCommitMessage(commitRef, cwd) {
 function resolveOntologyDir(projectRoot) {
   const local = path.join(projectRoot, '.claude', 'ontology');
   if (fs.existsSync(local)) return local;
-  if (process.env.CLAUDE_PLUGIN_ROOT) {
-    const p = path.join(process.env.CLAUDE_PLUGIN_ROOT, '.claude', 'ontology');
-    if (fs.existsSync(p)) return p;
+
+  const envRoot = process.env.CLAUDE_PLUGIN_ROOT || process.env.CODEX_PLUGIN_ROOT || '';
+  if (envRoot) {
+    const envOntology = path.join(envRoot, '.claude', 'ontology');
+    if (fs.existsSync(envOntology)) return envOntology;
   }
+
+  const discoveredRoot = resolveEccRoot();
+  const discoveredOntology = path.join(discoveredRoot, '.claude', 'ontology');
+  if (fs.existsSync(discoveredOntology)) return discoveredOntology;
+
   return null;
 }
 

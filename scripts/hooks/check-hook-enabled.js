@@ -9,6 +9,9 @@ function getPluginRoot() {
   if (process.env.CLAUDE_PLUGIN_ROOT && process.env.CLAUDE_PLUGIN_ROOT.trim()) {
     return process.env.CLAUDE_PLUGIN_ROOT;
   }
+  if (process.env.CODEX_PLUGIN_ROOT && process.env.CODEX_PLUGIN_ROOT.trim()) {
+    return process.env.CODEX_PLUGIN_ROOT;
+  }
   return path.resolve(__dirname, '..', '..');
 }
 

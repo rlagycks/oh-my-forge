@@ -1,9 +1,12 @@
 #:schema https://developers.openai.com/codex/config-schema.json
 
-# Everything Claude Code (ECC) — Codex Reference Configuration
+# Everything Claude Code (ECC) — Codex Project-Local Configuration
 #
-# Copy this file to ~/.codex/config.toml for global defaults, or keep it in
-# the project root as .codex/config.toml for project-local settings.
+# Keep this file in the project root as `.codex/config.toml`.
+# It only contains keys that current Codex builds accept from the project-local
+# layer. User-level-only settings such as `notify` and `[profiles.*]` live in
+# `.codex/config.user.toml` and are installed to `~/.codex/config.toml` by the
+# Codex home installer.
 #
 # Official docs:
 # - https://developers.openai.com/codex/config-reference
@@ -18,14 +21,6 @@
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
 web_search = "live"
-
-# External notifications receive a JSON payload on stdin.
-notify = [
-  "terminal-notifier",
-  "-title", "Codex ECC",
-  "-message", "Task completed!",
-  "-sound", "default",
-]
 
 # Persistent instructions are appended to every prompt (additive, unlike
 # model_instructions_file which replaces AGENTS.md).
@@ -86,20 +81,9 @@ startup_timeout_sec = 30
 # args = ["-y", "@cloudflare/mcp-server-cloudflare"]
 
 [features]
-# Codex multi-agent collaboration is stable and on by default in current builds.
-# Keep the explicit toggle here so the repo documents its expectation clearly.
+# Keep only project-local-safe feature flags here.
 multi_agent = true
-
-# Profiles — switch with `codex -p <name>`
-[profiles.strict]
-approval_policy = "on-request"
-sandbox_mode = "read-only"
-web_search = "cached"
-
-[profiles.yolo]
-approval_policy = "never"
-sandbox_mode = "workspace-write"
-web_search = "live"
+codex_hooks = true
 
 [agents]
 # Multi-agent role limits and local role definitions.

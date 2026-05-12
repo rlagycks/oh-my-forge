@@ -24,6 +24,12 @@ const repoRoot = path.resolve(__dirname, '..', '..');
 const runnerPath = path.join(repoRoot, 'scripts', 'hooks', 'run-with-flags.js');
 
 function runHook(profile) {
+  return runHookWithEnv(profile, {
+    CLAUDE_PLUGIN_ROOT: repoRoot,
+  });
+}
+
+function runHookWithEnv(profile, extraEnv) {
   const result = spawnSync(
     process.execPath,
     [
@@ -38,7 +44,7 @@ function runHook(profile) {
       input: 'RAW_INPUT',
       env: {
         ...process.env,
-        CLAUDE_PLUGIN_ROOT: repoRoot,
+        ...extraEnv,
         ECC_HOOK_PROFILE: profile,
       },
       cwd: repoRoot,
@@ -74,7 +80,18 @@ if (
 ) passed++;
 else failed++;
 
+if (
+  test('executes when CODEX_PLUGIN_ROOT is set instead of CLAUDE_PLUGIN_ROOT', () => {
+    const result = runHookWithEnv('strict', {
+      CLAUDE_PLUGIN_ROOT: '',
+      CODEX_PLUGIN_ROOT: repoRoot,
+    });
+    assert.strictEqual(result.status, 0, 'Runner should exit 0 when hook succeeds');
+    assert.strictEqual(result.stdout, 'HOOK_EXECUTED', 'Runner should resolve request files via CODEX_PLUGIN_ROOT');
+  })
+) passed++;
+else failed++;
+
 console.log(`\nPassed: ${passed}`);
 console.log(`Failed: ${failed}`);
 process.exit(failed === 0 ? 0 : 1);
-

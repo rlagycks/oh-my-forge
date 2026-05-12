@@ -16,7 +16,7 @@ const ROOT_DOT_FALLBACK_PATTERN = /CLAUDE_PLUGIN_ROOT:-\$\{CODEX_PLUGIN_ROOT:-\.
 const CLAUDE_ONLY_SCRIPT_PATTERN = /CLAUDE_PLUGIN_ROOT[^$\n]*(?:\/scripts\/|\/skills\/)/;
 const CODEX_PLUGIN_ROOT_PATTERN = /CODEX_PLUGIN_ROOT/;
 const GLOBAL_SKILL_EXEC_PATTERN = /^~\/\.claude\/skills\/.+\/(?:scripts|hooks|commands)\//i;
-const BAD_SINGLE_QUOTED_NODE_P_ESCAPE_PATTERN = /node -p '([^'\n]*\\\"[^'\n]*)+'/;
+const BAD_SINGLE_QUOTED_NODE_P_ESCAPE_PATTERN = /node -p '([^'\n]*\\"[^'\n]*)+'/;
 
 function getFenceLanguage(line, currentFenceLanguage) {
   const match = line.match(/^```([^\s`]*)/);
