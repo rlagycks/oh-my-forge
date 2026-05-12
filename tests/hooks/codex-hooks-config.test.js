@@ -7,6 +7,7 @@ const { spawnSync } = require('child_process');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const hooksPath = path.join(repoRoot, '.codex', 'hooks.json');
+const shellPath = resolveShellPath();
 
 function test(name, fn) {
   try {
@@ -27,8 +28,28 @@ function loadHookCommands() {
   ));
 }
 
+function resolveShellPath() {
+  const candidates = [
+    process.env.SHELL,
+    '/bin/zsh',
+    '/usr/bin/zsh',
+    '/bin/bash',
+    '/usr/bin/bash',
+    '/bin/sh',
+    '/usr/bin/sh',
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (path.isAbsolute(candidate) && fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return 'sh';
+}
+
 function runHookCommand(command, cwd) {
-  const result = spawnSync('/bin/zsh', ['-lc', command], {
+  const result = spawnSync(shellPath, ['-lc', command], {
     cwd,
     encoding: 'utf8',
     input: JSON.stringify({
