@@ -44,7 +44,7 @@ Available skills:
 
 ## MCP Servers
 
-Treat the project-local `.codex/config.toml` as the default Codex baseline for ECC. The current ECC baseline enables GitHub, Context7, Exa, Memory, Playwright, and Sequential Thinking; add heavier extras in `~/.codex/config.toml` only when a task actually needs them.
+Treat the project-local `.codex/config.toml` as the repo-safe Codex baseline for ECC. Keep user-level-only settings in `.codex/config.user.toml` or `~/.codex/config.toml`; the project-local layer intentionally avoids keys that current Codex builds ignore there.
 
 ECC's canonical Codex section name is `[mcp_servers.context7]`. The launcher package remains `@upstash/context7-mcp`; only the TOML section name is normalized for consistency with `codex mcp list` and the reference config.
 
@@ -78,7 +78,7 @@ Sample role configs in this repo:
 
 | Feature | Claude Code | Codex CLI |
 |---------|------------|-----------|
-| Hooks | 8+ event types | No runtime hooks — use `approval_policy`, `sandbox_mode`, `notify`, and `developer_instructions` instead |
+| Hooks | 8+ event types | Supported via `.codex/hooks.json` or inline `[hooks]` with `features.codex_hooks = true` |
 | Context file | CLAUDE.md + AGENTS.md | AGENTS.md only |
 | Skills | Skills loaded via plugin | `.agents/skills/` directory |
 | Commands | `/slash` commands | Instruction-based |
@@ -86,9 +86,9 @@ Sample role configs in this repo:
 | Security | Hook-based enforcement | `sandbox_mode` (OS-level) + `developer_instructions` |
 | MCP | Full support | Supported via `config.toml` and `codex mcp add` |
 
-## Behavior Control Without Hooks
+## Behavior Control
 
-Codex exposes four levers in `.codex/config.toml` and per-role TOML files:
+Codex exposes hooks plus config levers in `.codex/config.toml` and per-role TOML files:
 
 | Lever | Scope | What it does |
 |-------|-------|-------------|
@@ -96,9 +96,14 @@ Codex exposes four levers in `.codex/config.toml` and per-role TOML files:
 | `sandbox_mode = "workspace-write"` | OS-level | Restricts writes to the current workspace |
 | `approval_policy = "on-request"` | Process-level | Prompts user before executing shell commands |
 | `developer_instructions` | Model-level | Persistent system-prompt instructions injected every turn |
-| `notify` | Runtime | Shell command called with JSON payload on task completion |
+| `notify` | Runtime | Shell command called with JSON payload on task completion; user-level config only |
 
 Per-role overrides in `.codex/agents/<role>.toml` take precedence over top-level config defaults.
+
+Project-local hook notes:
+- `.codex/hooks.json` is for repo-specific behavior such as ontology and QA context injection.
+- Hook commands should resolve from the git root, not the launch `cwd`, because Codex may start in a subdirectory.
+- Global installs should not blindly reuse project-local hooks; the Codex home installer omits `.codex/hooks.json` on purpose.
 
 **Security checklist (without hooks):**
 1. Always validate inputs at system boundaries

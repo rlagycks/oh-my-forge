@@ -6,22 +6,22 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"scripts/hooks/domain-context-inject.js\"",
+            "command": "node \"$(git rev-parse --show-toplevel)/scripts/hooks/domain-context-inject.js\"",
             "timeout": 5
           }
         ],
-        "description": "Inject ontology domain context when editing any file tracked in .claude/ontology/index.json. Resolves plugin root by walking up from the file path. Zero-cost when no match."
+        "description": "Inject ontology domain context when editing any file tracked in .claude/ontology/index.json. Resolves from the git root so the hook still works when Codex starts in a subdirectory. Zero-cost when no match."
       },
       {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"scripts/hooks/qa-context-inject.js\"",
+            "command": "node \"$(git rev-parse --show-toplevel)/scripts/hooks/qa-context-inject.js\"",
             "timeout": 5
           }
         ],
-        "description": "Inject QA bug history context when editing files with known issues from previous /qa-loop runs. Reads docs/qa/bug-topology.md. Zero-cost when no match."
+        "description": "Inject QA bug history context when editing files with known issues from previous /qa-loop runs. Resolves from the git root so the hook still works when Codex starts in a subdirectory. Zero-cost when no match."
       }
     ]
   }

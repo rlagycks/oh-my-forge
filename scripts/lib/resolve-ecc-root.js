@@ -112,6 +112,11 @@ function resolveEccRoot(options = {}) {
  * node -e "..." scripts where require() is not available before the
  * root is known.
  *
+ * Markdown bootstrap snippets under agents/, commands/, docs/, and skills/
+ * are validated against this exact string by
+ * scripts/ci/validate-inline-resolver-snippets.js so there is a single
+ * source of truth for the inline resolver.
+ *
  * Usage in commands:
  *   const _r = <paste INLINE_RESOLVE>;
  *   const sm = require(_r + '/scripts/lib/session-manager');
