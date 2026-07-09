@@ -13,39 +13,102 @@ const {
   getSessionsDir,
   getSessionSearchDirs,
   getLearnedSkillsDir,
+  getClaudeDir,
   getProjectName,
   findFiles,
   ensureDir,
   readFile,
+  readStdinJson,
+  sanitizeSessionId,
   stripAnsi,
   log
 } = require('../lib/utils');
 const { getPackageManager, getSelectionPrompt } = require('../lib/package-manager');
 const { listAliases } = require('../lib/session-aliases');
 const { detectProjectType } = require('../lib/project-detect');
+const {
+  INSTINCT_CONFIDENCE_THRESHOLD,
+  normalizePath,
+  collectInstinctContext
+} = require('../lib/instinct-loader');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const SUMMARY_START_MARKER = '<!-- ECC:SUMMARY:START -->';
 const SUMMARY_END_MARKER = '<!-- ECC:SUMMARY:END -->';
 const SESSION_METADATA_LABELS = ['Project', 'Branch', 'Worktree'];
 const SESSION_METADATA_PATTERN = /^\*\*(Project|Branch|Worktree):\*\*\s*(.+)$/gm;
 
+// --- Duplicate-invocation guard (Change 1) ---
+// When the SessionStart hook is registered twice (plugin hooks.json + a manual
+// entry in ~/.claude/settings.json), the full context built below gets injected
+// twice in the same session. Guard with a short-lived marker file keyed by the
+// hook's session_id (falls back to a hash of cwd when session_id is absent).
+const DUPLICATE_MARKER_TTL_MS = 60 * 1000;
+const STDIN_READ_TIMEOUT_MS = 500;
+
+// Learned instinct injection (Change 2) lives in ../lib/instinct-loader.js.
+
 /**
- * Resolve a filesystem path to its canonical (real) form.
+ * Derive a stable per-session key for the duplicate-invocation marker.
  *
- * Handles symlinks and, on case-insensitive filesystems (macOS, Windows),
- * normalizes casing so that path comparisons are reliable.
- * Falls back to the original path if resolution fails (e.g. path no longer exists).
+ * Prefers the hook's `session_id` field (sanitized for filesystem safety).
+ * Falls back to a short SHA1 hash of cwd when session_id is missing/blank,
+ * so repeated invocations against the same project still collide onto the
+ * same marker within the TTL window.
  *
- * @param {string} p - The path to normalize.
- * @returns {string} The canonical path, or the original if resolution fails.
+ * @param {object} hookInput - Parsed SessionStart hook stdin payload (may be {}).
+ * @returns {string}
  */
-function normalizePath(p) {
+function resolveSessionKey(hookInput) {
+  const rawSessionId = hookInput && typeof hookInput.session_id === 'string'
+    ? hookInput.session_id.trim()
+    : '';
+
+  if (rawSessionId) {
+    const sanitized = sanitizeSessionId(rawSessionId);
+    if (sanitized) return sanitized;
+  }
+
+  return crypto.createHash('sha1').update(process.cwd()).digest('hex').slice(0, 16);
+}
+
+function getMarkerPath(sessionKey) {
+  return path.join(getClaudeDir(), 'tmp', `session-start-emitted-${sessionKey}`);
+}
+
+/**
+ * Check whether a SessionStart marker exists and is still within the TTL
+ * window (i.e. this is a duplicate hook registration firing twice for the
+ * same session, not a legitimate resume/compact restart).
+ *
+ * @param {string} markerPath
+ * @param {number} ttlMs
+ * @returns {boolean}
+ */
+function isDuplicateInvocation(markerPath, ttlMs = DUPLICATE_MARKER_TTL_MS) {
   try {
-    return fs.realpathSync(p);
+    const stat = fs.statSync(markerPath);
+    return (Date.now() - stat.mtimeMs) < ttlMs;
   } catch {
-    return p;
+    return false;
+  }
+}
+
+/**
+ * Record that context was successfully emitted for this session key, so a
+ * second hook invocation within the TTL window short-circuits to an empty
+ * payload instead of re-injecting everything.
+ *
+ * @param {string} markerPath
+ */
+function markEmitted(markerPath) {
+  try {
+    ensureDir(path.dirname(markerPath));
+    fs.writeFileSync(markerPath, String(Date.now()), 'utf8');
+  } catch (err) {
+    log(`[SessionStart] failed to write duplicate-invocation marker: ${err.message}`);
   }
 }
 
@@ -265,6 +328,16 @@ function buildSessionStartContext(content) {
 }
 
 async function main() {
+  const hookInput = await readStdinJson({ timeoutMs: STDIN_READ_TIMEOUT_MS });
+  const sessionKey = resolveSessionKey(hookInput);
+  const markerPath = getMarkerPath(sessionKey);
+
+  if (isDuplicateInvocation(markerPath)) {
+    log('[SessionStart] duplicate invocation detected — skipping context injection');
+    await writeSessionStartPayload('');
+    return;
+  }
+
   const sessionsDir = getSessionsDir();
   const learnedDir = getLearnedSkillsDir();
   const additionalContextParts = [];
@@ -343,7 +416,15 @@ async function main() {
     log('[SessionStart] No specific project type detected');
   }
 
+  // Inject high-confidence learned instincts (global + project-scoped), capped (#Change 2)
+  const { instincts: topInstincts, context: instinctsContext } = collectInstinctContext(process.cwd());
+  if (instinctsContext) {
+    additionalContextParts.push(instinctsContext);
+    log(`[SessionStart] ${topInstincts.length} learned instinct(s) injected (confidence >= ${INSTINCT_CONFIDENCE_THRESHOLD})`);
+  }
+
   await writeSessionStartPayload(additionalContextParts.join('\n\n'));
+  markEmitted(markerPath);
 }
 
 function writeSessionStartPayload(additionalContext) {
@@ -380,7 +461,19 @@ function writeSessionStartPayload(additionalContext) {
   });
 }
 
-main().catch(err => {
-  console.error('[SessionStart] Error:', err.message);
-  process.exitCode = 0; // Don't block on errors
-});
+module.exports = {
+  resolveSessionKey,
+  getMarkerPath,
+  isDuplicateInvocation,
+  markEmitted,
+  buildSessionStartContext,
+  writeSessionStartPayload,
+  main,
+};
+
+if (require.main === module) {
+  main().catch(err => {
+    console.error('[SessionStart] Error:', err.message);
+    process.exitCode = 0; // Don't block on errors
+  });
+}
