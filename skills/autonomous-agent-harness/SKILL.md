@@ -49,14 +49,14 @@ Turn Claude Code into a persistent, self-directing agent system using only nativ
 
 ### 1. Persistent Memory
 
-Use Claude Code's built-in memory system enhanced with MCP memory server for structured data.
+Use Claude Code's built-in memory system, optionally supplemented by an MCP memory server if you have one configured, for structured data. The plugin does not ship or require a memory MCP server by default — this is a bring-your-own-server capability.
 
 **Built-in memory** (`~/.claude/projects/*/memory/`):
 - User preferences, feedback, project context
 - Stored as markdown files with frontmatter
 - Automatically loaded at session start
 
-**MCP memory server** (structured knowledge graph):
+**An MCP memory server, if configured** (structured knowledge graph):
 - Entities, relations, observations
 - Queryable graph structure
 - Cross-session persistence
@@ -70,7 +70,7 @@ Use TodoWrite for in-session task tracking
 # Medium-term: project memory files
 Write to ~/.claude/projects/*/memory/ for cross-session recall
 
-# Long-term: MCP knowledge graph
+# Long-term: MCP knowledge graph (only if an MCP memory server is configured)
 Use mcp__memory__create_entities for permanent structured data
 Use mcp__memory__create_relations for relationship mapping
 Use mcp__memory__add_observations for new facts about known entities

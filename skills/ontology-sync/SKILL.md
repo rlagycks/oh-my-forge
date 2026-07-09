@@ -49,6 +49,15 @@ docs/features/index.md      ← 라우팅 테이블 (이 스킬이 동기화)
 | index.json 존재 + spec 없음 | 경고 출력, 해당 엔트리 제거 여부 확인 |
 | 양쪽 모두 존재 | `files[]`, `spec` 경로 유효성 검사 |
 
+**3-1. Edge Suggestions (dependsOn, 리뷰 전용)**
+
+`scripts/lib/ontology-edge-suggest.js`의 `suggestEdges(projectRoot)`를 호출해 누락된 `dependsOn` 후보를 evidence 기반으로 제안한다:
+
+- 도메인 spec이 다른 도메인 키(`domain_*`)를 리터럴로 언급하는 경우
+- 도메인의 `files[]`가 다른 도메인이 추적하는 파일을 `require()`하거나 경로를 텍스트로 언급하는 경우 (string-match, AST 없음)
+
+이 제안은 **항상 리뷰 전용**이다 — `--fix` 모드에서도 자동으로 `index.json`에 추가하지 않는다. 사용자가 제안을 검토하고 원하는 항목만 수동으로 `dependsOn`에 추가한다.
+
 **4. index.json 업데이트**
 
 변경이 필요한 경우 `index.json`을 수정한다. 반드시 기존 필드 순서(`files`, `spec`, `owner`, `symbols`, `dependsOn`, `codexWorkerHint`)를 유지한다.
@@ -106,3 +115,4 @@ CI 검증: PASS
 - `codexWorkerHint`가 없는 엔트리를 추가할 때는 반드시 사용자에게 `workspace-write` 또는 `read-only` 중 하나를 확인한다
 - 기존 엔트리의 `files[]`나 `symbols[]`는 수정하지 않는다 — 경로 유효성 문제만 보고한다
 - 수동 편집 섹션(라우팅 규칙, 새 도메인 추가 방법)은 index.md에서 보존한다
+- Edge Suggestions(3-1)는 항상 리뷰 전용이다 — `--fix` 모드에서도 `dependsOn`에 자동으로 추가하지 않는다
