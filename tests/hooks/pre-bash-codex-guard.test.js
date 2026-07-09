@@ -721,6 +721,105 @@ function testUntrackedFileWriteAllowed() {
   }
 }
 
+function testEngineFlipShellWriteBlocked() {
+  // F2 follow-up (PR #50): a heredoc write to .claude/settings.json that also
+  // references implementationEngine must be blocked exactly like a direct
+  // Edit/Write flip is — otherwise the shell path bypasses the pin.
+  const sessionId = 'test-engine-flip-shell-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const command = [
+      `cat > ${fixture.projectRoot}/.claude/settings.json <<'EOF'`,
+      '{"implementationEngine": "claude"}',
+      'EOF',
+    ].join('\n');
+    const result = runWithProject(fixture.projectRoot, sessionId, command);
+    assert.deepStrictEqual(result, { exitCode: 2 },
+      'Shell write flipping implementationEngine in settings.json should be blocked');
+    console.log('  PASS testEngineFlipShellWriteBlocked');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testUnrelatedSettingsShellWriteAllowed() {
+  // A shell write targeting settings.json that does NOT mention
+  // implementationEngine must pass through untouched — the guard must stay
+  // precise and not block unrelated settings.json writes.
+  const sessionId = 'test-unrelated-settings-shell-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const command = [
+      `cat > ${fixture.projectRoot}/.claude/settings.json <<'EOF'`,
+      '{"someOtherSetting": true}',
+      'EOF',
+    ].join('\n');
+    const result = runWithProject(fixture.projectRoot, sessionId, command);
+    assert.ok(typeof result === 'string',
+      'Shell write to settings.json without implementationEngine should pass through');
+    console.log('  PASS testUnrelatedSettingsShellWriteAllowed');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testEngineFlipShellWriteBypassReleased() {
+  const sessionId = 'test-engine-flip-bypass-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const command = [
+      `cat > ${fixture.projectRoot}/.claude/settings.json <<'EOF'`,
+      '{"implementationEngine": "claude"}',
+      'EOF',
+    ].join('\n');
+    process.env.ECC_BYPASS_CODEX_GUARD = '1';
+    let result;
+    try {
+      result = runWithProject(fixture.projectRoot, sessionId, command);
+    } finally {
+      delete process.env.ECC_BYPASS_CODEX_GUARD;
+    }
+    assert.ok(typeof result === 'string',
+      'ECC_BYPASS_CODEX_GUARD=1 should release the Bash-side engine-flip guard');
+    console.log('  PASS testEngineFlipShellWriteBypassReleased');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testEngineFlipShellWriteUnrelatedFileAllowed() {
+  // A command that merely mentions implementationEngine but targets a
+  // different file entirely must not be blocked.
+  const sessionId = 'test-engine-flip-other-file-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const otherFile = path.join(fixture.projectRoot, 'notes.txt');
+    const command = [
+      `cat > ${otherFile} <<'EOF'`,
+      'implementationEngine notes: codex vs claude',
+      'EOF',
+    ].join('\n');
+    const result = runWithProject(fixture.projectRoot, sessionId, command);
+    assert.ok(typeof result === 'string',
+      'Mentioning implementationEngine while writing an unrelated file should pass through');
+    console.log('  PASS testEngineFlipShellWriteUnrelatedFileAllowed');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
 function testBypassDoesNotSkipRawCompanionBlock() {
   // The bypass is scoped to the tracked shell-write policy (Guard 1).
   // Dispatch admission / raw companion blocking must stay active.
@@ -765,6 +864,10 @@ const tests = [
   testSelfRepoMetaTrackedWriteBypassReleased,
   testBypassReleasesTrackedNonMetaWrite,
   testSubdirectoryOfSelfRepoMetaTrackedWriteBlocked,
+  testEngineFlipShellWriteBlocked,
+  testUnrelatedSettingsShellWriteAllowed,
+  testEngineFlipShellWriteBypassReleased,
+  testEngineFlipShellWriteUnrelatedFileAllowed,
   testUntrackedFileWriteAllowed,
   testBypassDoesNotSkipRawCompanionBlock,
 ];

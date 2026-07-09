@@ -24,7 +24,11 @@
 const fs = require('fs');
 const path = require('path');
 const { loadOntologyMaps, matchFileToDomain } = require('./ontology-routing');
-const { detectPinnedImplementationEngine } = require('./implementation-engine');
+const {
+  detectPinnedImplementationEngine,
+  readImplementationEngineValue,
+  touchesImplementationEngine,
+} = require('./implementation-engine');
 const { isMetaPath, isSelfRepoRoot } = require('./codex-guard-policy');
 
 const CONTROL_TOKENS = new Set(['|', '||', '&&', ';', '&']);
@@ -361,6 +365,48 @@ function findTrackedShellMutation(command, ontologyRoot) {
   return null;
 }
 
+/**
+ * Bash-side counterpart of pre-write-edit-codex-guard.js's implementationEngine
+ * flip guard (PR #50 follow-up F2). A heredoc/redirect/tee/sed/interpreter
+ * shell write that targets .claude/settings.json while the command text also
+ * references implementationEngine must be blocked exactly like a direct
+ * Edit/Write flip is — otherwise a shell-level write bypasses the session pin.
+ *
+ * Deliberately narrow: only fires when BOTH (a) a write-indicating construct
+ * (redirection/tee/cp/mv/install target, or an interpreter/sed in-place edit)
+ * targets .claude/settings.json, AND (b) the command text mentions
+ * implementationEngine. A read like `cat .claude/settings.json | grep
+ * implementationEngine` has no write-indicating construct and is unaffected.
+ */
+function findEngineFlipShellMutation(command, ontologyRoot) {
+  if (!command || !ontologyRoot) return null;
+  if (!touchesImplementationEngine(command)) return null;
+
+  const comparableRoot = resolveComparablePath(ontologyRoot);
+  const settingsPath = path.join(comparableRoot, '.claude', 'settings.json');
+  const settingsTarget = resolveComparablePath(settingsPath);
+
+  const matchesSettings = candidate => {
+    const resolvedTarget = path.isAbsolute(candidate)
+      ? resolveComparablePath(candidate)
+      : resolveComparablePath(path.resolve(process.cwd(), candidate));
+    return resolvedTarget === settingsTarget;
+  };
+
+  const explicitTargets = collectExplicitMutationTargets(command);
+  const targetsSettings = explicitTargets.some(matchesSettings) ||
+    ((isInterpreterMutation(command) || isInPlaceEditorMutation(command)) &&
+      collectQuotedPathCandidates(command).some(matchesSettings));
+
+  if (!targetsSettings) return null;
+
+  const currentText = fs.existsSync(settingsPath) ? fs.readFileSync(settingsPath, 'utf8') : '';
+  const current = readImplementationEngineValue(currentText) || detectPinnedImplementationEngine(comparableRoot);
+  const proposed = readImplementationEngineValue(command);
+
+  return { relPath: '.claude/settings.json', current, proposed };
+}
+
 module.exports = {
   CONTROL_TOKENS,
   EXPLICIT_WRITE_COMMANDS,
@@ -379,4 +425,5 @@ module.exports = {
   isInterpreterMutation,
   isInPlaceEditorMutation,
   findTrackedShellMutation,
+  findEngineFlipShellMutation,
 };

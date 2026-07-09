@@ -28,6 +28,7 @@ const {
   isInPlaceEditorMutation,
   commandMentionsPath,
   findTrackedShellMutation,
+  findEngineFlipShellMutation,
 } = require('../../scripts/lib/shell-write-detect');
 
 function mkdirp(dirPath) {
@@ -182,6 +183,66 @@ function testFindTrackedShellMutationNullWhenMissingArgs() {
   console.log('  PASS testFindTrackedShellMutationNullWhenMissingArgs');
 }
 
+function makeSettingsProjectFixture(initialEngine = 'codex') {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'shell-write-detect-settings-'));
+  const projectRoot = path.join(tempRoot, 'project');
+  mkdirp(path.join(projectRoot, '.claude'));
+  writeJson(path.join(projectRoot, '.claude', 'settings.json'), { implementationEngine: initialEngine });
+  return { tempRoot, projectRoot };
+}
+
+function testFindEngineFlipShellMutationDetectsFlip() {
+  const fixture = makeSettingsProjectFixture('codex');
+  try {
+    const command = [
+      `cat > ${fixture.projectRoot}/.claude/settings.json <<'EOF'`,
+      '{"implementationEngine": "claude"}',
+      'EOF',
+    ].join('\n');
+    const match = findEngineFlipShellMutation(command, fixture.projectRoot);
+    assert.ok(match, 'a settings.json write referencing implementationEngine should be detected');
+    assert.strictEqual(match.relPath, '.claude/settings.json');
+    assert.strictEqual(match.current, 'codex');
+    assert.strictEqual(match.proposed, 'claude');
+    console.log('  PASS testFindEngineFlipShellMutationDetectsFlip');
+  } finally {
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testFindEngineFlipShellMutationIgnoresUnrelatedSettingsWrite() {
+  const fixture = makeSettingsProjectFixture('codex');
+  try {
+    const command = [
+      `cat > ${fixture.projectRoot}/.claude/settings.json <<'EOF'`,
+      '{"someOtherSetting": true}',
+      'EOF',
+    ].join('\n');
+    const match = findEngineFlipShellMutation(command, fixture.projectRoot);
+    assert.strictEqual(match, null, 'settings.json writes that never mention implementationEngine must not match');
+    console.log('  PASS testFindEngineFlipShellMutationIgnoresUnrelatedSettingsWrite');
+  } finally {
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testFindEngineFlipShellMutationIgnoresOtherFile() {
+  const fixture = makeSettingsProjectFixture('codex');
+  try {
+    const otherFile = path.join(fixture.projectRoot, 'notes.txt');
+    const command = [
+      `cat > ${otherFile} <<'EOF'`,
+      'implementationEngine notes: codex vs claude',
+      'EOF',
+    ].join('\n');
+    const match = findEngineFlipShellMutation(command, fixture.projectRoot);
+    assert.strictEqual(match, null, 'mentioning implementationEngine while writing a different file must not match');
+    console.log('  PASS testFindEngineFlipShellMutationIgnoresOtherFile');
+  } finally {
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
 const tests = [
   testTokenise,
   testIsShellRedirection,
@@ -195,6 +256,9 @@ const tests = [
   testFindTrackedShellMutationDetectsExplicitTarget,
   testFindTrackedShellMutationIgnoresUntrackedFile,
   testFindTrackedShellMutationNullWhenMissingArgs,
+  testFindEngineFlipShellMutationDetectsFlip,
+  testFindEngineFlipShellMutationIgnoresUnrelatedSettingsWrite,
+  testFindEngineFlipShellMutationIgnoresOtherFile,
 ];
 
 let passed = 0;

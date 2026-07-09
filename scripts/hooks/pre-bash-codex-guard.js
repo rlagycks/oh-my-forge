@@ -12,16 +12,24 @@
  *             meta paths are exempt only outside the self-repo, and
  *             ECC_BYPASS_CODEX_GUARD=1 releases this guard (and only this one).
  *
- *   Guard 2 — Accept only `codex-handoff.js dispatch --request-file ...`
+ *   Guard 2 — Block shell-level writes to .claude/settings.json that also
+ *             reference implementationEngine (F2 follow-up from PR #50) —
+ *             the Bash-side counterpart of pre-write-edit-codex-guard.js's
+ *             implementationEngine flip block, so a heredoc/redirect/sed
+ *             write can't bypass the session-pinned engine the way a direct
+ *             Edit/Write would be blocked. Same ECC_BYPASS_CODEX_GUARD scope
+ *             as Guard 1.
+ *
+ *   Guard 3 — Accept only `codex-handoff.js dispatch --request-file ...`
  *             as the automatic Codex handoff entrypoint.
  *
- *   Guard 3 — Load the request artifact and validate it against the shared
+ *   Guard 4 — Load the request artifact and validate it against the shared
  *             codex handoff schema before dispatch.
  *
- *   Guard 4 — Block duplicate `plan-auto` dispatches for the same domain within
+ *   Guard 5 — Block duplicate `plan-auto` dispatches for the same domain within
  *             the same session to surface retry loops explicitly.
  *
- *   Guard 5 — Block raw `codex-companion.mjs task ...` calls so prompt-side
+ *   Guard 6 — Block raw `codex-companion.mjs task ...` calls so prompt-side
  *             command assembly cannot bypass runtime validation.
  *
  * Trigger: PreToolUse on Bash
@@ -51,6 +59,7 @@ const {
   redirectionNeedsTarget,
   containsShellVariable,
   findTrackedShellMutation,
+  findEngineFlipShellMutation,
 } = require('../lib/shell-write-detect');
 
 // ---- Session state helpers (same pattern as constraint-guard.js) ----
@@ -213,6 +222,28 @@ function run(rawInput) {
   const ontologyRoot = isCodexGuardBypassed()
     ? null
     : resolveProjectOntologyRoot({ cwd: process.cwd() });
+
+  const engineFlipMutation = findEngineFlipShellMutation(command, ontologyRoot);
+  if (engineFlipMutation) {
+    const current = engineFlipMutation.current || 'unset';
+    const proposed = engineFlipMutation.proposed || 'unset';
+    const msg = [
+      '',
+      '[CODEX GUARD] implementationEngine change blocked',
+      '',
+      `  File    : ${engineFlipMutation.relPath}`,
+      `  Engine  : ${current} -> ${proposed}`,
+      '',
+      '  implementationEngine is pinned for the current session.',
+      '  Start a new session to switch engines, or set ECC_BYPASS_CODEX_GUARD=1',
+      '  for an explicit operator override.',
+      '',
+    ].join('\n');
+
+    process.stderr.write(msg);
+    return { exitCode: 2 };
+  }
+
   const trackedMutation = findTrackedShellMutation(command, ontologyRoot);
   if (trackedMutation) {
     const msg = [
