@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
 const os = require('os');
+const path = require('path');
 const { buildDoctorReport } = require('./lib/install-lifecycle');
 const { SUPPORTED_INSTALL_TARGETS } = require('./lib/install-manifests');
+const { findDuplicateHookRegistrations } = require('./lib/hook-duplicate-check');
 
 function showHelp(exitCode = 0) {
   console.log(`
@@ -80,6 +82,42 @@ function printHuman(report) {
   console.log(`\nSummary: checked=${report.summary.checkedCount}, ok=${report.summary.okCount}, warnings=${report.summary.warningCount}, errors=${report.summary.errorCount}`);
 }
 
+function buildDuplicateHookIssue(scriptNames) {
+  return {
+    severity: 'warning',
+    code: 'duplicate-hook-registration',
+    message: `${scriptNames.length} hook script(s) are registered both by the oh-my-forge plugin (hooks/hooks.json) and manually in ~/.claude/settings.json, which causes them to run twice per event (e.g. SessionStart context injected twice). Remove the manual entries from ~/.claude/settings.json and let the plugin manage them.`,
+    scripts: scriptNames,
+  };
+}
+
+function appendDuplicateHookCheck(report, { repoRoot, homeDir }) {
+  const duplicateCheck = findDuplicateHookRegistrations({ repoRoot, homeDir });
+  if (!duplicateCheck) return report;
+
+  const issues = duplicateCheck.duplicateScripts.length > 0
+    ? [buildDuplicateHookIssue(duplicateCheck.duplicateScripts)]
+    : [];
+
+  report.results.push({
+    adapter: { id: 'session-start-duplicate-check', target: 'diagnostics', kind: 'diagnostic' },
+    targetRoot: homeDir,
+    installStatePath: path.join(homeDir, '.claude', 'settings.json'),
+    exists: true,
+    status: issues.length > 0 ? 'warning' : 'ok',
+    issues,
+  });
+
+  report.summary.checkedCount += 1;
+  if (issues.length > 0) {
+    report.summary.warningCount += issues.length;
+  } else {
+    report.summary.okCount += 1;
+  }
+
+  return report;
+}
+
 function main() {
   try {
     const options = parseArgs(process.argv);
@@ -87,12 +125,16 @@ function main() {
       showHelp(0);
     }
 
+    const repoRoot = path.join(__dirname, '..');
+    const homeDir = process.env.HOME || os.homedir();
+
     const report = buildDoctorReport({
-      repoRoot: require('path').join(__dirname, '..'),
-      homeDir: process.env.HOME || os.homedir(),
+      repoRoot,
+      homeDir,
       projectRoot: process.cwd(),
       targets: options.targets,
     });
+    appendDuplicateHookCheck(report, { repoRoot, homeDir });
     const hasIssues = report.summary.errorCount > 0 || report.summary.warningCount > 0;
 
     if (options.json) {

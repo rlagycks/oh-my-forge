@@ -7,6 +7,8 @@ const path = require('path');
 
 const {
   resolvePluginRoot,
+  writeRootPointer,
+  ROOT_POINTER_FILENAME,
 } = require('../../scripts/hooks/session-start-bootstrap');
 
 function test(name, fn) {
@@ -104,6 +106,50 @@ if (test('detects ~/.codex marketplace cache roots when env vars are unset', () 
     const resolved = resolvePluginRoot({ homeDir: fakeHome });
     assert.strictEqual(resolved, cacheRoot);
   });
+})) passed++; else failed++;
+
+if (test('writes the resolved root to ~/.claude/.omf-root when the runner exists', () => {
+  const pointerHome = path.join(fixtureRoot, 'pointer-home-happy');
+  mkdirp(pointerHome);
+  const pluginRoot = path.join(fixtureRoot, 'pointer-plugin-root');
+  touchRunner(pluginRoot);
+
+  const wrote = writeRootPointer(pluginRoot, { homeDir: pointerHome });
+  assert.strictEqual(wrote, true);
+
+  const pointerPath = path.join(pointerHome, '.claude', ROOT_POINTER_FILENAME);
+  const contents = fs.readFileSync(pointerPath, 'utf8').trim();
+  assert.strictEqual(contents, path.resolve(pluginRoot));
+})) passed++; else failed++;
+
+if (test('does not write the pointer file when the root has no runner', () => {
+  const pointerHome = path.join(fixtureRoot, 'pointer-home-no-runner');
+  mkdirp(pointerHome);
+  const invalidRoot = path.join(fixtureRoot, 'pointer-invalid-root');
+  mkdirp(invalidRoot);
+
+  const wrote = writeRootPointer(invalidRoot, { homeDir: pointerHome });
+  assert.strictEqual(wrote, false);
+
+  const pointerPath = path.join(pointerHome, '.claude', ROOT_POINTER_FILENAME);
+  assert.strictEqual(fs.existsSync(pointerPath), false);
+})) passed++; else failed++;
+
+if (test('never throws when the pointer directory cannot be created', () => {
+  const pointerHome = path.join(fixtureRoot, 'pointer-home-unwritable');
+  mkdirp(pointerHome);
+  // Create a plain file where the `.claude` directory needs to go, so
+  // mkdirSync(targetDir, { recursive: true }) fails with ENOTDIR.
+  fs.writeFileSync(path.join(pointerHome, '.claude'), 'not a directory', 'utf8');
+
+  const pluginRoot = path.join(fixtureRoot, 'pointer-plugin-root-2');
+  touchRunner(pluginRoot);
+
+  let wrote;
+  assert.doesNotThrow(() => {
+    wrote = writeRootPointer(pluginRoot, { homeDir: pointerHome });
+  });
+  assert.strictEqual(wrote, false);
 })) passed++; else failed++;
 
 console.log(`\nPassed: ${passed}`);

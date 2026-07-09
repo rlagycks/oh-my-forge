@@ -270,7 +270,7 @@ async function assertObserveSkipBeforeProjectDetection(testCase) {
     const payload = JSON.stringify({
       tool_name: 'Bash',
       tool_input: { command: 'echo hello' },
-      tool_response: 'ok',
+      tool_response: { stdout: 'ok', stderr: '', interrupted: false, isImage: false },
       session_id: `session-${testCase.name.replace(/[^a-z0-9]+/gi, '-')}`,
       cwd,
       ...(testCase.payload || {})
@@ -884,7 +884,7 @@ async function runTests() {
         });
 
         const content = fs.readFileSync(sessionFile, 'utf8');
-        assert.ok(content.includes('Compaction occurred'), 'Should annotate the session file with compaction marker');
+        assert.ok(content.includes('Compactions:') && content.includes('Context was summarized'), 'Should annotate the session file with compaction marker');
       } finally {
         fs.rmSync(isoHome, { recursive: true, force: true });
       }
@@ -910,6 +910,70 @@ async function runTests() {
         const content = fs.readFileSync(logFile, 'utf8');
         // Should have a timestamp like [2026-02-11 14:30:00]
         assert.ok(/\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]/.test(content), `Log should contain timestamped entry, got: ${content.substring(0, 100)}`);
+      } finally {
+        fs.rmSync(isoHome, { recursive: true, force: true });
+      }
+    })
+  )
+    passed++;
+  else failed++;
+
+  if (
+    await asyncTest('consolidates repeated compaction markers into a single running-count line', async () => {
+      const isoHome = path.join(os.tmpdir(), `ecc-compact-consolidate-${Date.now()}`);
+      const sessionsDir = getCanonicalSessionsDir(isoHome);
+      fs.mkdirSync(sessionsDir, { recursive: true });
+
+      const sessionFile = path.join(sessionsDir, '2026-02-11-consolidate-session.tmp');
+      fs.writeFileSync(sessionFile, '# Session: 2026-02-11\n**Started:** 10:00\n');
+
+      try {
+        for (let i = 0; i < 3; i += 1) {
+          const result = await runScript(path.join(scriptsDir, 'pre-compact.js'), '', {
+            HOME: isoHome,
+            USERPROFILE: isoHome
+          });
+          assert.strictEqual(result.code, 0, `Run ${i} should exit 0`);
+        }
+
+        const content = fs.readFileSync(sessionFile, 'utf8');
+        const markerMatches = content.match(/\*\*\[Compactions: \d+, last at [\d:]+\]\*\*/g) || [];
+        assert.strictEqual(markerMatches.length, 1, `Should have exactly one consolidated marker, got: ${content}`);
+        assert.ok(content.includes('**[Compactions: 3, last at'), `Should show running count of 3, got: ${content}`);
+      } finally {
+        fs.rmSync(isoHome, { recursive: true, force: true });
+      }
+    })
+  )
+    passed++;
+  else failed++;
+
+  if (
+    await asyncTest('migrates legacy per-compaction markers into a single consolidated marker', async () => {
+      const isoHome = path.join(os.tmpdir(), `ecc-compact-legacy-migrate-${Date.now()}`);
+      const sessionsDir = getCanonicalSessionsDir(isoHome);
+      fs.mkdirSync(sessionsDir, { recursive: true });
+
+      const sessionFile = path.join(sessionsDir, '2026-02-11-legacymig-session.tmp');
+      fs.writeFileSync(
+        sessionFile,
+        '# Session: 2026-02-11\n**Started:** 10:00\n'
+        + '\n---\n**[Compaction occurred at 10:05]** - Context was summarized\n'
+        + '\n---\n**[Compaction occurred at 10:10]** - Context was summarized\n'
+      );
+
+      try {
+        const result = await runScript(path.join(scriptsDir, 'pre-compact.js'), '', {
+          HOME: isoHome,
+          USERPROFILE: isoHome
+        });
+        assert.strictEqual(result.code, 0);
+
+        const content = fs.readFileSync(sessionFile, 'utf8');
+        assert.ok(!content.includes('Compaction occurred'), `Should replace legacy markers, got: ${content}`);
+        const markerMatches = content.match(/\*\*\[Compactions: \d+, last at [\d:]+\]\*\*/g) || [];
+        assert.strictEqual(markerMatches.length, 1, `Should have exactly one consolidated marker, got: ${content}`);
+        assert.ok(content.includes('**[Compactions: 3, last at'), `Should count the 2 legacy markers plus this run, got: ${content}`);
       } finally {
         fs.rmSync(isoHome, { recursive: true, force: true });
       }
@@ -3200,7 +3264,7 @@ async function runTests() {
         const sessionContent = fs.readFileSync(sessionFile, 'utf8');
         const otherContent = fs.readFileSync(otherTmpFile, 'utf8');
 
-        assert.ok(sessionContent.includes('Compaction occurred'), 'Should annotate session file');
+        assert.ok(sessionContent.includes('Compactions:') && sessionContent.includes('Context was summarized'), 'Should annotate session file');
         assert.strictEqual(otherContent, 'some other data\n', 'Should NOT annotate non-session .tmp file');
       } finally {
         fs.rmSync(isoHome, { recursive: true, force: true });
@@ -4126,7 +4190,7 @@ async function runTests() {
         const olderContent = fs.readFileSync(olderSession, 'utf8');
 
         // findFiles sorts by mtime newest first, so sessions[0] is the newest
-        assert.ok(newerContent.includes('Compaction occurred'), 'Should annotate the newest session file');
+        assert.ok(newerContent.includes('Compactions:') && newerContent.includes('Context was summarized'), 'Should annotate the newest session file');
         assert.strictEqual(olderContent, '# Older Session\n', 'Should NOT annotate older session files');
       } finally {
         fs.rmSync(isoHome, { recursive: true, force: true });

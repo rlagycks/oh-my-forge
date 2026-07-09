@@ -18,15 +18,124 @@
     }
   ],
   "components": [
-    { "group": "개발 워크플로우", "commands": ["tdd", "plan", "code-review", "build-fix", "refactor-clean", "verify", "test-coverage", "feature-development"] },
-    { "group": "언어별 빌드/리뷰/테스트", "commands": ["go-build", "go-review", "go-test", "kotlin-build", "kotlin-review", "kotlin-test", "gradle-build", "rust-build", "rust-test", "rust-review", "cpp-build", "cpp-review", "cpp-test", "python-review", "java-build"] },
-    { "group": "E2E / QA", "commands": ["e2e", "qa-loop", "browser-qa"] },
-    { "group": "세션 / 메모리", "commands": ["save-session", "resume-session", "sessions", "checkpoint", "learn", "learn-eval", "instinct-import", "instinct-export", "instinct-status"] },
-    { "group": "오케스트레이션", "commands": ["orchestrate", "devfleet", "multi-plan", "multi-workflow", "multi-execute", "multi-frontend", "multi-backend", "loop-start", "loop-status", "aside"] },
-    { "group": "GAN 하네스", "commands": ["gan-design", "gan-build"] },
-    { "group": "문서 / 분석", "commands": ["docs", "design-contract", "update-docs", "update-codemaps", "prp-prd", "prp-plan", "prp-implement", "prp-pr", "prp-commit", "projects"] },
-    { "group": "비용 / 모델", "commands": ["context-budget", "model-route", "pm2"] },
-    { "group": "기타 유틸리티", "commands": ["claw", "eval", "evolve", "aside", "error-capture", "promote", "codex-delegate", "skill-create", "skill-health", "rules-distill", "security-scan", "database-migration", "add-language-rules"] }
+    {
+      "group": "개발 워크플로우",
+      "commands": [
+        "tdd",
+        "plan",
+        "code-review",
+        "build-fix",
+        "refactor-clean",
+        "verify",
+        "test-coverage",
+        "feature-development"
+      ]
+    },
+    {
+      "group": "언어별 빌드/리뷰/테스트",
+      "commands": [
+        "go-build",
+        "go-review",
+        "go-test",
+        "kotlin-build",
+        "kotlin-review",
+        "kotlin-test",
+        "gradle-build",
+        "rust-build",
+        "rust-test",
+        "rust-review",
+        "cpp-build",
+        "cpp-review",
+        "cpp-test",
+        "python-review",
+        "java-build"
+      ]
+    },
+    {
+      "group": "E2E / QA",
+      "commands": [
+        "e2e",
+        "qa-loop",
+        "browser-qa"
+      ]
+    },
+    {
+      "group": "세션 / 메모리",
+      "commands": [
+        "save-session",
+        "resume-session",
+        "sessions",
+        "checkpoint",
+        "learn",
+        "learn-eval",
+        "instinct-import",
+        "instinct-export",
+        "instinct-status"
+      ]
+    },
+    {
+      "group": "오케스트레이션",
+      "commands": [
+        "orchestrate",
+        "devfleet",
+        "multi-plan",
+        "multi-workflow",
+        "multi-execute",
+        "multi-frontend",
+        "multi-backend",
+        "loop-start",
+        "loop-status",
+        "aside"
+      ]
+    },
+    {
+      "group": "GAN 하네스",
+      "commands": [
+        "gan-design",
+        "gan-build"
+      ]
+    },
+    {
+      "group": "문서 / 분석",
+      "commands": [
+        "docs",
+        "design-contract",
+        "update-docs",
+        "update-codemaps",
+        "prp-prd",
+        "prp-plan",
+        "prp-implement",
+        "prp-pr",
+        "prp-commit",
+        "projects"
+      ]
+    },
+    {
+      "group": "비용 / 모델",
+      "commands": [
+        "context-budget",
+        "model-route",
+        "pm2"
+      ]
+    },
+    {
+      "group": "기타 유틸리티",
+      "commands": [
+        "claw",
+        "eval",
+        "evolve",
+        "aside",
+        "error-capture",
+        "promote",
+        "codex-delegate",
+        "skill-create",
+        "skill-health",
+        "rules-distill",
+        "security-scan",
+        "database-migration",
+        "add-language-rules"
+      ]
+    }
   ],
   "constraints": [
     "커맨드 파일 위치: commands/<name>.md",
@@ -113,7 +222,10 @@
       "maxDecisions": 1
     }
   },
-  "dependsOn": ["domain_common", "domain_skills"],
+  "dependsOn": [
+    "domain_common",
+    "domain_skills"
+  ],
   "decisions": [
     {
       "id": "dec-20260410-001",
@@ -122,7 +234,9 @@
       "domain": "domain_commands",
       "summary": "commands/plan.md의 scripts/ 상대경로 참조를 self-contained node -e 인라인으로 교체",
       "why": "plugin.json이 skills/와 commands/만 설치하고 scripts/를 설치하지 않아, 다른 프로젝트에서 plan.md 사용 시 'node scripts/lib/save-plan.js' 및 'require(\"./scripts/lib/utils\")' 실패. 무성 실패(silent failure) 패턴으로 Claude가 폴백 없이 직접 구현에 진입.",
-      "files": ["commands/plan.md"],
+      "files": [
+        "commands/plan.md"
+      ],
       "ref": "PR #6"
     },
     {
@@ -132,7 +246,9 @@
       "domain": "domain_commands",
       "summary": "plan.md ENGINE 감지 로직도 인라인화 — detectImplementationEngine 함수 참조 제거",
       "why": "~/.claude/scripts/lib/utils.js에 detectImplementationEngine이 export되지 않아 절대경로로 바꿔도 동일하게 실패. 함수 자체를 node -e 블록으로 이식.",
-      "files": ["commands/plan.md"],
+      "files": [
+        "commands/plan.md"
+      ],
       "ref": "PR #6"
     },
     {
@@ -142,8 +258,25 @@
       "domain": "domain_commands",
       "summary": "plan.md와 codex-delegate.md는 실행 메커니즘이 아니라 handoff runtime 사용법만 문서화한다",
       "why": "프롬프트 계약 픽스가 누적된 근본 원인은 마크다운 커맨드가 명세이자 실행 메커니즘이었기 때문이다. 실패가 나면 스키마나 런타임이 아니라 문서에 지시를 추가하는 경로로 수렴했다. 이후 commands/*.md는 route/request/dispatch/result 흐름만 설명하고, 명령 조립과 실행 정책은 코드 런타임이 소유한다.",
-      "files": ["commands/plan.md", "commands/codex-delegate.md"],
+      "files": [
+        "commands/plan.md",
+        "commands/codex-delegate.md"
+      ],
       "ref": "2026-04-13 prompt-contract review"
+    },
+    {
+      "id": "dec-20260707-8w4",
+      "date": "2026-07-07",
+      "type": "design",
+      "domain": "domain_commands",
+      "summary": "Canonical plugin-root resolution in markdown changed from 1.2KB inline JS blob to env-var + ~/.claude/.omf-root pointer-file one-liner (91 occurrences, 45 files)",
+      "why": "Each blob cost ~300 tokens per skill/command load. session-start-bootstrap.js now writes the resolved root to ~/.claude/.omf-root atomically; markdown uses CLAUDE_PLUGIN_ROOT -> CODEX_PLUGIN_ROOT -> pointer-file -> ~/.claude fallback. The hidden CI gate scripts/ci/validate-inline-resolver-snippets.js enforced the old blob byte-exactly and was rewritten to enforce the new canonical forms (INLINE_RESOLVE_SHELL / INLINE_RESOLVE_JS in resolve-ecc-root.js) and to flag stale old-blob copies as drift.",
+      "files": [
+        "scripts/hooks/session-start-bootstrap.js",
+        "scripts/lib/resolve-ecc-root.js",
+        "scripts/ci/validate-inline-resolver-snippets.js"
+      ],
+      "prevention": "validate-inline-resolver-snippets.js CI check rejects both non-canonical new snippets and reintroduced old blobs"
     }
   ]
 }

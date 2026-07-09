@@ -48,11 +48,41 @@
     }
   ],
   "components": [
-    { "profile": "core", "modules": ["rules-core", "agents-core", "commands-core", "hooks-runtime", "platform-configs", "workflow-quality"] },
-    { "profile": "developer", "modules": ["core 모듈 + framework-language, database, orchestration"] },
-    { "profile": "security", "modules": ["core 모듈 + security"] },
-    { "profile": "research", "modules": ["core 모듈 + research-apis, business-content, social-distribution"] },
-    { "profile": "full", "modules": ["모든 분류된 모듈"] }
+    {
+      "profile": "core",
+      "modules": [
+        "rules-core",
+        "agents-core",
+        "commands-core",
+        "hooks-runtime",
+        "platform-configs",
+        "workflow-quality"
+      ]
+    },
+    {
+      "profile": "developer",
+      "modules": [
+        "core 모듈 + framework-language, database, orchestration"
+      ]
+    },
+    {
+      "profile": "security",
+      "modules": [
+        "core 모듈 + security"
+      ]
+    },
+    {
+      "profile": "research",
+      "modules": [
+        "core 모듈 + research-apis, business-content, social-distribution"
+      ]
+    },
+    {
+      "profile": "full",
+      "modules": [
+        "모든 분류된 모듈"
+      ]
+    }
   ],
   "constraints": [
     "설치 대상 경로는 manifests/ 에만 정의 — 코드 하드코딩 금지",
@@ -60,7 +90,25 @@
     "설치 실패는 전체 중단 — 부분 롤백 없음 (일관성 보장)",
     "--dry-run 플래그는 파일 시스템 변경 없이 계획만 출력",
     "언어명 패턴: /^[a-zA-Z0-9_-]+$/ (LANGUAGE_NAME_PATTERN)",
-    "생성 소스 파일 제외 접미사: /ecc-install-state.json, /ecc/install-state.json"
+    "생성 소스 파일 제외 접미사: /ecc-install-state.json, /ecc/install-state.json",
+    "[prevention] release.sh updated only 3 of the 6 files validate-release-manifests.js checks, so releases always aborted mid-run with a dirty tree|pattern:release.sh now updates the full validated set; keep the file list sourced from the validator when it grows"
   ],
-  "dependsOn": ["domain_common"]
+  "dependsOn": [
+    "domain_common"
+  ],
+  "decisions": [
+    {
+      "id": "dec-20260709-9ep",
+      "date": "2026-07-09",
+      "type": "bug-fix",
+      "domain": "domain_install",
+      "summary": "release.sh updated only 3 of the 6 files validate-release-manifests.js checks, so releases always aborted mid-run with a dirty tree",
+      "why": "spec-gap: the validator gained package-lock.json/agent.yaml/AGENTS.md checks after release.sh was written and the script was never updated; nothing ties the two file lists together",
+      "files": [
+        "scripts/release.sh",
+        "scripts/ci/validate-release-manifests.js"
+      ],
+      "prevention": "release.sh now updates the full validated set; keep the file list sourced from the validator when it grows"
+    }
+  ]
 }

@@ -85,8 +85,16 @@
     "sequential-thinking (@modelcontextprotocol/server-sequential-thinking)"
   ],
   "profiles": {
-    "strict": { "approval_policy": "on-request", "sandbox_mode": "read-only", "web_search": "cached" },
-    "yolo": { "approval_policy": "never", "sandbox_mode": "workspace-write", "web_search": "live" }
+    "strict": {
+      "approval_policy": "on-request",
+      "sandbox_mode": "read-only",
+      "web_search": "cached"
+    },
+    "yolo": {
+      "approval_policy": "never",
+      "sandbox_mode": "workspace-write",
+      "web_search": "live"
+    }
   },
   "constraints": [
     "explorer/reviewer/docs-researcher의 sandbox_mode = read-only 변경 금지 (OS 레벨 격리)",
@@ -101,7 +109,8 @@
     "false-normal completion 판정은 scripts/lib/false-normal-detector.js가 단일 소유 — 각 caller가 RESULT:DONE 판정 로직을 재구현하지 않음",
     "codex-companion.mjs 호출 시 --approval-mode 플래그 사용 금지 — pre-bash-codex-guard가 차단하지만 소스에도 작성 불가|pattern:--approval-mode",
     "codex-companion.mjs task 호출은 인라인 positional 프롬프트 금지 — --prompt-file 사용 필수|pattern:companion.mjs task \"",
-    "codex-rescue 에이전트 수정 시 반드시 fail-fast 보장 — 재시도 루프 추가 금지|pattern:retry"
+    "codex-rescue 에이전트 수정 시 반드시 fail-fast 보장 — 재시도 루프 추가 금지|pattern:retry",
+    "[prevention] Codex guard asymmetry: pre-write-edit-codex-guard blocks Edit/Write on ontology-tracked meta files, but pre-bash-codex-guard exempts the same meta-path prefixes and ignores ECC_BYPASS_CODEX_GUARD — Bash-level writes bypass the policy entirely|pattern:Align the two guards: pre-bash-codex-guard should honor ECC_BYPASS_CODEX_GUARD and apply the same self-repo meta-path gate as pre-write-edit-codex-guard (or exempt symmetrically). Not fixed in this pass — out of approved scope; recorded for follow-up."
   ],
   "vsClaudeCode": {
     "hooks": "Codex는 훅 없음 — approval_policy + sandbox_mode + notify로 대체",
@@ -109,7 +118,9 @@
     "skills": "Claude Code: plugin 시스템 / Codex: .agents/skills/ 디렉터리",
     "agents": "Claude Code: Task tool / Codex: /agent + [agents.<name>] 역할"
   },
-  "dependsOn": ["domain_install"],
+  "dependsOn": [
+    "domain_install"
+  ],
   "decisions": [
     {
       "id": "dec-20260410-003",
@@ -118,7 +129,10 @@
       "domain": "domain_codex",
       "summary": "codex-delegate silent failure: CLAUDE_PLUGIN_ROOT 미설정 시 codex-companion.mjs 실행 불가 → Claude가 직접 구현에 진입",
       "why": "codex-rescue.md 에이전트가 'node \"${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs\"' 실행. CLAUDE_PLUGIN_ROOT는 ECC 설치 시 shell env로 주입되지 않아 undefined. 스크립트 실패 → Agent 종료 → 위임 없이 메인 Claude가 plan 내용을 직접 구현. 미수정 — 별도 수정 필요.",
-      "files": ["agents/codex-rescue.md", "commands/codex-delegate.md"],
+      "files": [
+        "agents/codex-rescue.md",
+        "commands/codex-delegate.md"
+      ],
       "ref": "미수정 이슈"
     },
     {
@@ -128,7 +142,9 @@
       "domain": "domain_codex",
       "summary": "plan.md Step 5 fallback: ENGINE=codex이면 ontology 미매칭 시에도 항상 codex로 위임",
       "why": "기존 로직은 ontology match 실패 시 ENGINE=claude로 폴백하여 Claude가 직접 구현. 사용자 의도는 Codex가 설치돼 있으면 항상 Codex에 위임. Step 5를 'fallback delegation'으로 재정의하여 ENGINE=codex면 무조건 Agent 위임.",
-      "files": ["commands/plan.md"],
+      "files": [
+        "commands/plan.md"
+      ],
       "ref": "PR #6, commit 297a8e4"
     },
     {
@@ -188,6 +204,19 @@
         "tests/hooks/pre-bash-codex-guard.test.js"
       ],
       "ref": "fix/codex-handoff-write-guard"
+    },
+    {
+      "id": "dec-20260707-c7o",
+      "date": "2026-07-07",
+      "type": "constraint",
+      "domain": "domain_codex",
+      "summary": "Codex guard asymmetry: pre-write-edit-codex-guard blocks Edit/Write on ontology-tracked meta files, but pre-bash-codex-guard exempts the same meta-path prefixes and ignores ECC_BYPASS_CODEX_GUARD — Bash-level writes bypass the policy entirely",
+      "why": "Independently hit by two subagents on 2026-07-07 while editing scripts/hooks/* in the self-repo with codex on PATH: the Edit tool was blocked while equivalent Bash writes (and in one session the Write tool) sailed through. The guard pair does not enforce a consistent policy surface, so the codex-first routing is advisory, not enforced.",
+      "files": [
+        "scripts/hooks/pre-write-edit-codex-guard.js",
+        "scripts/hooks/pre-bash-codex-guard.js"
+      ],
+      "prevention": "FIXED 2026-07-09: shared predicates extracted to scripts/lib/codex-guard-policy.js; pre-bash-codex-guard now honors ECC_BYPASS_CODEX_GUARD and applies the same self-repo meta-path gate. Symmetry proven by tests/hooks/codex-guard-symmetry.test.js."
     }
   ]
 }

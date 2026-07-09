@@ -451,22 +451,48 @@ function markdownItem(value) {
   return String(value || '').replace(/\n/g, ' ').replace(/`/g, '\\`');
 }
 
-function traceItems(items, fallback) {
-  const values = Array.isArray(items) && items.length > 0 ? items : [fallback];
-  return values.map(item => `  - ${markdownItem(item)}`);
+function traceItems(items) {
+  return (Array.isArray(items) ? items : []).map(item => `  - ${markdownItem(item)}`);
 }
 
 function buildFollowUpTemplate(summary = null) {
   const trace = summary?.failureTrace || {};
-  return [
+  const failedHypotheses = Array.isArray(trace.failedHypotheses) ? trace.failedHypotheses : [];
+  const falseNormalSignals = Array.isArray(trace.falseNormalSignals) ? trace.falseNormalSignals : [];
+  const evidenceMissing = Array.isArray(trace.evidenceMissing) ? trace.evidenceMissing : [];
+  const hasTraceData = Boolean(
+    trace.nextSuspicion
+    || failedHypotheses.length > 0
+    || falseNormalSignals.length > 0
+    || evidenceMissing.length > 0
+  );
+
+  // No concrete trace data this session: emit a single compact marker instead
+  // of a wall of unfilled bracket placeholders that get re-injected verbatim
+  // into the next session's context.
+  if (!hasTraceData) {
+    return [
+      '### Failure Trace',
+      '- (none recorded this session)',
+    ].join('\n');
+  }
+
+  const lines = [
     '### Failure Trace',
     'Failure Trace Ledger — record misleading signals before writing generic lessons.',
-    '- Failed hypotheses:',
-    ...traceItems(trace.failedHypotheses, '[approach tried] -> [exact failure reason or error]'),
-    '- False-normal signals:',
-    ...traceItems(trace.falseNormalSignals, '[signal that looked healthy] -> [what it hid]'),
-    '- Evidence still missing:',
-    ...traceItems(trace.evidenceMissing, '[claim] -> [proof still needed]'),
+  ];
+
+  if (failedHypotheses.length > 0) {
+    lines.push('- Failed hypotheses:', ...traceItems(failedHypotheses));
+  }
+  if (falseNormalSignals.length > 0) {
+    lines.push('- False-normal signals:', ...traceItems(falseNormalSignals));
+  }
+  if (evidenceMissing.length > 0) {
+    lines.push('- Evidence still missing:', ...traceItems(evidenceMissing));
+  }
+
+  lines.push(
     '',
     '### Next Suspicion',
     `- Next suspicion: ${markdownItem(trace.nextSuspicion || '[first place to inspect if this recurs]')}`,
@@ -477,8 +503,10 @@ function buildFollowUpTemplate(summary = null) {
     '### Context to Load',
     '```',
     '[relevant files]',
-    '```',
-  ].join('\n');
+    '```'
+  );
+
+  return lines.join('\n');
 }
 
 function escapeRegExp(value) {

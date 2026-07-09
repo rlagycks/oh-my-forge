@@ -212,16 +212,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-with-flags.js\" \"post:bash:error-tracker\" \"scripts/hooks/error-tracker.js\" --request-file \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/requests/standard-strict.json\""
-          }
-        ],
-        "description": "Track Bash failures to session temp file for bug-fix-enforcer to consume"
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-with-flags.js\" \"post:bash:commit-rca\" \"scripts/hooks/post-bash-commit-rca.js\" --request-file \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/requests/standard-strict.json\""
           }
         ],
@@ -358,6 +348,16 @@
           }
         ],
         "description": "Track failed MCP tool calls, mark unhealthy servers, and attempt reconnect"
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-with-flags.js\" \"post:bash:error-tracker\" \"scripts/hooks/error-tracker.js\" --request-file \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/requests/standard-strict.json\""
+          }
+        ],
+        "description": "Track Bash failures to session temp file for bug-fix-enforcer to consume"
       }
     ],
     "Stop": [
@@ -393,18 +393,6 @@
           }
         ],
         "description": "Persist session state after each response (Stop carries transcript_path)"
-      },
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node -e \"const fs=require('fs');const path=require('path');const {spawnSync}=require('child_process');const raw=fs.readFileSync(0,'utf8');const rel=path.join('scripts','hooks','run-with-flags.js');const hasRunnerRoot=candidate=>{const value=typeof candidate==='string'?candidate.trim():'';return value.length>0&&fs.existsSync(path.join(path.resolve(value),rel));};const root=(()=>{const envRoot=process.env.CLAUDE_PLUGIN_ROOT||'';if(hasRunnerRoot(envRoot))return path.resolve(envRoot.trim());const home=require('os').homedir();const claudeDir=path.join(home,'.claude');if(hasRunnerRoot(claudeDir))return claudeDir;for(const candidate of [path.join(claudeDir,'plugins','oh-my-forge'),path.join(claudeDir,'plugins','oh-my-forge@rlagycks'),path.join(claudeDir,'plugins','marketplace','oh-my-forge'),path.join(claudeDir,'plugins','everything-claude-code'),path.join(claudeDir,'plugins','everything-claude-code@everything-claude-code'),path.join(claudeDir,'plugins','marketplace','everything-claude-code')]){if(hasRunnerRoot(candidate))return candidate;}const fromCache=name=>{try{const cacheBase=path.join(claudeDir,'plugins','cache',name);for(const org of fs.readdirSync(cacheBase,{withFileTypes:true})){if(!org.isDirectory())continue;for(const version of fs.readdirSync(path.join(cacheBase,org.name),{withFileTypes:true})){if(!version.isDirectory())continue;const candidate=path.join(cacheBase,org.name,version.name);if(hasRunnerRoot(candidate))return candidate;}}}catch{}return null;};return fromCache('oh-my-forge')||fromCache('everything-claude-code')||claudeDir;})();const script=path.join(root,rel);if(fs.existsSync(script)){const result=spawnSync(process.execPath,[script,'stop:evaluate-session','scripts/hooks/evaluate-session.js','--request-file','scripts/hooks/requests/minimal-standard-strict.json'],{input:raw,encoding:'utf8',env:process.env,cwd:process.cwd(),timeout:30000});const stdout=typeof result.stdout==='string'?result.stdout:'';if(stdout)process.stdout.write(stdout);else process.stdout.write(raw);if(result.stderr)process.stderr.write(result.stderr);if(result.error||result.status===null||result.signal){const reason=result.error?result.error.message:(result.signal?'signal '+result.signal:'missing exit status');process.stderr.write('[Stop] ERROR: hook runner failed: '+reason+String.fromCharCode(10));process.exit(1);}process.exit(Number.isInteger(result.status)?result.status:0);}process.stderr.write('[Stop] WARNING: could not resolve OMF plugin root; skipping hook'+String.fromCharCode(10));process.stdout.write(raw);\"",
-            "async": true,
-            "timeout": 10
-          }
-        ],
-        "description": "Evaluate session for extractable patterns"
       },
       {
         "matcher": "*",

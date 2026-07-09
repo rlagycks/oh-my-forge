@@ -13,6 +13,11 @@
  *
  * Also traverses dependsOn to surface dependent domain constraints (multi-hop).
  *
+ * Also surfaces the domain's most recent decisions[] (design/bug-fix/etc.
+ * records written by scripts/lib/decisions.js) as short one-liners, so the
+ * agent gets the "why" behind existing constraints without loading the full
+ * decision log.
+ *
  * Trigger: PreToolUse on Read|Write|Edit|MultiEdit
  * Profile: standard,strict
  * Token cost: ~0 when no match or already injected, ~150-250 on first hit
@@ -60,6 +65,35 @@ function saveInjected(set) {
 
 function sourceDocEntries(sourceDocs = {}) {
   return Object.entries(normalizeSourceDocs(sourceDocs));
+}
+
+/**
+ * Truncate a decision's `why` field to a max length for compact injection.
+ * @param {unknown} why
+ * @param {number} maxLen
+ * @returns {string}
+ */
+function truncateWhy(why, maxLen = 100) {
+  const text = String(why || '').trim();
+  if (text.length <= maxLen) return text;
+  return `${text.slice(0, maxLen).trimEnd()}...`;
+}
+
+/**
+ * Select the most recent decisions[] entries for a domain entry, most
+ * recent first. Decisions are append-only (scripts/lib/decisions.js always
+ * pushes new entries onto the end of the array), so the most recent ones
+ * are simply the tail of the array — no date parsing required.
+ *
+ * @param {object} entry - Domain entry as returned by matchFileToDomain (already
+ *   merged with its detail file, so entry.decisions reflects domain_<name>.json's
+ *   decisions[] with no extra file I/O needed).
+ * @param {number} max
+ * @returns {Array<object>}
+ */
+function selectRecentDecisions(entry, max = 3) {
+  if (!entry || !Array.isArray(entry.decisions) || entry.decisions.length === 0) return [];
+  return entry.decisions.slice(-max).reverse();
 }
 
 // --- Main ---
@@ -126,6 +160,15 @@ function run(rawInput) {
     lines.push('Constraints:');
     for (const c of packet.constraints) {
       lines.push(`  - ${c}`);
+    }
+  }
+
+  // Recent decisions (Change 3) — most recent 3, one-liners with truncated "why"
+  const recentDecisions = selectRecentDecisions(entry, 3);
+  if (recentDecisions.length > 0) {
+    lines.push('Recent Decisions:');
+    for (const decision of recentDecisions) {
+      lines.push(`  - [${decision.type}] ${decision.summary} (why: ${truncateWhy(decision.why)})`);
     }
   }
 

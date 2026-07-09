@@ -209,7 +209,7 @@ if (test('session-end keeps the latest next suspicion from the transcript', () =
   }
 })) passed++; else failed++;
 
-if (test('session-end blank template asks for failure traces before tips', () => {
+if (test('session-end emits a single compact marker instead of unfilled placeholders when no failure trace was captured', () => {
   const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'session-failure-template-'));
   const transcriptPath = path.join(homeDir, 'transcript.jsonl');
   fs.writeFileSync(transcriptPath, '', 'utf8');
@@ -219,10 +219,52 @@ if (test('session-end blank template asks for failure traces before tips', () =>
     assert.strictEqual(result.status, 0, result.stderr);
     const content = readOnlySessionFile(homeDir);
     assert.ok(content.includes('### Failure Trace'), content);
+    assert.ok(content.includes('(none recorded this session)'), content);
+    // Regression guard: no unfilled bracket placeholders should be
+    // re-injected verbatim into the next session's context.
+    assert.ok(!content.includes('[approach tried]'), content);
+    assert.ok(!content.includes('[first place to inspect if this recurs]'), content);
+    assert.ok(!content.includes('[single concrete next operator action]'), content);
+    assert.ok(!content.includes('[relevant files]'), content);
+    assert.ok(!content.includes('Failed hypotheses'), content);
+    assert.ok(!content.includes('False-normal signals'), content);
+    assert.ok(!content.includes('Evidence still missing'), content);
+    assert.ok(!content.includes('### Next Suspicion'), content);
+    assert.ok(!content.includes('### Next Action'), content);
+    assert.ok(!content.includes('### Context to Load'), content);
+  } finally {
+    fs.rmSync(homeDir, { recursive: true, force: true });
+  }
+})) passed++; else failed++;
+
+if (test('session-end keeps the full failure-trace template when real trace data exists', () => {
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'session-failure-template-filled-'));
+  const transcriptPath = path.join(homeDir, 'transcript.jsonl');
+  fs.writeFileSync(transcriptPath, [
+    JSON.stringify({ type: 'user', content: 'Investigate flaky deploy' }),
+    JSON.stringify({
+      type: 'assistant',
+      message: {
+        content: [
+          {
+            type: 'text',
+            text: 'Command failed because the deploy token expired. Next suspicion: token refresh cron job.',
+          },
+        ],
+      },
+    }),
+  ].join('\n'), 'utf8');
+
+  try {
+    const result = runSessionEnd(homeDir, transcriptPath, 'trace003');
+    assert.strictEqual(result.status, 0, result.stderr);
+    const content = readOnlySessionFile(homeDir);
+    assert.ok(content.includes('### Failure Trace'), content);
     assert.ok(content.includes('Failed hypotheses'), content);
-    assert.ok(content.includes('False-normal signals'), content);
-    assert.ok(content.includes('Evidence still missing'), content);
-    assert.ok(content.includes('Next suspicion'), content);
+    assert.ok(content.includes('Command failed because the deploy token expired'), content);
+    assert.ok(content.includes('### Next Suspicion'), content);
+    assert.ok(content.includes('Next suspicion: token refresh cron job'), content);
+    assert.ok(!content.includes('(none recorded this session)'), content);
   } finally {
     fs.rmSync(homeDir, { recursive: true, force: true });
   }

@@ -72,10 +72,18 @@ update_version "$ROOT_PACKAGE_JSON" "s|\"version\": *\"[^\"]*\"|\"version\": \"$
 update_version "$CODEX_PLUGIN_JSON" "s|\"version\": *\"[^\"]*\"|\"version\": \"$VERSION\"|"
 update_version "$MARKETPLACE_JSON" "s|\"version\": *\"[^\"]*\"|\"version\": \"$VERSION\"|g"
 
+# validate-release-manifests.js also checks these; keep them in sync
+LOCK_JSON="package-lock.json"
+AGENT_YAML="agent.yaml"
+AGENTS_MD="AGENTS.md"
+node -e "const fs=require('fs');const l=JSON.parse(fs.readFileSync('$LOCK_JSON','utf8'));l.version='$VERSION';if(l.packages&&l.packages['']){l.packages[''].version='$VERSION';}fs.writeFileSync('$LOCK_JSON',JSON.stringify(l,null,2)+'\n');"
+update_version "$AGENT_YAML" "s|^version: .*|version: $VERSION|"
+update_version "$AGENTS_MD" "s|\*\*Version:\*\* .*|**Version:** $VERSION|"
+
 node scripts/ci/validate-release-manifests.js
 
 # Stage, commit, tag, and push
-git add "$ROOT_PACKAGE_JSON" "$CODEX_PLUGIN_JSON" "$MARKETPLACE_JSON"
+git add "$ROOT_PACKAGE_JSON" "$CODEX_PLUGIN_JSON" "$MARKETPLACE_JSON" "$LOCK_JSON" "$AGENT_YAML" "$AGENTS_MD"
 git commit -m "chore: bump plugin version to $VERSION"
 git tag "v$VERSION"
 git push origin main "v$VERSION"

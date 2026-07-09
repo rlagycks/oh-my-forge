@@ -19,6 +19,10 @@
  *   1. Reads the raw JSON event from stdin (passed by Claude Code).
  *   2. Resolves the OMF plugin root directory (via CLAUDE_PLUGIN_ROOT env var
  *      or a set of well-known fallback paths).
+ *   2b. Writes the resolved root to ~/.claude/.omf-root (a plain-text pointer
+ *       file) so markdown command/skill snippets can resolve the plugin root
+ *       with a cheap `cat` instead of embedding the full probing logic as an
+ *       inline `node -p` one-liner. Never fails the hook if this write fails.
  *   3. Delegates to `scripts/hooks/run-with-flags.js` with the `session:start`
  *      event, which applies hook-profile gating and then runs session-start.js.
  *   4. Passes stdout/stderr through and forwards the child exit code.
@@ -27,12 +31,17 @@
  */
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { resolveEccRoot } = require('../lib/resolve-ecc-root');
 
 // Path (relative to plugin root) to the hook runner
 const rel = path.join('scripts', 'hooks', 'run-with-flags.js');
+
+// Name of the pointer file written under ~/.claude/ so markdown snippets can
+// resolve the plugin root without embedding the full inline resolver.
+const ROOT_POINTER_FILENAME = '.omf-root';
 
 /**
  * Returns true when `candidate` looks like a valid OMF plugin root, i.e. the
@@ -62,9 +71,49 @@ function resolvePluginRoot(options = {}) {
   return path.resolve(root);
 }
 
+/**
+ * Atomically writes the resolved plugin root to ~/.claude/.omf-root so
+ * markdown command/skill snippets can resolve it via a plain `cat` instead of
+ * re-embedding the full probing logic inline. Only writes when `root`
+ * actually looks like a valid OMF plugin root (contains run-with-flags.js).
+ *
+ * Never throws — failures are logged to stderr and swallowed so this can
+ * never block the SessionStart hook.
+ *
+ * @param {string} root Resolved plugin root directory
+ * @param {object} [options]
+ * @param {string} [options.homeDir] Override home directory (for testing)
+ * @returns {boolean} true when the pointer file was written
+ */
+function writeRootPointer(root, options = {}) {
+  try {
+    if (!hasRunnerRoot(root)) {
+      return false;
+    }
+
+    const homeDir = options.homeDir || os.homedir();
+    const targetDir = path.join(homeDir, '.claude');
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+
+    const target = path.join(targetDir, ROOT_POINTER_FILENAME);
+    const tmpTarget = `${target}.tmp-${process.pid}`;
+    fs.writeFileSync(tmpTarget, `${path.resolve(root)}\n`, 'utf8');
+    fs.renameSync(tmpTarget, target);
+    return true;
+  } catch (error) {
+    process.stderr.write(
+      `[SessionStart] WARNING: failed to write plugin root pointer file: ${error.message}\n`
+    );
+    return false;
+  }
+}
+
 function main() {
   const raw = fs.readFileSync(0, 'utf8');
   const root = resolvePluginRoot();
+  writeRootPointer(root);
   const script = path.join(root, rel);
 
   if (fs.existsSync(script)) {
@@ -113,6 +162,8 @@ function main() {
 module.exports = {
   hasRunnerRoot,
   resolvePluginRoot,
+  writeRootPointer,
+  ROOT_POINTER_FILENAME,
   main,
 };
 

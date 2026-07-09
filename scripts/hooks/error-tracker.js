@@ -1,15 +1,24 @@
 #!/usr/bin/env node
 /**
- * PostToolUse Hook: Error Tracker
+ * PostToolUseFailure Hook: Error Tracker
  *
  * Tracks Bash tool failures (non-zero exit codes) to a session-scoped temp file.
  * This data is consumed by bug-fix-enforcer.js to detect when a file edit
  * follows an error — triggering forced /decide recording.
  *
- * Storage: ~/.claude/tmp/session-errors-<sessionId>.json
- * Format:  Array of { timestamp, exitCode, command, relatedFiles }
+ * Ground truth (Claude Code hooks reference, "PostToolUse"/"PostToolUseFailure"):
+ *   - PostToolUse fires only when a tool call SUCCEEDS. For Bash, its
+ *     tool_response shape is `{ stdout, stderr, interrupted, isImage }` —
+ *     there is no `exitCode` field there.
+ *   - A Bash command that exits non-zero fires PostToolUseFailure instead,
+ *     with the failure surfaced as a TOP-LEVEL `error` string field (plus
+ *     an optional `is_interrupt` boolean) — not nested under tool_response.
+ * See https://code.claude.com/docs/en/hooks for the full schemas.
  *
- * Trigger: PostToolUse on Bash
+ * Storage: ~/.claude/tmp/session-errors-<sessionId>.json
+ * Format:  Array of { timestamp, exitCode, command, relatedFiles, errorMessage }
+ *
+ * Trigger: PostToolUseFailure on Bash
  * Profile: standard,strict
  */
 
@@ -77,6 +86,33 @@ function extractRelatedFiles(command) {
   return [...files].slice(0, 10); // cap at 10 files
 }
 
+/**
+ * A real Bash failure arrives via the PostToolUseFailure event, with the
+ * error surfaced as a top-level `error` string (see module header). Some
+ * hook harness variants may omit `hook_event_name`; in that case fall back
+ * to detecting the presence of a top-level `error` string, but never treat
+ * an explicit PostToolUse (success) event as a failure.
+ */
+function isBashFailureEvent(input) {
+  if (input.hook_event_name === 'PostToolUseFailure') return true;
+  if (input.hook_event_name === 'PostToolUse') return false;
+  return typeof input.error === 'string' && input.error.trim().length > 0;
+}
+
+/**
+ * Best-effort exit code extraction from a PostToolUseFailure `error` message,
+ * e.g. "Command exited with non-zero status code 1" -> 1. The exact code is
+ * cosmetic (only used for the enforcer's display message); when it can't be
+ * parsed, default to 1 since PostToolUseFailure already guarantees a failure.
+ */
+function parseExitCodeFromErrorMessage(errorMessage) {
+  if (typeof errorMessage !== 'string') return null;
+  const match = errorMessage.match(/\bcode[:\s]+(-?\d+)\b/i);
+  if (!match) return null;
+  const code = parseInt(match[1], 10);
+  return Number.isNaN(code) ? null : code;
+}
+
 function run(rawInput) {
   let input;
   try {
@@ -93,16 +129,33 @@ function run(rawInput) {
     return;
   }
 
-  // Check exit code from tool response
-  const toolResponse = input.tool_response || {};
-  const output = toolResponse.output || toolResponse.content || '';
+  // A user-initiated interruption (Ctrl-C) is not a bug — don't force a
+  // root-cause /decide recording for it.
+  if (input.is_interrupt === true) {
+    process.stdout.write(rawInput);
+    return;
+  }
 
-  // Claude Code reports non-zero exit as "exit code N" in output, or via exitCode field
-  const exitCode = toolResponse.exitCode !== undefined
-    ? toolResponse.exitCode
-    : extractExitCode(output);
+  let exitCode = null;
+  let errorMessage = null;
 
-  if (exitCode === 0 || exitCode === null) {
+  if (isBashFailureEvent(input)) {
+    errorMessage = typeof input.error === 'string' ? input.error : null;
+    exitCode = parseExitCodeFromErrorMessage(errorMessage);
+    if (exitCode === null) exitCode = 1;
+  } else {
+    // Defensive fallback for older/non-standard payload shapes that surface
+    // exit info under tool_response instead of the documented top-level
+    // PostToolUseFailure fields. Real Bash success responses (PostToolUse)
+    // never carry an exitCode, so this is expected to be a no-op there.
+    const toolResponse = input.tool_response || {};
+    const output = toolResponse.output || toolResponse.content || toolResponse.stdout || toolResponse.stderr || '';
+    exitCode = toolResponse.exitCode !== undefined
+      ? toolResponse.exitCode
+      : extractExitCode(output);
+  }
+
+  if (exitCode === 0 || exitCode === null || exitCode === undefined) {
     process.stdout.write(rawInput);
     return;
   }
@@ -116,7 +169,8 @@ function run(rawInput) {
     exitCode,
     command: command.slice(0, 500), // cap length
     relatedFiles,
-    cwd: process.cwd()
+    cwd: process.cwd(),
+    errorMessage: errorMessage ? errorMessage.slice(0, 500) : null
   };
 
   const errors = loadErrors();
