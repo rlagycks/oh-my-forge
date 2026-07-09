@@ -28,7 +28,8 @@ function makeInput(command) {
   return JSON.stringify({
     tool_name: 'Bash',
     tool_input: { command },
-    tool_response: { output: '', exitCode: 0 },
+    // Real PostToolUse success shape for Bash (failures go to PostToolUseFailure)
+    tool_response: { stdout: '', stderr: '', interrupted: false, isImage: false },
   });
 }
 
