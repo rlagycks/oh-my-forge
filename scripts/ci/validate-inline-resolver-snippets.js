@@ -8,16 +8,17 @@
 const fs = require('fs');
 const path = require('path');
 
-const { INLINE_RESOLVE } = require('../lib/resolve-ecc-root');
+const { INLINE_RESOLVE_SHELL, INLINE_RESOLVE_JS } = require('../lib/resolve-ecc-root');
 
 const ROOT = path.join(__dirname, '../..');
 const TARGET_DIRS = ['agents', 'commands', 'docs', 'skills'];
-const RESOLVER_SENTINEL = 'process.env.CLAUDE_PLUGIN_ROOT||process.env.CODEX_PLUGIN_ROOT';
-const NODE_P_SINGLE_QUOTE_PATTERN = /node -p '([^'\n]+)'/;
-const INLINE_ASSIGNMENT_PATTERN = /\b(?:const|let|var)\s+\w+\s*=\s*(\(\(\)=>\{.*\}\)\(\));?/;
-const REQUIRE_PATH_JOIN_PATTERN = /require\((\(\(\)=>\{.*\}\)\(\))\s*\+\s*['"`]\/scripts\//;
-const BACKTICK_LITERAL_PATTERN = /`([^`$\\]*)`/g;
-const NORMALIZED_INLINE_RESOLVE = normalizeResolverSnippet(INLINE_RESOLVE);
+
+// Any line containing one of these substrings is expected to carry a fully
+// formed copy of INLINE_RESOLVE_SHELL or INLINE_RESOLVE_JS. This also catches
+// stale copies of the old (retired) inline JS probing blob, since those
+// contain the same JS sentinel but will fail the exact-match check below.
+const RESOLVER_SENTINEL_JS = 'process.env.CLAUDE_PLUGIN_ROOT||process.env.CODEX_PLUGIN_ROOT';
+const RESOLVER_SENTINEL_SHELL = '${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-';
 
 function collectMarkdownFiles(targetPath) {
   if (!fs.existsSync(targetPath)) return [];
@@ -31,30 +32,25 @@ function collectMarkdownFiles(targetPath) {
     .flatMap(entry => collectMarkdownFiles(path.join(targetPath, entry)));
 }
 
-function normalizeResolverSnippet(snippet) {
-  return snippet
-    .trim()
-    .replace(BACKTICK_LITERAL_PATTERN, (_, value) => `'${value.replace(/'/g, "\\'")}'`)
-    .replace(/\s+/g, '');
+/**
+ * Snippets embedded inside JSON example strings (e.g. hook config blocks in
+ * SKILL.md) escape double quotes as \" to stay valid JSON. Undo that so the
+ * snippet can be compared against the canonical unescaped form.
+ *
+ * @param {string} line
+ * @returns {string}
+ */
+function unescapeJsonQuotes(line) {
+  return line.replace(/\\"/g, '"');
 }
 
-function extractResolverSnippet(line) {
-  const nodePMatch = line.match(NODE_P_SINGLE_QUOTE_PATTERN);
-  if (nodePMatch) {
-    return nodePMatch[1];
-  }
+function lineLooksLikeResolverSnippet(line) {
+  return line.includes(RESOLVER_SENTINEL_JS) || line.includes(RESOLVER_SENTINEL_SHELL);
+}
 
-  const assignmentMatch = line.match(INLINE_ASSIGNMENT_PATTERN);
-  if (assignmentMatch) {
-    return assignmentMatch[1];
-  }
-
-  const requireMatch = line.match(REQUIRE_PATH_JOIN_PATTERN);
-  if (requireMatch) {
-    return requireMatch[1];
-  }
-
-  return null;
+function lineMatchesCanonicalSnippet(line) {
+  const normalized = unescapeJsonQuotes(line);
+  return normalized.includes(INLINE_RESOLVE_SHELL) || normalized.includes(INLINE_RESOLVE_JS);
 }
 
 function validateInlineResolverSnippets(options = {}) {
@@ -71,19 +67,13 @@ function validateInlineResolverSnippets(options = {}) {
 
     for (let index = 0; index < lines.length; index++) {
       const line = lines[index];
-      if (!line.includes(RESOLVER_SENTINEL)) {
-        continue;
-      }
-
-      const snippet = extractResolverSnippet(line);
-      if (!snippet) {
-        failures.push(`FAIL: ${relativePath}:${index + 1}: expected inline resolver snippet`);
+      if (!lineLooksLikeResolverSnippet(line)) {
         continue;
       }
 
       checked++;
-      if (normalizeResolverSnippet(snippet) !== NORMALIZED_INLINE_RESOLVE) {
-        failures.push(`FAIL: ${relativePath}:${index + 1}: inline resolver drifted from scripts/lib/resolve-ecc-root.js INLINE_RESOLVE`);
+      if (!lineMatchesCanonicalSnippet(line)) {
+        failures.push(`FAIL: ${relativePath}:${index + 1}: inline resolver drifted from scripts/lib/resolve-ecc-root.js INLINE_RESOLVE_SHELL/INLINE_RESOLVE_JS`);
       }
     }
   }

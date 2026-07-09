@@ -106,24 +106,40 @@ function resolveEccRoot(options = {}) {
 }
 
 /**
- * Compact inline version for embedding in command .md code blocks.
+ * Canonical one-liners for embedding in command/skill .md snippets.
  *
- * This is the minified form of resolveEccRoot() suitable for use in
- * node -e "..." scripts where require() is not available before the
- * root is known.
+ * Earlier revisions embedded the full minified resolveEccRoot() probing
+ * logic (~1,200 chars of JS) inline in every markdown snippet that needed
+ * the plugin root — repeated ~90 times across commands/, skills/, agents/,
+ * rules/, and docs/. Every skill load paid the token cost of re-parsing that
+ * boilerplate.
+ *
+ * Now scripts/hooks/session-start-bootstrap.js writes the resolved root to
+ * a plain-text pointer file (~/.claude/.omf-root) once per session. Markdown
+ * snippets read that pointer file instead of re-deriving the root, while
+ * still preferring the CLAUDE_PLUGIN_ROOT / CODEX_PLUGIN_ROOT env vars when
+ * set (e.g. when invoked directly as a plugin, before any pointer file
+ * exists).
  *
  * Markdown bootstrap snippets under agents/, commands/, docs/, and skills/
- * are validated against this exact string by
+ * are validated against these exact strings by
  * scripts/ci/validate-inline-resolver-snippets.js so there is a single
  * source of truth for the inline resolver.
  *
- * Usage in commands:
- *   const _r = <paste INLINE_RESOLVE>;
- *   const sm = require(_r + '/scripts/lib/session-manager');
+ * Usage in shell snippets:
+ *   PLUGIN_ROOT="<paste INLINE_RESOLVE_SHELL>"
+ *   node "$PLUGIN_ROOT/scripts/lib/utils.js"
+ *
+ * Usage in raw JS snippets (e.g. commands/sessions.md):
+ *   const root = <paste INLINE_RESOLVE_JS>;
+ *   const sm = require(root + '/scripts/lib/session-manager');
  */
-const INLINE_RESOLVE = `(()=>{var e=(process.env.CLAUDE_PLUGIN_ROOT||process.env.CODEX_PLUGIN_ROOT);if(e&&e.trim())return e.trim();var p=require('path'),f=require('fs'),h=require('os').homedir(),a=[p.join(h,'.claude'),p.join(h,'.codex')],q=p.join('scripts','lib','utils.js');for(var i=0;i<a.length;i++){if(f.existsSync(p.join(a[i],q)))return a[i]}var r=[];for(var j=0;j<a.length;j++){r.push(p.join(a[j],'plugins','oh-my-forge'),p.join(a[j],'plugins','oh-my-forge@rlagycks'),p.join(a[j],'plugins','marketplace','oh-my-forge'),p.join(a[j],'plugins','everything-claude-code'),p.join(a[j],'plugins','everything-claude-code@everything-claude-code'),p.join(a[j],'plugins','marketplace','everything-claude-code'))}for(var k=0;k<r.length;k++){if(f.existsSync(p.join(r[k],q)))return r[k]}for(var n of ['oh-my-forge','everything-claude-code']){for(var m=0;m<a.length;m++){try{var b=p.join(a[m],'plugins','cache',n),s=f.readdirSync(b,{withFileTypes:true});for(var o of s){if(!o.isDirectory())continue;var g=p.join(b,o.name),t=f.readdirSync(g,{withFileTypes:true});for(var v of t){if(!v.isDirectory())continue;var c=p.join(g,v.name);if(f.existsSync(p.join(c,q)))return c}}}catch(x){}}}return a[0]})()`;
+const INLINE_RESOLVE_SHELL = '${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-$(cat "$HOME/.claude/.omf-root" 2>/dev/null || echo "$HOME/.claude")}}';
+
+const INLINE_RESOLVE_JS = "(process.env.CLAUDE_PLUGIN_ROOT||process.env.CODEX_PLUGIN_ROOT||(()=>{try{return require('fs').readFileSync(require('path').join(require('os').homedir(),'.claude','.omf-root'),'utf8').trim()}catch(e){return require('path').join(require('os').homedir(),'.claude')}})())";
 
 module.exports = {
   resolveEccRoot,
-  INLINE_RESOLVE,
+  INLINE_RESOLVE_SHELL,
+  INLINE_RESOLVE_JS,
 };

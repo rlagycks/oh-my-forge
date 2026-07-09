@@ -9,7 +9,8 @@ const {
   validateInlineResolverSnippets,
 } = require('../../scripts/ci/validate-inline-resolver-snippets');
 const {
-  INLINE_RESOLVE,
+  INLINE_RESOLVE_SHELL,
+  INLINE_RESOLVE_JS,
 } = require('../../scripts/lib/resolve-ecc-root');
 
 function test(name, fn) {
@@ -42,11 +43,11 @@ let failed = 0;
 
 console.log('\nvalidate-inline-resolver-snippets.test.js');
 
-if (test('accepts markdown snippets that match INLINE_RESOLVE exactly', () => {
+if (test('accepts shell snippets that match INLINE_RESOLVE_SHELL exactly', () => {
   withRepo(tempRoot => {
     writeFile(
       path.join(tempRoot, 'commands', 'example.md'),
-      `PLUGIN_ROOT="$(node -p '${INLINE_RESOLVE.replace(/'/g, '`')}')"\n`
+      `PLUGIN_ROOT="${INLINE_RESOLVE_SHELL}"\n`
     );
 
     const report = validateInlineResolverSnippets({ repoRoot: tempRoot });
@@ -55,24 +56,38 @@ if (test('accepts markdown snippets that match INLINE_RESOLVE exactly', () => {
   });
 })) passed++; else failed++;
 
-if (test('ignores snippets that do not include the resolver sentinel', () => {
+if (test('accepts shell snippets with a path suffix appended after the resolver', () => {
   withRepo(tempRoot => {
     writeFile(
-      path.join(tempRoot, 'agents', 'planner.md'),
-      'const root = (()=>{return "stale"})();\n'
+      path.join(tempRoot, 'commands', 'example.md'),
+      `DECISIONS_JS="${INLINE_RESOLVE_SHELL}/scripts/lib/decisions.js"\n`
     );
 
     const report = validateInlineResolverSnippets({ repoRoot: tempRoot });
     assert.deepStrictEqual(report.failures, []);
-    assert.strictEqual(report.checked, 0);
+    assert.strictEqual(report.checked, 1);
   });
 })) passed++; else failed++;
 
-if (test('accepts const root inline assignments that match INLINE_RESOLVE', () => {
+if (test('accepts JSON-escaped-quote shell snippets inside hook config examples', () => {
+  withRepo(tempRoot => {
+    const escaped = INLINE_RESOLVE_SHELL.replace(/"/g, '\\"');
+    writeFile(
+      path.join(tempRoot, 'skills', 'example', 'SKILL.md'),
+      `        "command": "bash \\"${escaped}/skills/example/hook.sh\\""\n`
+    );
+
+    const report = validateInlineResolverSnippets({ repoRoot: tempRoot });
+    assert.deepStrictEqual(report.failures, []);
+    assert.strictEqual(report.checked, 1);
+  });
+})) passed++; else failed++;
+
+if (test('accepts raw JS snippets that match INLINE_RESOLVE_JS exactly', () => {
   withRepo(tempRoot => {
     writeFile(
       path.join(tempRoot, 'commands', 'sessions.md'),
-      `const root = ${INLINE_RESOLVE};\n`
+      `const root = ${INLINE_RESOLVE_JS};\n`
     );
 
     const report = validateInlineResolverSnippets({ repoRoot: tempRoot });
@@ -81,11 +96,11 @@ if (test('accepts const root inline assignments that match INLINE_RESOLVE', () =
   });
 })) passed++; else failed++;
 
-if (test('accepts inline require path joins that match INLINE_RESOLVE', () => {
+if (test('accepts raw JS require() snippets that match INLINE_RESOLVE_JS exactly', () => {
   withRepo(tempRoot => {
     writeFile(
       path.join(tempRoot, 'commands', 'sessions.md'),
-      `const aa = require(${INLINE_RESOLVE}+'/scripts/lib/session-aliases');\n`
+      `const aa = require(${INLINE_RESOLVE_JS}+'/scripts/lib/session-aliases');\n`
     );
 
     const report = validateInlineResolverSnippets({ repoRoot: tempRoot });
@@ -94,7 +109,21 @@ if (test('accepts inline require path joins that match INLINE_RESOLVE', () => {
   });
 })) passed++; else failed++;
 
-if (test('flags inline assignments that drift from INLINE_RESOLVE', () => {
+if (test('flags shell snippets that drift from INLINE_RESOLVE_SHELL', () => {
+  withRepo(tempRoot => {
+    writeFile(
+      path.join(tempRoot, 'commands', 'example.md'),
+      'PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-$HOME/.claude}}"\n'
+    );
+
+    const report = validateInlineResolverSnippets({ repoRoot: tempRoot });
+    assert.strictEqual(report.checked, 1);
+    assert.strictEqual(report.failures.length, 1);
+    assert.ok(report.failures[0].includes('inline resolver drifted'));
+  });
+})) passed++; else failed++;
+
+if (test('flags stale copies of the old retired inline JS probing blob', () => {
   withRepo(tempRoot => {
     writeFile(
       path.join(tempRoot, 'agents', 'planner.md'),
