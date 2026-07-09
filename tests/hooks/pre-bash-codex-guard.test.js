@@ -672,10 +672,13 @@ function testBypassReleasesTrackedNonMetaWrite() {
   }
 }
 
-function testNonSelfRepoMetaTrackedWriteExempt() {
-  // Outside the self-repo root (cwd is a subdirectory, not the ontology root)
-  // meta paths keep their exemption — mirrors the write-side guard.
-  const sessionId = 'test-non-self-repo-meta-' + Date.now();
+function testSubdirectoryOfSelfRepoMetaTrackedWriteBlocked() {
+  // F1 follow-up (PR #50): running from a subdirectory of the self-repo must
+  // NOT re-enable the meta-path exemption. cwd = projectRoot/tests is nested
+  // inside the resolved ontology root (projectRoot), so this is still
+  // self-repo and the tracked meta file must be blocked exactly like it is
+  // when cwd is the literal root.
+  const sessionId = 'test-subdir-self-repo-meta-' + Date.now();
   cleanState(sessionId);
   const fixture = makeTrackedProjectFixture('codex', path.join('tests', 'tracked.test.js'));
 
@@ -687,9 +690,9 @@ function testNonSelfRepoMetaTrackedWriteExempt() {
     ].join('\n');
     const subdir = path.join(fixture.projectRoot, 'tests');
     const result = runWithProject(subdir, sessionId, command);
-    assert.ok(typeof result === 'string',
-      'Tracked meta paths should stay exempt when cwd is not the ontology root');
-    console.log('  PASS testNonSelfRepoMetaTrackedWriteExempt');
+    assert.deepStrictEqual(result, { exitCode: 2 },
+      'Tracked meta paths must be blocked when cwd is a subdirectory of the self-repo root');
+    console.log('  PASS testSubdirectoryOfSelfRepoMetaTrackedWriteBlocked');
   } finally {
     cleanState(sessionId);
     fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
@@ -761,7 +764,7 @@ const tests = [
   testSelfRepoMetaTrackedWriteBlocked,
   testSelfRepoMetaTrackedWriteBypassReleased,
   testBypassReleasesTrackedNonMetaWrite,
-  testNonSelfRepoMetaTrackedWriteExempt,
+  testSubdirectoryOfSelfRepoMetaTrackedWriteBlocked,
   testUntrackedFileWriteAllowed,
   testBypassDoesNotSkipRawCompanionBlock,
 ];
