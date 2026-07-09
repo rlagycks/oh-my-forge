@@ -15,28 +15,14 @@ const {
   readImplementationEngineValue,
   touchesImplementationEngine,
 } = require('../lib/implementation-engine');
-
-function isMetaPath(relPath) {
-  const norm = relPath.replace(/\\/g, '/');
-  const META_PREFIXES = [
-    '.claude/',
-    'scripts/hooks/',
-    'scripts/lib/',
-    'agents/',
-    'skills/',
-    'commands/',
-    'hooks/',
-    'tests/',
-    'docs/',
-    'node_modules/',
-  ];
-  for (const prefix of META_PREFIXES) {
-    if (norm.startsWith(prefix) || norm === prefix.replace(/\/$/, '')) return true;
-  }
-  // Markdown and JSON files at the repo root are also meta
-  if (!norm.includes('/') && (norm.endsWith('.md') || norm.endsWith('.json'))) return true;
-  return false;
-}
+// Policy predicates shared with the Bash-side counterpart
+// (scripts/hooks/pre-bash-codex-guard.js) so both tool paths give the same
+// file the same verdict.
+const {
+  isCodexGuardBypassed,
+  isMetaPath,
+  isSelfRepoRoot,
+} = require('../lib/codex-guard-policy');
 
 function detectEngineMutation(input, resolvedFile) {
   const toolName = input.tool_name || '';
@@ -75,8 +61,8 @@ function run(rawInput) {
     return rawInput;
   }
 
-  // Escape hatch
-  if (process.env.ECC_BYPASS_CODEX_GUARD === '1') return rawInput;
+  // Escape hatch — honored symmetrically by pre-bash-codex-guard.js
+  if (isCodexGuardBypassed()) return rawInput;
 
   const filePath = input.tool_input?.file_path || input.tool_input?.path || '';
   if (!filePath) return rawInput;
@@ -115,7 +101,7 @@ function run(rawInput) {
     }
   }
 
-  const isSelfRepo = path.resolve(ontologyRoot) === path.resolve(process.cwd());
+  const isSelfRepo = isSelfRepoRoot(ontologyRoot);
   if (!isSelfRepo && isMetaPath(normalizedRelPath)) return rawInput;
 
   const { fileMap } = loadOntologyMaps(ontologyRoot);

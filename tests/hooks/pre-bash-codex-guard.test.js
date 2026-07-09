@@ -592,8 +592,11 @@ function testEndOfLineCommentsIgnored() {
   }
 }
 
-function testMetaTrackedPathAllowedAtRepoRoot() {
-  const sessionId = 'test-meta-path-allowed-root-' + Date.now();
+function testSelfRepoMetaTrackedWriteBlocked() {
+  // Symmetry with pre-write-edit-codex-guard.js: inside the self-repo
+  // (cwd === ontology root), tracked meta paths are NOT exempt — a heredoc
+  // write must be blocked exactly like an Edit/Write to the same file.
+  const sessionId = 'test-self-repo-meta-blocked-' + Date.now();
   cleanState(sessionId);
   const fixture = makeTrackedProjectFixture('codex', path.join('tests', 'tracked.test.js'));
 
@@ -604,13 +607,134 @@ function testMetaTrackedPathAllowedAtRepoRoot() {
       'EOF',
     ].join('\n');
     const result = runWithProject(fixture.projectRoot, sessionId, command);
-    assert.ok(typeof result === 'string',
-      'Meta paths should remain allowed even when the command runs from the repo root');
-    console.log('  PASS testMetaTrackedPathAllowedAtRepoRoot');
+    assert.deepStrictEqual(result, { exitCode: 2 },
+      'Tracked meta paths must be blocked when running from the self-repo root');
+    console.log('  PASS testSelfRepoMetaTrackedWriteBlocked');
   } finally {
     cleanState(sessionId);
     fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
   }
+}
+
+function testSelfRepoMetaTrackedWriteBypassReleased() {
+  // ECC_BYPASS_CODEX_GUARD=1 must release the shell-write policy exactly like
+  // it releases the Write/Edit guard.
+  const sessionId = 'test-self-repo-meta-bypass-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex', path.join('tests', 'tracked.test.js'));
+
+  try {
+    const command = [
+      `cat > ${fixture.trackedFile} <<'EOF'`,
+      'module.exports = 2;',
+      'EOF',
+    ].join('\n');
+    process.env.ECC_BYPASS_CODEX_GUARD = '1';
+    let result;
+    try {
+      result = runWithProject(fixture.projectRoot, sessionId, command);
+    } finally {
+      delete process.env.ECC_BYPASS_CODEX_GUARD;
+    }
+    assert.ok(typeof result === 'string',
+      'ECC_BYPASS_CODEX_GUARD=1 should release the tracked shell-write guard');
+    console.log('  PASS testSelfRepoMetaTrackedWriteBypassReleased');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testBypassReleasesTrackedNonMetaWrite() {
+  const sessionId = 'test-bypass-non-meta-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const command = [
+      `cat > ${fixture.trackedFile} <<'EOF'`,
+      'module.exports = 2;',
+      'EOF',
+    ].join('\n');
+    process.env.ECC_BYPASS_CODEX_GUARD = '1';
+    let result;
+    try {
+      result = runWithProject(fixture.projectRoot, sessionId, command);
+    } finally {
+      delete process.env.ECC_BYPASS_CODEX_GUARD;
+    }
+    assert.ok(typeof result === 'string',
+      'ECC_BYPASS_CODEX_GUARD=1 should release tracked non-meta shell writes too');
+    console.log('  PASS testBypassReleasesTrackedNonMetaWrite');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testNonSelfRepoMetaTrackedWriteExempt() {
+  // Outside the self-repo root (cwd is a subdirectory, not the ontology root)
+  // meta paths keep their exemption — mirrors the write-side guard.
+  const sessionId = 'test-non-self-repo-meta-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex', path.join('tests', 'tracked.test.js'));
+
+  try {
+    const command = [
+      `cat > ${fixture.trackedFile} <<'EOF'`,
+      'module.exports = 2;',
+      'EOF',
+    ].join('\n');
+    const subdir = path.join(fixture.projectRoot, 'tests');
+    const result = runWithProject(subdir, sessionId, command);
+    assert.ok(typeof result === 'string',
+      'Tracked meta paths should stay exempt when cwd is not the ontology root');
+    console.log('  PASS testNonSelfRepoMetaTrackedWriteExempt');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testUntrackedFileWriteAllowed() {
+  const sessionId = 'test-untracked-write-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const untracked = path.join(fixture.projectRoot, 'src', 'untracked.js');
+    const command = [
+      `cat > ${untracked} <<'EOF'`,
+      'module.exports = 2;',
+      'EOF',
+    ].join('\n');
+    const result = runWithProject(fixture.projectRoot, sessionId, command);
+    assert.ok(typeof result === 'string',
+      'Shell writes to untracked files should pass through');
+    console.log('  PASS testUntrackedFileWriteAllowed');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testBypassDoesNotSkipRawCompanionBlock() {
+  // The bypass is scoped to the tracked shell-write policy (Guard 1).
+  // Dispatch admission / raw companion blocking must stay active.
+  const sessionId = 'test-bypass-companion-' + Date.now();
+  cleanState(sessionId);
+
+  process.env.ECC_BYPASS_CODEX_GUARD = '1';
+  let result;
+  try {
+    result = runWithSession(sessionId, fakeCompanionCmd('domain_hooks'));
+  } finally {
+    delete process.env.ECC_BYPASS_CODEX_GUARD;
+  }
+  assert.deepStrictEqual(result, { exitCode: 2 },
+    'ECC_BYPASS_CODEX_GUARD must not disable raw codex-companion blocking');
+  console.log('  PASS testBypassDoesNotSkipRawCompanionBlock');
+  cleanState(sessionId);
 }
 
 const tests = [
@@ -634,7 +758,12 @@ const tests = [
   testSudoTrackedWriteBlocked,
   testMvSourceMutationBlocked,
   testEndOfLineCommentsIgnored,
-  testMetaTrackedPathAllowedAtRepoRoot,
+  testSelfRepoMetaTrackedWriteBlocked,
+  testSelfRepoMetaTrackedWriteBypassReleased,
+  testBypassReleasesTrackedNonMetaWrite,
+  testNonSelfRepoMetaTrackedWriteExempt,
+  testUntrackedFileWriteAllowed,
+  testBypassDoesNotSkipRawCompanionBlock,
 ];
 
 let passed = 0;

@@ -7,7 +7,10 @@
  *
  *   Guard 1 — Block shell-level writes (heredoc/redirection, tee, cp/mv,
  *             inline interpreter writes, in-place edits) to ontology-tracked
- *             files when the pinned engine is Codex.
+ *             files when the pinned engine is Codex. Verdicts mirror
+ *             pre-write-edit-codex-guard.js via scripts/lib/codex-guard-policy:
+ *             meta paths are exempt only outside the self-repo, and
+ *             ECC_BYPASS_CODEX_GUARD=1 releases this guard (and only this one).
  *
  *   Guard 2 — Accept only `codex-handoff.js dispatch --request-file ...`
  *             as the automatic Codex handoff entrypoint.
@@ -40,6 +43,14 @@ const {
   matchFileToDomain,
 } = require('../lib/ontology-routing');
 const { detectPinnedImplementationEngine } = require('../lib/implementation-engine');
+// Policy predicates shared with the Write/Edit-side counterpart
+// (scripts/hooks/pre-write-edit-codex-guard.js) so both tool paths give the
+// same file the same verdict.
+const {
+  isCodexGuardBypassed,
+  isMetaPath,
+  isSelfRepoRoot,
+} = require('../lib/codex-guard-policy');
 
 // ---- Session state helpers (same pattern as constraint-guard.js) ----
 
@@ -75,27 +86,6 @@ const DISPATCH_VALUE_FLAGS = new Set([
 ]);
 const CONTROL_TOKENS = new Set(['|', '||', '&&', ';', '&']);
 const EXPLICIT_WRITE_COMMANDS = new Set(['cp', 'mv', 'install', 'touch', 'truncate', 'rm']);
-
-function isMetaPath(relPath) {
-  const norm = String(relPath || '').replace(/\\/g, '/');
-  const metaPrefixes = [
-    '.claude/',
-    'scripts/hooks/',
-    'scripts/lib/',
-    'agents/',
-    'skills/',
-    'commands/',
-    'hooks/',
-    'tests/',
-    'docs/',
-    'node_modules/',
-  ];
-  for (const prefix of metaPrefixes) {
-    if (norm.startsWith(prefix) || norm === prefix.replace(/\/$/, '')) return true;
-  }
-  if (!norm.includes('/') && (norm.endsWith('.md') || norm.endsWith('.json'))) return true;
-  return false;
-}
 
 /**
  * Minimal argv tokeniser — handles quoted strings and --flag=value forms.
@@ -372,6 +362,10 @@ function findTrackedShellMutation(command, ontologyRoot) {
   const engine = detectPinnedImplementationEngine(comparableRoot);
   if (engine !== 'codex') return null;
 
+  // Same self-repo gate as pre-write-edit-codex-guard.js: meta paths are
+  // exempt only when the ontology root is NOT the repo we are running in.
+  const selfRepo = isSelfRepoRoot(comparableRoot);
+
   const rootVariants = Array.from(new Set([
     normalizePathString(comparableRoot),
     normalizePathString(path.resolve(ontologyRoot)),
@@ -386,7 +380,7 @@ function findTrackedShellMutation(command, ontologyRoot) {
     if (!match?.domainKey) continue;
 
     const relPath = normalizePathString(path.relative(comparableRoot, resolvedTarget));
-    if (isMetaPath(relPath)) continue;
+    if (!selfRepo && isMetaPath(relPath)) continue;
     return { domainKey: match.domainKey, relPath, detector: 'explicit-target' };
   }
 
@@ -402,14 +396,14 @@ function findTrackedShellMutation(command, ontologyRoot) {
     if (!match?.domainKey) continue;
 
     const relPath = normalizePathString(path.relative(comparableRoot, resolvedTarget));
-    if (isMetaPath(relPath)) continue;
+    if (!selfRepo && isMetaPath(relPath)) continue;
     return { domainKey: match.domainKey, relPath, detector: 'inline-mutation' };
   }
 
   for (const [trackedKey, entry] of Object.entries(fileMap)) {
     if (trackedKey.startsWith('__slug__') || trackedKey.endsWith('/')) continue;
     const relPath = normalizePathString(trackedKey);
-    if (isMetaPath(relPath)) continue;
+    if (!selfRepo && isMetaPath(relPath)) continue;
 
     const absolutePaths = rootVariants.map(rootVariant => normalizePathString(path.join(rootVariant, trackedKey)));
     const mentioned = commandMentionsPath(command, relPath) ||
@@ -545,7 +539,12 @@ function run(rawInput) {
   const command = input.tool_input?.command;
   if (typeof command !== 'string') return rawInput;
 
-  const ontologyRoot = resolveProjectOntologyRoot({ cwd: process.cwd() });
+  // Escape hatch — mirrors pre-write-edit-codex-guard.js. Scope: Guard 1 only.
+  // Guards 2-5 (dispatch admission, raw companion blocking) are transport
+  // validation, not edit policy, and stay active regardless of the bypass.
+  const ontologyRoot = isCodexGuardBypassed()
+    ? null
+    : resolveProjectOntologyRoot({ cwd: process.cwd() });
   const trackedMutation = findTrackedShellMutation(command, ontologyRoot);
   if (trackedMutation) {
     const msg = [
