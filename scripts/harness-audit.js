@@ -11,6 +11,7 @@ const CATEGORIES = [
   'Eval Coverage',
   'Security Guardrails',
   'Cost Efficiency',
+  'Ontology Health',
 ];
 
 function normalizeScope(scope) {
@@ -224,6 +225,145 @@ function getCommandFileSizes(rootDir) {
   }
 
   return files.sort((a, b) => b.size - a.size);
+}
+
+function scanForModelRot(rootDir) {
+  const modelPattern = /\b(?:Sonnet|Opus|Haiku|Claude)\s+\d+\.\d+\b|claude-\w*-4-\w*|claude-3-\w*/g;
+  const datedModelPattern = /claude-[a-z]*-4-[a-z]*|claude-3-[a-z]*/g;
+  const offendingPairs = [];
+
+  const dirs = [
+    path.join(rootDir, 'rules'),
+    path.join(rootDir, 'commands'),
+    path.join(rootDir, 'agents'),
+  ];
+
+  for (const dir of dirs) {
+    if (!fs.existsSync(dir)) continue;
+
+    const stack = [dir];
+    while (stack.length > 0) {
+      const current = stack.pop();
+      const entries = fs.readdirSync(current, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const nextPath = path.join(current, entry.name);
+        if (entry.isDirectory()) {
+          stack.push(nextPath);
+        } else if (entry.name.endsWith('.md')) {
+          try {
+            const content = fs.readFileSync(nextPath, 'utf8');
+            const lines = content.split('\n');
+
+            for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+              const line = lines[lineNum];
+
+              // Skip lines with model-rot-ok marker
+              if (line.includes('model-rot-ok')) {
+                continue;
+              }
+
+              // Check for model references
+              if (modelPattern.test(line) || datedModelPattern.test(line)) {
+                const relativePath = path.relative(rootDir, nextPath);
+                offendingPairs.push(`${relativePath}:${lineNum + 1}`);
+              }
+            }
+          } catch (_error) {
+            // Skip files that can't be read
+          }
+        }
+      }
+    }
+  }
+
+  return offendingPairs;
+}
+
+function checkGraphHealth(rootDir) {
+  const ontologyDir = path.join(rootDir, '.claude', 'ontology');
+  const indexPath = path.join(ontologyDir, 'index.json');
+
+  if (!fs.existsSync(indexPath)) {
+    return {
+      exists: false,
+      domains: [],
+      edges: 0,
+      orphans: [],
+      empties: [],
+      orphanPercentage: 0,
+    };
+  }
+
+  try {
+    const indexContent = fs.readFileSync(indexPath, 'utf8');
+    const index = JSON.parse(indexContent);
+
+    const domains = Object.entries(index)
+      .filter(([k]) => !k.startsWith('$'))
+      .map(([key]) => key);
+
+    // Count edges (dependsOn references)
+    let edgeCount = 0;
+    const inDegree = {};
+    const outDegree = {};
+
+    for (const domain of domains) {
+      inDegree[domain] = 0;
+      outDegree[domain] = 0;
+    }
+
+    for (const [key, entry] of Object.entries(index)) {
+      if (key.startsWith('$')) continue;
+      if (entry.dependsOn && Array.isArray(entry.dependsOn)) {
+        for (const dep of entry.dependsOn) {
+          edgeCount += 1;
+          outDegree[key] = (outDegree[key] || 0) + 1;
+          inDegree[dep] = (inDegree[dep] || 0) + 1;
+        }
+      }
+    }
+
+    // Find orphans (no in or out edges)
+    const orphans = [];
+    for (const domain of domains) {
+      if ((inDegree[domain] || 0) === 0 && (outDegree[domain] || 0) === 0) {
+        orphans.push(domain);
+      }
+    }
+
+    // Find empties (no constraints and no decisions)
+    const empties = [];
+    for (const domain of domains) {
+      const entry = index[domain];
+      const hasConstraints = Array.isArray(entry.constraints) && entry.constraints.length > 0;
+      const hasDecisions = entry.sourceDocs && Object.keys(entry.sourceDocs).length > 0;
+      if (!hasConstraints && !hasDecisions) {
+        empties.push(domain);
+      }
+    }
+
+    const orphanPercentage = domains.length > 0 ? (orphans.length / domains.length) * 100 : 0;
+
+    return {
+      exists: true,
+      domainCount: domains.length,
+      domains,
+      edgeCount,
+      orphans,
+      empties,
+      orphanPercentage,
+    };
+  } catch (_error) {
+    return {
+      exists: false,
+      domains: [],
+      edges: 0,
+      orphans: [],
+      empties: [],
+      orphanPercentage: 0,
+    };
+  }
 }
 
 function getRepoChecks(rootDir) {
@@ -509,6 +649,52 @@ function getRepoChecks(rootDir) {
       description: 'Model route command exists for complexity-aware routing',
       pass: fileExists(rootDir, 'commands/model-route.md'),
       fix: 'Add commands/model-route.md and route policies for cheap-default execution.',
+    },
+    {
+      id: 'model-rot',
+      category: 'Context Efficiency',
+      points: 2,
+      scopes: ['repo'],
+      path: 'rules/, commands/, agents/',
+      description: 'No dated model references (Sonnet 4.x, Opus 4.x, etc.) outside allowlist',
+      pass: scanForModelRot(rootDir).length === 0,
+      fix: (() => {
+        const violations = scanForModelRot(rootDir);
+        if (violations.length === 0) {
+          return 'No dated model references found.';
+        }
+        const topViolations = violations.slice(0, 5).join(', ');
+        return `Update model references (found ${violations.length} violations, first 5: ${topViolations}). Mark intentional examples with model-rot-ok comment.`;
+      })(),
+    },
+    {
+      id: 'graph-health',
+      category: 'Ontology Health',
+      points: 3,
+      scopes: ['repo'],
+      path: '.claude/ontology/index.json',
+      description: 'Ontology graph is healthy (orphan domains <= 30%, no empty domains)',
+      pass: (() => {
+        const health = checkGraphHealth(rootDir);
+        if (!health.exists) return true; // Skip if ontology doesn't exist
+        const hasEmptyDomains = health.empties.length > 0;
+        const orphanExceedsThreshold = health.orphanPercentage > 30;
+        return !hasEmptyDomains && !orphanExceedsThreshold;
+      })(),
+      fix: (() => {
+        const health = checkGraphHealth(rootDir);
+        if (!health.exists) {
+          return 'Ontology directory does not exist (optional for consumer repos).';
+        }
+        const issues = [];
+        if (health.empties.length > 0) {
+          issues.push(`Empty domains (no constraints/decisions): ${health.empties.slice(0, 5).join(', ')}`);
+        }
+        if (health.orphanPercentage > 30) {
+          issues.push(`${health.orphans.length} orphan domains (${health.orphanPercentage.toFixed(1)}% > 30% threshold): ${health.orphans.slice(0, 5).join(', ')}`);
+        }
+        return issues.length > 0 ? issues.join('; ') : 'Graph is healthy.';
+      })(),
     },
   ];
 }
