@@ -198,11 +198,41 @@ function findPluginInstall(rootDir) {
   return candidates.find(candidate => fs.existsSync(candidate)) || null;
 }
 
+function getCommandFileSizes(rootDir) {
+  const commandsDir = path.join(rootDir, 'commands');
+  if (!fs.existsSync(commandsDir)) {
+    return [];
+  }
+
+  const files = [];
+  const entries = fs.readdirSync(commandsDir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (entry.isFile() && entry.name.endsWith('.md')) {
+      const filePath = path.join(commandsDir, entry.name);
+      try {
+        const stats = fs.statSync(filePath);
+        files.push({
+          name: entry.name,
+          size: stats.size,
+          path: filePath,
+        });
+      } catch (_error) {
+        // Skip files that can't be read
+      }
+    }
+  }
+
+  return files.sort((a, b) => b.size - a.size);
+}
+
 function getRepoChecks(rootDir) {
   const packageJson = JSON.parse(readText(rootDir, 'package.json'));
   const commandPrimary = safeRead(rootDir, 'commands/harness-audit.md').trim();
   const commandParity = safeRead(rootDir, '.opencode/commands/harness-audit.md').trim();
   const hooksJson = safeRead(rootDir, 'hooks/hooks.json');
+  const commandSizes = getCommandFileSizes(rootDir);
+  const oversizedCommands = commandSizes.filter(f => f.size > 15000);
 
   return [
     {
@@ -294,6 +324,21 @@ function getRepoChecks(rootDir) {
       description: 'Token optimization documentation exists',
       pass: fileExists(rootDir, 'docs/token-optimization.md'),
       fix: 'Add docs/token-optimization.md with concrete context-cost controls.',
+    },
+    {
+      id: 'context-command-size-budget',
+      category: 'Context Efficiency',
+      points: 2,
+      scopes: ['repo', 'commands'],
+      path: 'commands/',
+      description: 'No command files exceed 15,000 bytes',
+      pass: oversizedCommands.length === 0,
+      fix: oversizedCommands.length > 0
+        ? `Reduce command file sizes (limit: 15,000 bytes): ${oversizedCommands
+            .slice(0, 5)
+            .map(f => `${f.name} (${f.size} bytes)`)
+            .join(', ')}.`
+        : 'All command files are within size budget.',
     },
     {
       id: 'quality-test-runner',

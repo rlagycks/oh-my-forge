@@ -22,7 +22,7 @@ Create a detailed, self-contained implementation plan that captures all codebase
 온톨로지 인덱스 존재 여부를 확인한다:
 
 ```bash
-node "$(node -p '(()=>{var e=(process.env.CLAUDE_PLUGIN_ROOT||process.env.CODEX_PLUGIN_ROOT);if(e&&e.trim())return e.trim();var p=require(`path`),f=require(`fs`),h=require(`os`).homedir(),a=[p.join(h,`.claude`),p.join(h,`.codex`)],q=p.join(`scripts`,`lib`,`utils.js`);for(var i=0;i<a.length;i++){if(f.existsSync(p.join(a[i],q)))return a[i]}var r=[];for(var j=0;j<a.length;j++){r.push(p.join(a[j],`plugins`,`oh-my-forge`),p.join(a[j],`plugins`,`oh-my-forge@rlagycks`),p.join(a[j],`plugins`,`marketplace`,`oh-my-forge`),p.join(a[j],`plugins`,`everything-claude-code`),p.join(a[j],`plugins`,`everything-claude-code@everything-claude-code`),p.join(a[j],`plugins`,`marketplace`,`everything-claude-code`))}for(var k=0;k<r.length;k++){if(f.existsSync(p.join(r[k],q)))return r[k]}for(var n of [`oh-my-forge`,`everything-claude-code`]){for(var m=0;m<a.length;m++){try{var b=p.join(a[m],`plugins`,`cache`,n),s=f.readdirSync(b,{withFileTypes:true});for(var o of s){if(!o.isDirectory())continue;var g=p.join(b,o.name),t=f.readdirSync(g,{withFileTypes:true});for(var v of t){if(!v.isDirectory())continue;var c=p.join(g,v.name);if(f.existsSync(p.join(c,q)))return c}}}catch(x){}}}return a[0]})()')/scripts/lib/ontology.js" summary
+node "${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-$(cat "$HOME/.claude/.omf-root" 2>/dev/null || echo "$HOME/.claude")}}/scripts/lib/ontology.js" summary
 ```
 
 인덱스가 존재하면 **Ontology Mode**로 전환한다:
@@ -125,33 +125,26 @@ Gather deep codebase intelligence. Search the codebase directly for each categor
 
 ### Codebase Search (8 Categories)
 
-For each category, search using grep, find, and file reading:
+Search with grep/find/file reading for each:
 
-1. **Similar Implementations** — Find existing features that resemble the planned one. Look for analogous patterns, endpoints, components, or modules.
-
-2. **Naming Conventions** — Identify how files, functions, variables, classes, and exports are named in the relevant area of the codebase.
-
-3. **Error Handling** — Find how errors are caught, propagated, logged, and returned to users in similar code paths.
-
-4. **Logging Patterns** — Identify what gets logged, at what level, and in what format.
-
-5. **Type Definitions** — Find relevant types, interfaces, schemas, and how they're organized.
-
-6. **Test Patterns** — Find how similar features are tested. Note test file locations, naming, setup/teardown patterns, and assertion styles.
-
-7. **Configuration** — Find relevant config files, environment variables, and feature flags.
-
-8. **Dependencies** — Identify packages, imports, and internal modules used by similar features.
+1. **Similar Implementations** — analogous features, endpoints, components, modules.
+2. **Naming Conventions** — file/function/variable/class/export naming in the relevant area.
+3. **Error Handling** — how errors are caught, propagated, logged, returned to users.
+4. **Logging Patterns** — what's logged, at what level, in what format.
+5. **Type Definitions** — relevant types, interfaces, schemas, and their organization.
+6. **Test Patterns** — file locations, naming, setup/teardown, assertion styles.
+7. **Configuration** — config files, env vars, feature flags.
+8. **Dependencies** — packages, imports, internal modules used by similar features.
 
 ### Codebase Analysis (5 Traces)
 
 Read relevant files to trace:
 
-1. **Entry Points** — How does a request/action enter the system and reach the area you're modifying?
-2. **Data Flow** — How does data move through the relevant code paths?
-3. **State Changes** — What state is modified and where?
-4. **Contracts** — What interfaces, APIs, or protocols must be honored?
-5. **Patterns** — What architectural patterns are used (repository, service, controller, etc.)?
+1. **Entry Points** — how a request/action enters the system and reaches the modified area.
+2. **Data Flow** — how data moves through the relevant code paths.
+3. **State Changes** — what state is modified and where.
+4. **Contracts** — what interfaces, APIs, or protocols must be honored.
+5. **Patterns** — architectural patterns in use (repository, service, controller, etc.).
 
 ### Unified Discovery Table
 
@@ -189,25 +182,7 @@ If the feature uses only well-understood internal patterns, skip this phase and 
 
 ### UX Transformation (if applicable)
 
-Document the before/after user experience:
-
-**Before:**
-```
-┌─────────────────────────────┐
-│  [Current user experience]  │
-│  Show the current flow,     │
-│  what the user sees/does    │
-└─────────────────────────────┘
-```
-
-**After:**
-```
-┌─────────────────────────────┐
-│  [New user experience]      │
-│  Show the improved flow,    │
-│  what changes for the user  │
-└─────────────────────────────┘
-```
+Document the before/after user experience as ASCII diagrams showing current vs. improved flow (what the user sees/does, and what changes).
 
 ### Interaction Changes
 
@@ -357,15 +332,7 @@ Code patterns discovered in the codebase. Follow these exactly.
 - **GOTCHA**: [Known pitfall to avoid]
 - **VALIDATE**: [How to verify this task is correct]
 
-### Task 2: [Name]
-- **ACTION**: ...
-- **IMPLEMENT**: ...
-- **MIRROR**: ...
-- **IMPORTS**: ...
-- **GOTCHA**: ...
-- **VALIDATE**: ...
-
-[Continue for all tasks...]
+[Repeat for Task 2, Task 3, ... — same five fields each]
 
 ---
 
