@@ -65,13 +65,26 @@ function toComparablePath(candidate) {
 }
 
 /**
- * True when the ontology root is the repo the session is running in
- * (symlink-safe comparison, e.g. /tmp vs /private/tmp on macOS).
+ * True when the ontology root IS the repo the session is running in, OR the
+ * cwd is a subdirectory of it (symlink-safe comparison, e.g. /tmp vs
+ * /private/tmp on macOS). Running a guard from a subdirectory of the
+ * self-repo must not re-enable the meta-path exemption — otherwise `cd
+ * scripts && <bash-write>` or an Edit/Write issued while cwd is nested
+ * inside the plugin repo would slip past the guard.
+ *
+ * The subdirectory check is a path-prefix match anchored on a trailing
+ * separator so sibling directories that merely share a name prefix (e.g.
+ * /repo-foo vs /repo) are never mistaken for a nested cwd.
  * In the self-repo, meta paths are NOT exempt from the codex guard.
  */
 function isSelfRepoRoot(ontologyRoot, cwd = process.cwd()) {
   if (!ontologyRoot) return false;
-  return toComparablePath(ontologyRoot) === toComparablePath(cwd);
+  const comparableRoot = toComparablePath(ontologyRoot);
+  const comparableCwd = toComparablePath(cwd);
+  if (comparableCwd === comparableRoot) return true;
+
+  const rootWithSep = comparableRoot.endsWith(path.sep) ? comparableRoot : comparableRoot + path.sep;
+  return comparableCwd.startsWith(rootWithSep);
 }
 
 module.exports = {

@@ -672,10 +672,13 @@ function testBypassReleasesTrackedNonMetaWrite() {
   }
 }
 
-function testNonSelfRepoMetaTrackedWriteExempt() {
-  // Outside the self-repo root (cwd is a subdirectory, not the ontology root)
-  // meta paths keep their exemption — mirrors the write-side guard.
-  const sessionId = 'test-non-self-repo-meta-' + Date.now();
+function testSubdirectoryOfSelfRepoMetaTrackedWriteBlocked() {
+  // F1 follow-up (PR #50): running from a subdirectory of the self-repo must
+  // NOT re-enable the meta-path exemption. cwd = projectRoot/tests is nested
+  // inside the resolved ontology root (projectRoot), so this is still
+  // self-repo and the tracked meta file must be blocked exactly like it is
+  // when cwd is the literal root.
+  const sessionId = 'test-subdir-self-repo-meta-' + Date.now();
   cleanState(sessionId);
   const fixture = makeTrackedProjectFixture('codex', path.join('tests', 'tracked.test.js'));
 
@@ -687,9 +690,9 @@ function testNonSelfRepoMetaTrackedWriteExempt() {
     ].join('\n');
     const subdir = path.join(fixture.projectRoot, 'tests');
     const result = runWithProject(subdir, sessionId, command);
-    assert.ok(typeof result === 'string',
-      'Tracked meta paths should stay exempt when cwd is not the ontology root');
-    console.log('  PASS testNonSelfRepoMetaTrackedWriteExempt');
+    assert.deepStrictEqual(result, { exitCode: 2 },
+      'Tracked meta paths must be blocked when cwd is a subdirectory of the self-repo root');
+    console.log('  PASS testSubdirectoryOfSelfRepoMetaTrackedWriteBlocked');
   } finally {
     cleanState(sessionId);
     fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
@@ -712,6 +715,105 @@ function testUntrackedFileWriteAllowed() {
     assert.ok(typeof result === 'string',
       'Shell writes to untracked files should pass through');
     console.log('  PASS testUntrackedFileWriteAllowed');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testEngineFlipShellWriteBlocked() {
+  // F2 follow-up (PR #50): a heredoc write to .claude/settings.json that also
+  // references implementationEngine must be blocked exactly like a direct
+  // Edit/Write flip is — otherwise the shell path bypasses the pin.
+  const sessionId = 'test-engine-flip-shell-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const command = [
+      `cat > ${fixture.projectRoot}/.claude/settings.json <<'EOF'`,
+      '{"implementationEngine": "claude"}',
+      'EOF',
+    ].join('\n');
+    const result = runWithProject(fixture.projectRoot, sessionId, command);
+    assert.deepStrictEqual(result, { exitCode: 2 },
+      'Shell write flipping implementationEngine in settings.json should be blocked');
+    console.log('  PASS testEngineFlipShellWriteBlocked');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testUnrelatedSettingsShellWriteAllowed() {
+  // A shell write targeting settings.json that does NOT mention
+  // implementationEngine must pass through untouched — the guard must stay
+  // precise and not block unrelated settings.json writes.
+  const sessionId = 'test-unrelated-settings-shell-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const command = [
+      `cat > ${fixture.projectRoot}/.claude/settings.json <<'EOF'`,
+      '{"someOtherSetting": true}',
+      'EOF',
+    ].join('\n');
+    const result = runWithProject(fixture.projectRoot, sessionId, command);
+    assert.ok(typeof result === 'string',
+      'Shell write to settings.json without implementationEngine should pass through');
+    console.log('  PASS testUnrelatedSettingsShellWriteAllowed');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testEngineFlipShellWriteBypassReleased() {
+  const sessionId = 'test-engine-flip-bypass-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const command = [
+      `cat > ${fixture.projectRoot}/.claude/settings.json <<'EOF'`,
+      '{"implementationEngine": "claude"}',
+      'EOF',
+    ].join('\n');
+    process.env.ECC_BYPASS_CODEX_GUARD = '1';
+    let result;
+    try {
+      result = runWithProject(fixture.projectRoot, sessionId, command);
+    } finally {
+      delete process.env.ECC_BYPASS_CODEX_GUARD;
+    }
+    assert.ok(typeof result === 'string',
+      'ECC_BYPASS_CODEX_GUARD=1 should release the Bash-side engine-flip guard');
+    console.log('  PASS testEngineFlipShellWriteBypassReleased');
+  } finally {
+    cleanState(sessionId);
+    fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
+  }
+}
+
+function testEngineFlipShellWriteUnrelatedFileAllowed() {
+  // A command that merely mentions implementationEngine but targets a
+  // different file entirely must not be blocked.
+  const sessionId = 'test-engine-flip-other-file-' + Date.now();
+  cleanState(sessionId);
+  const fixture = makeTrackedProjectFixture('codex');
+
+  try {
+    const otherFile = path.join(fixture.projectRoot, 'notes.txt');
+    const command = [
+      `cat > ${otherFile} <<'EOF'`,
+      'implementationEngine notes: codex vs claude',
+      'EOF',
+    ].join('\n');
+    const result = runWithProject(fixture.projectRoot, sessionId, command);
+    assert.ok(typeof result === 'string',
+      'Mentioning implementationEngine while writing an unrelated file should pass through');
+    console.log('  PASS testEngineFlipShellWriteUnrelatedFileAllowed');
   } finally {
     cleanState(sessionId);
     fs.rmSync(fixture.tempRoot, { recursive: true, force: true });
@@ -761,7 +863,11 @@ const tests = [
   testSelfRepoMetaTrackedWriteBlocked,
   testSelfRepoMetaTrackedWriteBypassReleased,
   testBypassReleasesTrackedNonMetaWrite,
-  testNonSelfRepoMetaTrackedWriteExempt,
+  testSubdirectoryOfSelfRepoMetaTrackedWriteBlocked,
+  testEngineFlipShellWriteBlocked,
+  testUnrelatedSettingsShellWriteAllowed,
+  testEngineFlipShellWriteBypassReleased,
+  testEngineFlipShellWriteUnrelatedFileAllowed,
   testUntrackedFileWriteAllowed,
   testBypassDoesNotSkipRawCompanionBlock,
 ];

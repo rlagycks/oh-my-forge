@@ -69,7 +69,10 @@ function testIsSelfRepoRoot() {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-guard-policy-'));
   const repoDir = path.join(tempRoot, 'repo');
   const subDir = path.join(repoDir, 'sub');
-  fs.mkdirSync(subDir, { recursive: true });
+  const nestedSubDir = path.join(subDir, 'nested');
+  const siblingDir = path.join(tempRoot, 'repo-foo');
+  fs.mkdirSync(nestedSubDir, { recursive: true });
+  fs.mkdirSync(siblingDir, { recursive: true });
 
   const originalCwd = process.cwd();
   try {
@@ -84,11 +87,23 @@ function testIsSelfRepoRoot() {
     assert.strictEqual(isSelfRepoRoot(''), false, 'empty root is never self-repo');
 
     process.chdir(subDir);
+    assert.strictEqual(isSelfRepoRoot(repoDir), true,
+      'cwd inside a subdirectory of the root IS self-repo (F1: subdirectories count)');
+
+    process.chdir(nestedSubDir);
+    assert.strictEqual(isSelfRepoRoot(repoDir), true,
+      'cwd nested multiple levels inside the root is still self-repo');
+
+    process.chdir(siblingDir);
     assert.strictEqual(isSelfRepoRoot(repoDir), false,
-      'cwd inside a subdirectory of the root is not self-repo');
+      'a sibling directory sharing a name prefix (repo-foo vs repo) must NOT be treated as self-repo');
 
     assert.strictEqual(isSelfRepoRoot(repoDir, repoDir), true,
       'explicit cwd argument should be honored');
+    assert.strictEqual(isSelfRepoRoot(repoDir, subDir), true,
+      'explicit cwd argument inside the root should be honored');
+    assert.strictEqual(isSelfRepoRoot(repoDir, siblingDir), false,
+      'explicit sibling cwd argument should not be honored');
   } finally {
     process.chdir(originalCwd);
     fs.rmSync(tempRoot, { recursive: true, force: true });
