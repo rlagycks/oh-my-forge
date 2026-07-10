@@ -2,20 +2,26 @@
 
 ## Model Selection Strategy
 
-**Haiku 4.5** (90% of Sonnet capability, 3x cost savings):
+Select by **alias tier**, not a pinned model name — the alias floats to the latest model in that tier automatically:
+
+**`haiku`** tier — cheap/fast worker (e.g. Haiku 4.5):
 - Lightweight agents with frequent invocation
 - Pair programming and code generation
 - Worker agents in multi-agent systems
 
-**Sonnet 4.6** (Best coding model):
+**`sonnet`** tier — default coding workhorse (e.g. Sonnet 5):
 - Main development work
 - Orchestrating multi-agent workflows
 - Complex coding tasks
 
-**Opus 4.5** (Deepest reasoning):
+**`opus`** tier — deep reasoning, supports fast mode (e.g. Opus 4.8):
 - Complex architectural decisions
 - Maximum reasoning requirements
 - Research and analysis tasks
+
+For the rare case that exceeds even `opus`, the highest-capability tier currently ships as Fable 5 (Mythos-class, above Opus) — reserve it for genuinely frontier-hard problems, not routine work.
+
+> The tier→model mapping floats over time; concrete model names above are examples as of 2026-07. Always reference agents by alias (`haiku`/`sonnet`/`opus`) in `model:` frontmatter, never a dated model ID.
 
 ## Context Window Management
 
