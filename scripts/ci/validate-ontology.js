@@ -294,6 +294,32 @@ function validateOntology() {
     }
   }
 
+  // dependsOn must stay acyclic (matches the schema check in tests/ontology/validate-ontology.test.js)
+  const cycleVisited = new Set();
+  function findCycle(key, stack) {
+    cycleVisited.add(key);
+    stack.add(key);
+    for (const dep of (index[key]?.dependsOn || [])) {
+      if (!cycleVisited.has(dep)) {
+        const found = findCycle(dep, stack);
+        if (found) return found;
+      } else if (stack.has(dep)) {
+        return dep;
+      }
+    }
+    stack.delete(key);
+    return null;
+  }
+  for (const key of domainKeys) {
+    if (!cycleVisited.has(key)) {
+      const cycleNode = findCycle(key, new Set());
+      if (cycleNode) {
+        console.error(`ERROR: circular dependsOn detected involving: ${cycleNode}`);
+        hasErrors = true;
+      }
+    }
+  }
+
   // Cross-check: docs/features/index.md row count must match domain key count
   if (fs.existsSync(FEATURES_INDEX)) {
     const mdContent = fs.readFileSync(FEATURES_INDEX, 'utf-8');

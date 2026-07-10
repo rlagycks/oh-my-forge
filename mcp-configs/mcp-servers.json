@@ -24,7 +24,7 @@
     "memory": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-memory"],
-      "description": "Persistent memory across sessions"
+      "description": "Basic MCP knowledge-graph memory server. Optional — not wired into any oh-my-forge plugin workflow by default; the project's own ontology (.claude/ontology/) serves as the graph/recall hub. Add only if you want a separate general-purpose memory store."
     },
     "omega-memory": {
       "command": "uvx",

@@ -109,6 +109,38 @@ Blast Radius 분석 결과:
 
 ---
 
+## Step 3c — Edge Suggestions (evidence 기반, 리뷰 전용)
+
+`scripts/lib/ontology-edge-suggest.js`의 `suggestEdges(projectRoot)` 함수를 호출하여 두 번째, 독립적인 evidence로 dependsOn 후보를 제안한다 (Step 3b의 blast-radius와는 별개의 신호):
+
+```js
+const { suggestEdges } = require('./scripts/lib/ontology-edge-suggest');
+const edgeSuggestions = suggestEdges(projectRoot);
+```
+
+evidence 종류:
+- **spec 참조**: 도메인의 spec 마크다운(`docs/features/<domain>.md`)이 다른 도메인의 키(예: `domain_state_store`)를 리터럴로 언급
+- **파일 참조**: 도메인의 `files[]` 안 파일이 다른 도메인이 추적하는 파일을 `require()`하거나 경로를 텍스트로 언급 (string-match만 사용, AST 파싱 없음)
+
+출력 예시:
+
+```
+Edge Suggestions (리뷰 후 수동 추가):
+  domain_qa       → domain_session   (evidence: spec "docs/features/qa-knowledge-layer.md" references domain key "domain_session")
+  domain_commands → domain_codex     (evidence: commands/codex-delegate.md mentions path "scripts/lib/codex-handoff.js" (tracked by domain_codex))
+```
+
+**중요**: 이 제안은 Step 3b와 달리 **자동 적용되지 않는다** — `--fix` 모드에서도 적용하지 않는다. 항상 제안만 출력하고 사용자가 수동으로 `index.json`의 `dependsOn` 배열에 추가할지 검토하도록 안내한다. 새로운 제안이 없으면 이 단계를 조용히 건너뛴다.
+
+CLI로 직접 확인하려면:
+
+```bash
+OMF_ROOT="${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-$(cat "$HOME/.claude/.omf-root" 2>/dev/null || echo "$HOME/.claude")}}"
+node "$OMF_ROOT/scripts/lib/ontology-edge-suggest.js" .claude/ontology
+```
+
+---
+
 ## Step 4 — index.json 업데이트
 
 변경 사항이 있을 경우 `.claude/ontology/index.json`을 수정한다.

@@ -54,10 +54,36 @@ for (const file of testFiles) {
   if (result.stderr) process.stderr.write(result.stderr);
 
   // Parse Passed/Failed counts from child output
-  const passedMatch = result.stdout && result.stdout.match(/Passed:\s*(\d+)/);
-  const failedMatch = result.stdout && result.stdout.match(/Failed:\s*(\d+)/);
-  if (passedMatch) totalPassed += parseInt(passedMatch[1], 10);
-  if (failedMatch) totalFailed += parseInt(failedMatch[1], 10);
+  // Try multiple formats to capture all test summary styles:
+  // 1. "N tests: X passed, Y failed" (most specific, prefer this)
+  // 2. "X passed, Y failed" (common format)
+  // 3. "Passed: X" and "Failed: Y" (separate lines, capital P/F)
+
+  let filePassed = 0;
+  let fileFailed = 0;
+
+  // Try format 1: "N tests: X passed, Y failed"
+  const testCountFormat = result.stdout && result.stdout.match(/(\d+)\s+tests:\s+(\d+)\s+passed,\s+(\d+)\s+failed/);
+  if (testCountFormat) {
+    filePassed = parseInt(testCountFormat[2], 10);
+    fileFailed = parseInt(testCountFormat[3], 10);
+  } else {
+    // Try format 2: "X passed, Y failed" (case-insensitive)
+    const passedFailedFormat = result.stdout && result.stdout.match(/(\d+)\s+passed,\s+(\d+)\s+failed/i);
+    if (passedFailedFormat) {
+      filePassed = parseInt(passedFailedFormat[1], 10);
+      fileFailed = parseInt(passedFailedFormat[2], 10);
+    } else {
+      // Try format 3: Separate "Passed: X" and "Failed: Y" lines
+      const passedMatch = result.stdout && result.stdout.match(/Passed:\s*(\d+)/);
+      const failedMatch = result.stdout && result.stdout.match(/Failed:\s*(\d+)/);
+      if (passedMatch) filePassed = parseInt(passedMatch[1], 10);
+      if (failedMatch) fileFailed = parseInt(failedMatch[1], 10);
+    }
+  }
+
+  totalPassed += filePassed;
+  totalFailed += fileFailed;
 
   if (result.status !== 0) {
     console.error(`\nFAILED: ${relative}`);
