@@ -21,6 +21,16 @@
  * Conventions that do NOT trigger:
  *   feat:, refactor:, docs:, chore:, test:, perf:, ci:
  *
+ * This also fires when a fix-titled PR is merged via `gh pr merge` (any
+ * flags/order). The merged PR's title is resolved, in order of preference:
+ *   1. Parsed from the `gh pr merge` command's own tool_response (gh prints
+ *      the title in parentheses, e.g. "Merged pull request #42 (fix: ...)").
+ *   2. The local HEAD commit subject (`git log -1 --format=%s`) — only
+ *      meaningful when the merge happened against the current checkout.
+ *   3. `gh pr view <ref> --json title` as a last resort, bounded to a short
+ *      timeout so this PostToolUse hook never blocks noticeably.
+ * Any failure along this path is silent — the hook always exits 0.
+ *
  * Trigger:  PostToolUse on Bash
  * Profile:  standard,strict
  */
@@ -31,9 +41,11 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const { spawnSync } = require('child_process');
 const { ensureDir, getTempDir } = require('../lib/utils');
 
 const FIX_PATTERN = /^(fix|hotfix|bugfix)(\([^)]*\))?:/i;
+const GH_MERGE_TIMEOUT_MS = 3000;
 
 // ---------------------------------------------------------------------------
 // Command parsing helpers
@@ -73,10 +85,125 @@ function extractPrTitle(cmd) {
 }
 
 /**
+ * Extract combined stdout/stderr text from a PostToolUse Bash tool_response.
+ * Real shape: { stdout, stderr, interrupted, isImage }. Also tolerates a
+ * plain string or a legacy { output } shape as harmless fallbacks.
+ */
+function extractOutputText(toolResponse) {
+  if (!toolResponse) return '';
+  if (typeof toolResponse === 'string') return toolResponse;
+  if (typeof toolResponse === 'object') {
+    return [toolResponse.stdout, toolResponse.stderr, toolResponse.output]
+      .filter(part => typeof part === 'string' && part)
+      .join('\n');
+  }
+  return '';
+}
+
+/**
+ * Parse gh's own merge-success message for the PR number and title, e.g.:
+ *   "✓ Merged pull request #42 (fix: correct race condition)"
+ *   "✓ Squashed and merged pull request #7 (fix(gap): add missing check)"
+ *   "✓ Rebased and merged pull request owner/repo#9 (fix: ...)"
+ * Returns { number, title } (title may be null if gh didn't include it).
+ */
+function extractMergedPrInfo(outputText) {
+  if (!outputText) return null;
+  // Title matching is greedy up to the last ')' on the line, since fix-type
+  // titles can themselves contain parens (e.g. "fix(gap): ...") that would
+  // otherwise truncate a naive non-greedy [^)]* capture.
+  const m = outputText.match(
+    /(?:Merged|Squashed and merged|Rebased and merged)\s+pull request\s+(?:[\w.-]+\/[\w.-]+)?#(\d+)(?:\s*\(([^\n]*)\))?/i
+  );
+  if (!m) return null;
+  return { number: m[1], title: m[2] ? m[2].trim() : null };
+}
+
+// Flags that consume the following token as a value (so it isn't mistaken
+// for the PR reference positional argument).
+const MERGE_REF_VALUE_FLAGS = new Set(['--repo', '-R', '--subject', '--body', '-b', '--body-file', '-F', '--match-head-commit']);
+
+/**
+ * Extract the PR reference (number, URL, or branch name) positional argument
+ * from a `gh pr merge` command, skipping flags in any order/position.
+ */
+function extractMergeRef(cmd) {
+  const tokens = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [];
+  const mergeIdx = tokens.findIndex((t, i) => t === 'merge' && tokens[i - 1] === 'pr');
+  if (mergeIdx === -1) return null;
+
+  for (let i = mergeIdx + 1; i < tokens.length; i++) {
+    const tok = tokens[i];
+    if (MERGE_REF_VALUE_FLAGS.has(tok)) {
+      i++; // skip the flag's value token
+      continue;
+    }
+    if (tok.startsWith('-')) continue;
+    return tok.replace(/^["']|["']$/g, '');
+  }
+  return null;
+}
+
+/**
+ * Fallback source: the local HEAD commit subject. Only meaningful when the
+ * merge happened against the current checkout — silently returns null
+ * (non-git cwd, no commits, git unavailable) otherwise.
+ */
+function getLastCommitSubject(cwd) {
+  try {
+    const result = spawnSync('git', ['log', '-1', '--format=%s'], {
+      cwd,
+      encoding: 'utf8',
+      timeout: GH_MERGE_TIMEOUT_MS,
+    });
+    if (result.error || result.status !== 0) return null;
+    const subject = (result.stdout || '').trim();
+    return subject || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Last-resort source: ask gh for the PR's title directly. Bounded to a
+ * short timeout; any failure (no gh, network, bad ref, timeout) is silent.
+ */
+function getPrTitleViaGh(ref, cwd) {
+  if (!ref) return null;
+  try {
+    const result = spawnSync('gh', ['pr', 'view', ref, '--json', 'title'], {
+      cwd,
+      encoding: 'utf8',
+      timeout: GH_MERGE_TIMEOUT_MS,
+    });
+    if (result.error || result.status !== 0) return null;
+    const parsed = JSON.parse(result.stdout || '{}');
+    return typeof parsed.title === 'string' && parsed.title ? parsed.title : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve the title of a merged PR from a `gh pr merge` command, trying
+ * each source in order until one yields a non-empty title.
+ */
+function resolveMergedPrTitle(cmd, toolResponse, cwd) {
+  const merged = extractMergedPrInfo(extractOutputText(toolResponse));
+  if (merged && merged.title) return merged.title;
+
+  const localSubject = getLastCommitSubject(cwd);
+  if (localSubject) return localSubject;
+
+  const ref = (merged && merged.number) || extractMergeRef(cmd);
+  return getPrTitleViaGh(ref, cwd);
+}
+
+/**
  * Determine whether the command is a triggerable fix operation.
  * Returns { triggered: true, type, subject } or { triggered: false }.
  */
-function analyzeCommand(cmd) {
+function analyzeCommand(cmd, context = {}) {
   // git commit
   if (/\bgit\s+commit\b/.test(cmd)) {
     const msg = extractCommitMessage(cmd);
@@ -95,10 +222,20 @@ function analyzeCommand(cmd) {
     return { triggered: false };
   }
 
-  // gh pr merge — check output for PR title (title is in the tool response)
+  // gh pr merge — resolve the merged PR's title from output, local git log,
+  // or gh itself, then test it against the same fix-prefix patterns.
   if (/\bgh\s+pr\s+merge\b/.test(cmd)) {
-    // We'll check tool response output for the commit summary
-    return { triggered: false, checkOutput: true };
+    let title = null;
+    try {
+      title = resolveMergedPrTitle(cmd, context.toolResponse, context.cwd || process.cwd());
+    } catch {
+      // Never let title resolution throw or block this hook.
+      title = null;
+    }
+    if (title && FIX_PATTERN.test(title.trim())) {
+      return { triggered: true, type: 'pr-merge', subject: title.trim() };
+    }
+    return { triggered: false };
   }
 
   return { triggered: false };
@@ -173,8 +310,14 @@ function buildHookOutput(bundle, bundlePath, subject, triggerType, storageMode) 
   const domains = bundle.affectedDomains.map(d => d.domainKey).join(', ') || '(unknown)';
   const files = bundle.changedFiles.slice(0, 8).join('\n  ') || '(none)';
 
+  const triggerLabel = triggerType === 'pr-create'
+    ? 'PR 생성'
+    : triggerType === 'pr-merge'
+      ? 'PR 병합'
+      : '커밋';
+
   const message = [
-    `## RCA 분석 필요 — ${triggerType === 'pr-create' ? 'PR 생성' : '커밋'} 감지됨`,
+    `## RCA 분석 필요 — ${triggerLabel} 감지됨`,
     ``,
     `**커밋/PR**: \`${subject}\``,
     `**변경 파일** (${bundle.changedFiles.length}개):`,
@@ -221,7 +364,7 @@ function run(rawInput) {
   }
 
   const cmd = String(input.tool_input?.command || '');
-  const analysis = analyzeCommand(cmd);
+  const analysis = analyzeCommand(cmd, { toolResponse: input.tool_response, cwd: process.cwd() });
 
   if (!analysis.triggered) {
     process.stdout.write(rawInput);
