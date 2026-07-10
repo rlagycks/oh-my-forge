@@ -49,5 +49,20 @@
     "훅 스크립트 200줄 이하 — 초과 시 scripts/lib/ 추출",
     "파일 최대 800줄, 함수 최대 50줄"
   ],
-  "dependsOn": []
+  "dependsOn": [],
+  "decisions": [
+    {
+      "id": "dec-20260710-0rq",
+      "date": "2026-07-10",
+      "type": "tool-pattern",
+      "domain": "domain_common",
+      "summary": "dependsOn edge adoption from the suggester must be cycle-guarded: bulk-accepting 41 evidence-strong edges created 46 cycles",
+      "why": "Suggester evidence (spec mentions, file references) expresses relatedness, which is symmetric; dependsOn is a DAG with direction semantics. Acceptance must add edges greedily in evidence-strength order, rejecting any edge whose reverse path already exists (24 of 41 adopted, 17 rejected as cycle-closing).",
+      "files": [
+        ".claude/ontology/index.json",
+        "scripts/lib/ontology-edge-suggest.js"
+      ],
+      "prevention": "validate-ontology.js CLI now fails on cycles (previously only the test suite checked acyclicity), so post-edit-ontology-check catches this at write time"
+    }
+  ]
 }
