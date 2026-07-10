@@ -110,7 +110,8 @@
     "codex-companion.mjs 호출 시 --approval-mode 플래그 사용 금지 — pre-bash-codex-guard가 차단하지만 소스에도 작성 불가|pattern:--approval-mode",
     "codex-companion.mjs task 호출은 인라인 positional 프롬프트 금지 — --prompt-file 사용 필수|pattern:companion.mjs task \"",
     "codex-rescue 에이전트 수정 시 반드시 fail-fast 보장 — 재시도 루프 추가 금지|pattern:retry",
-    "[prevention] Codex guard asymmetry: pre-write-edit-codex-guard blocks Edit/Write on ontology-tracked meta files, but pre-bash-codex-guard exempts the same meta-path prefixes and ignores ECC_BYPASS_CODEX_GUARD — Bash-level writes bypass the policy entirely|pattern:Align the two guards: pre-bash-codex-guard should honor ECC_BYPASS_CODEX_GUARD and apply the same self-repo meta-path gate as pre-write-edit-codex-guard (or exempt symmetrically). Not fixed in this pass — out of approved scope; recorded for follow-up."
+    "[prevention] Codex guard asymmetry: pre-write-edit-codex-guard blocks Edit/Write on ontology-tracked meta files, but pre-bash-codex-guard exempts the same meta-path prefixes and ignores ECC_BYPASS_CODEX_GUARD — Bash-level writes bypass the policy entirely|pattern:Align the two guards: pre-bash-codex-guard should honor ECC_BYPASS_CODEX_GUARD and apply the same self-repo meta-path gate as pre-write-edit-codex-guard (or exempt symmetrically). Not fixed in this pass — out of approved scope; recorded for follow-up.",
+    "[prevention] Codex-first pin has no fallback when Codex itself is unavailable: three agents were blocked mid-task by codex quota exhaustion (resets 2026-07-13)|pattern:Follow-up: on codex dispatch failure with a usage-limit/availability error, guards should honor a session-scoped engine downgrade instead of hard-blocking"
   ],
   "vsClaudeCode": {
     "hooks": "Codex는 훅 없음 — approval_policy + sandbox_mode + notify로 대체",
@@ -217,6 +218,19 @@
         "scripts/hooks/pre-bash-codex-guard.js"
       ],
       "prevention": "FIXED 2026-07-09: shared predicates extracted to scripts/lib/codex-guard-policy.js; pre-bash-codex-guard now honors ECC_BYPASS_CODEX_GUARD and applies the same self-repo meta-path gate. Symmetry proven by tests/hooks/codex-guard-symmetry.test.js."
+    },
+    {
+      "id": "dec-20260711-y8b",
+      "date": "2026-07-11",
+      "type": "constraint",
+      "domain": "domain_codex",
+      "summary": "Codex-first pin has no fallback when Codex itself is unavailable: three agents were blocked mid-task by codex quota exhaustion (resets 2026-07-13)",
+      "why": "The engine pin auto-detects codex from PATH presence, but /codex-delegate fails hard on quota/availability errors, leaving no sanctioned path to edit ontology-tracked files. Agents resorted to correcting the session-local ephemeral engine cache to claude (matches the codex-binary-absent fallback). A quota/availability probe should downgrade the pin for the session automatically.",
+      "files": [
+        "scripts/hooks/pre-write-edit-codex-guard.js",
+        "scripts/lib/resolve-codex-companion.js"
+      ],
+      "prevention": "Follow-up: on codex dispatch failure with a usage-limit/availability error, guards should honor a session-scoped engine downgrade instead of hard-blocking"
     }
   ]
 }
