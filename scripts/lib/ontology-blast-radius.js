@@ -33,6 +33,37 @@
  * Usage:
  *   const { inferDependsOn } = require('./ontology-blast-radius');
  *   const suggestions = inferDependsOn(projectRoot, indexJson);
+ *
+ * ---
+ *
+ * traverseDependsOn() — the OTHER kind of traversal in this file.
+ *
+ * inferDependsOn() (above) *discovers new* dependsOn edges from path-overlap
+ * and require() heuristics, for ontology-sync to propose additions to
+ * index.json. traverseDependsOn() does the opposite: it walks edges that are
+ * *already recorded* in a domain graph (index.json's flat form, or the merged
+ * domainMap produced by ontology-routing's loadOntologyMaps) — no file I/O,
+ * no inference, just graph traversal.
+ *
+ * Direction matters and the two directions mean different things:
+ *   - 'forward' (default): follow each domain's own dependsOn array — "what
+ *     does this domain rely on". This is the direction
+ *     scripts/hooks/domain-context-inject.js uses at depth 1 to surface a
+ *     touched domain's upstream constraints (the domains it depends on).
+ *   - 'reverse': follow edges backwards — "which domains declare a dependsOn
+ *     on this one". This is the classic blast-radius / impact-analysis
+ *     direction (what else might break if this domain changes). Exposed for
+ *     future callers; no hook wires it up yet.
+ *
+ * domain-context-inject.js previously implemented its own one-hop forward
+ * walk inline (`packet.dependsOn.filter(...)`). It has been refactored to
+ * call traverseDependsOn(domainKey, domainMap, { depth: 1, direction:
+ * 'forward' }) instead, so there is a single traversal implementation for
+ * both this hook and any future blast-radius consumer.
+ *
+ * Usage:
+ *   const { traverseDependsOn } = require('./ontology-blast-radius');
+ *   const upstream = traverseDependsOn('domain_foo', domainMap, { depth: 1 });
  */
 
 const fs = require('fs');
@@ -225,4 +256,72 @@ function inferDependsOn(projectRoot, indexJson) {
   return suggestions;
 }
 
-module.exports = { inferDependsOn, passPathOverlap, passRequireScan, collectJsFiles };
+/**
+ * Walk the *already recorded* dependsOn graph from `domainKey`, breadth-first,
+ * up to `depth` hops. Pure in-memory traversal — no file I/O, no inference
+ * (see the header comment above for how this differs from inferDependsOn()).
+ *
+ * @param {string} domainKey - starting domain.
+ * @param {object} domainGraph - map of domainKey -> { dependsOn?: string[], ... }.
+ *   Accepts either the flat index.json shape or the merged domainMap produced
+ *   by ontology-routing's loadOntologyMaps — both expose `.dependsOn` per entry.
+ * @param {object} [options]
+ * @param {number} [options.depth=1] - number of hops to traverse.
+ * @param {'forward'|'reverse'} [options.direction='forward'] - 'forward' follows
+ *   each domain's own dependsOn (upstream); 'reverse' follows edges backwards
+ *   (classic blast-radius / impact analysis).
+ * @returns {string[]} Domain keys reached, de-duplicated, in BFS discovery
+ *   order, excluding `domainKey` itself.
+ */
+function traverseDependsOn(domainKey, domainGraph, options = {}) {
+  if (!domainKey || !domainGraph || typeof domainGraph !== 'object') return [];
+
+  const depth = Number.isInteger(options.depth) && options.depth > 0 ? options.depth : 1;
+  const direction = options.direction === 'reverse' ? 'reverse' : 'forward';
+
+  let reverseMap = null;
+  if (direction === 'reverse') {
+    reverseMap = new Map();
+    for (const [key, entry] of Object.entries(domainGraph)) {
+      if (!entry || !Array.isArray(entry.dependsOn)) continue;
+      for (const dep of entry.dependsOn) {
+        if (!reverseMap.has(dep)) reverseMap.set(dep, []);
+        reverseMap.get(dep).push(key);
+      }
+    }
+  }
+
+  const getNeighbors = (key) => {
+    if (direction === 'reverse') return reverseMap.get(key) || [];
+    const entry = domainGraph[key];
+    return entry && Array.isArray(entry.dependsOn) ? entry.dependsOn : [];
+  };
+
+  const visited = new Set([domainKey]);
+  const order = [];
+  let frontier = [domainKey];
+
+  for (let hop = 0; hop < depth && frontier.length > 0; hop++) {
+    const next = [];
+    for (const key of frontier) {
+      for (const neighbor of getNeighbors(key)) {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          order.push(neighbor);
+          next.push(neighbor);
+        }
+      }
+    }
+    frontier = next;
+  }
+
+  return order;
+}
+
+module.exports = {
+  inferDependsOn,
+  passPathOverlap,
+  passRequireScan,
+  collectJsFiles,
+  traverseDependsOn,
+};

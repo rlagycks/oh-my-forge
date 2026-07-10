@@ -11,12 +11,24 @@
  * Session key: CLAUDE_SESSION_ID env var, or SHA1 of cwd.
  * State file: /tmp/ecc-injected-<sessionKey>.json
  *
- * Also traverses dependsOn to surface dependent domain constraints (multi-hop).
+ * Traverses dependsOn (one hop, forward direction — "what this domain relies
+ * on") via scripts/lib/ontology-blast-radius.js's traverseDependsOn(), to
+ * surface dependent domain constraints. That lib also exposes a 'reverse'
+ * direction (classic blast-radius / impact analysis) for future callers —
+ * see its header comment for the distinction.
  *
  * Also surfaces the domain's most recent decisions[] (design/bug-fix/etc.
  * records written by scripts/lib/decisions.js) as short one-liners, so the
  * agent gets the "why" behind existing constraints without loading the full
  * decision log.
+ *
+ * Also surfaces up to 2 domain-linked instincts (learned lessons written by
+ * /error-capture with a matching `linked_domain` frontmatter field), via
+ * scripts/lib/instinct-loader.js's loadInstinctsForDomain().
+ *
+ * Every injection (when the lines block is non-empty) is appended as one
+ * JSONL line to ~/.claude/logs/recall-hits.jsonl for hit-rate measurement.
+ * Logging is fire-and-forget and must never add latency or block the hook.
  *
  * Trigger: PreToolUse on Read|Write|Edit|MultiEdit
  * Profile: standard,strict
@@ -36,6 +48,11 @@ const {
   normalizeSourceDocs,
 } = require('../lib/ontology-routing');
 const { buildDomainPacket } = require('../lib/ontology-packet');
+const { traverseDependsOn } = require('../lib/ontology-blast-radius');
+const { loadInstinctsForDomain, selectTopInstincts } = require('../lib/instinct-loader');
+
+const RECALL_LOG_PATH = path.join(os.homedir(), '.claude', 'logs', 'recall-hits.jsonl');
+const DOMAIN_INSTINCT_CAP = 2;
 
 // --- Session-scoped deduplication ---
 
@@ -94,6 +111,41 @@ function truncateWhy(why, maxLen = 100) {
 function selectRecentDecisions(entry, max = 3) {
   if (!entry || !Array.isArray(entry.decisions) || entry.decisions.length === 0) return [];
   return entry.decisions.slice(-max).reverse();
+}
+
+/**
+ * Fire-and-forget: append one JSONL line describing this injection to
+ * ~/.claude/logs/recall-hits.jsonl, for offline recall hit-rate measurement.
+ * Never throws, never awaited, never grows the hook's latency budget — all
+ * failures (missing dir, permissions, etc.) are silently swallowed.
+ *
+ * @param {object} hit
+ * @param {string} hit.domain
+ * @param {number} hit.constraints
+ * @param {number} hit.decisions
+ * @param {number} hit.instincts
+ * @param {number} hit.chars
+ */
+function logRecallHit(hit) {
+  try {
+    const line = `${JSON.stringify({
+      ts: new Date().toISOString(),
+      domain: hit.domain,
+      kinds: {
+        constraints: hit.constraints,
+        decisions: hit.decisions,
+        instincts: hit.instincts,
+      },
+      chars: hit.chars,
+    })}\n`;
+
+    fs.mkdir(path.dirname(RECALL_LOG_PATH), { recursive: true }, (mkdirErr) => {
+      if (mkdirErr) return;
+      fs.appendFile(RECALL_LOG_PATH, line, () => { /* fire-and-forget */ });
+    });
+  } catch {
+    /* never let recall instrumentation block or crash the hook */
+  }
 }
 
 // --- Main ---
@@ -172,6 +224,20 @@ function run(rawInput) {
     }
   }
 
+  // Domain-linked instincts — at most 2, failure-outcome first (Change B1).
+  const domainInstincts = selectTopInstincts(
+    loadInstinctsForDomain(entry.domainKey, process.cwd()),
+    { cap: DOMAIN_INSTINCT_CAP }
+  );
+  if (domainInstincts.length > 0) {
+    lines.push('Instincts:');
+    for (const instinct of domainInstincts) {
+      const label = instinct.outcome || 'general';
+      const name = instinct.title || instinct.id;
+      lines.push(`  - [${label}] ${instinct.trigger}: ${name}`);
+    }
+  }
+
   const falseNormalChecks = packet.completionContract?.falseNormalChecks || [];
   if (falseNormalChecks.length > 0) {
     lines.push('False-Normal Checks:');
@@ -187,10 +253,16 @@ function run(rawInput) {
     }
   }
 
-  if (packet.dependsOn && packet.dependsOn.length > 0) {
-    const newDeps = packet.dependsOn.filter(dep => !injected.has(dep));
+  // Dependent-domain constraints — single traversal implementation via
+  // ontology-blast-radius's traverseDependsOn() (Change B2). depth: 1,
+  // direction: 'forward' reproduces the prior inline `packet.dependsOn`
+  // walk exactly (same values, same order — see that entry's own
+  // dependsOn array), just routed through the shared traversal helper.
+  const directDeps = traverseDependsOn(entry.domainKey, domainMap, { depth: 1, direction: 'forward' });
+  if (directDeps.length > 0) {
+    const newDeps = directDeps.filter(dep => !injected.has(dep));
     if (newDeps.length > 0) {
-      lines.push(`Depends on: ${packet.dependsOn.join(', ')}`);
+      lines.push(`Depends on: ${directDeps.join(', ')}`);
       for (const dep of newDeps) {
         const depEntry = domainMap[dep];
         const depPacket = depEntry ? buildDomainPacket(depEntry, 'context') : null;
@@ -202,7 +274,7 @@ function run(rawInput) {
         }
       }
     } else {
-      lines.push(`Depends on: ${packet.dependsOn.join(', ')} (already in context)`);
+      lines.push(`Depends on: ${directDeps.join(', ')} (already in context)`);
     }
   }
 
@@ -213,13 +285,20 @@ function run(rawInput) {
   }
 
   lines.push('');
-  process.stderr.write(lines.join('\n'));
+  const injectedText = lines.join('\n');
+  process.stderr.write(injectedText);
+
+  logRecallHit({
+    domain: entry.domainKey,
+    constraints: Array.isArray(packet.constraints) ? packet.constraints.length : 0,
+    decisions: recentDecisions.length,
+    instincts: domainInstincts.length,
+    chars: injectedText.length,
+  });
 
   // Mark primary domain (and shown dep domains) as injected
   injected.add(entry.domainKey);
-  if (packet.dependsOn) {
-    for (const dep of packet.dependsOn) injected.add(dep);
-  }
+  for (const dep of directDeps) injected.add(dep);
   saveInjected(injected);
 
   return rawInput;

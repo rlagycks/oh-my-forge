@@ -13,6 +13,7 @@ const {
   selectTopInstincts,
   buildInstinctsContext,
   collectInstinctContext,
+  loadInstinctsForDomain,
 } = require('../../scripts/lib/instinct-loader');
 
 function mkdirp(dirPath) {
@@ -265,6 +266,121 @@ run('collectInstinctContext: returns empty context when nothing qualifies', () =
     const { instincts, context } = collectInstinctContext(process.cwd());
     assert.deepStrictEqual(instincts, []);
     assert.strictEqual(context, '');
+  } finally {
+    os.homedir = originalHomedir;
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+run('loadInstinctsFromDir: exposes linked_domain frontmatter as linkedDomain (empty string when absent)', () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'instinct-loader-linked-'));
+  try {
+    writeInstinct(path.join(tmpRoot, 'linked.yaml'), [
+      'id: linked-instinct',
+      'trigger: "editing hooks"',
+      'confidence: 0.8',
+      'linked_domain: domain_hooks',
+    ]);
+    writeInstinct(path.join(tmpRoot, 'unlinked.yaml'), [
+      'id: unlinked-instinct',
+      'trigger: "anything"',
+      'confidence: 0.8',
+    ]);
+
+    const instincts = loadInstinctsFromDir(tmpRoot);
+    const linked = instincts.find(instinct => instinct.id === 'linked-instinct');
+    const unlinked = instincts.find(instinct => instinct.id === 'unlinked-instinct');
+    assert.strictEqual(linked.linkedDomain, 'domain_hooks');
+    assert.strictEqual(unlinked.linkedDomain, '');
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
+run('loadInstinctsForDomain: returns only instincts whose linked_domain matches the domain key', () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'instinct-loader-home-'));
+  const originalHomedir = os.homedir;
+  try {
+    const personalDir = path.join(tmpHome, '.claude', 'homunculus', 'instincts', 'personal');
+    writeInstinct(path.join(personalDir, 'a.yaml'), [
+      'id: inst-a',
+      'trigger: "touching domain_a files"',
+      'confidence: 0.9',
+      'outcome: failure',
+      'linked_domain: domain_a',
+    ]);
+    writeInstinct(path.join(personalDir, 'b.yaml'), [
+      'id: inst-b',
+      'trigger: "touching domain_b files"',
+      'confidence: 0.9',
+      'linked_domain: domain_b',
+    ]);
+    writeInstinct(path.join(personalDir, 'none.yaml'), [
+      'id: inst-none',
+      'trigger: "no linked domain"',
+      'confidence: 0.9',
+    ]);
+    os.homedir = () => tmpHome;
+
+    const forA = loadInstinctsForDomain('domain_a', process.cwd());
+    assert.strictEqual(forA.length, 1);
+    assert.strictEqual(forA[0].id, 'inst-a');
+
+    assert.deepStrictEqual(loadInstinctsForDomain('domain_missing', process.cwd()), []);
+    assert.deepStrictEqual(loadInstinctsForDomain('', process.cwd()), []);
+  } finally {
+    os.homedir = originalHomedir;
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+run('loadInstinctsForDomain: merges project-scoped instincts (project wins on id collision)', () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'instinct-loader-home-'));
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'instinct-loader-project-'));
+  const originalHomedir = os.homedir;
+  try {
+    writeJson(path.join(tmpHome, '.claude', 'homunculus', 'projects.json'), {
+      abc123: { id: 'abc123', name: 'demo', root: projectRoot },
+    });
+    writeInstinct(
+      path.join(tmpHome, '.claude', 'homunculus', 'instincts', 'personal', 'shared.yaml'),
+      ['id: shared', 'trigger: "global trigger"', 'confidence: 0.8', 'linked_domain: domain_a']
+    );
+    writeInstinct(
+      path.join(tmpHome, '.claude', 'homunculus', 'projects', 'abc123', 'instincts', 'personal', 'shared.yaml'),
+      ['id: shared', 'trigger: "project trigger"', 'confidence: 0.9', 'linked_domain: domain_a']
+    );
+    os.homedir = () => tmpHome;
+
+    const instincts = loadInstinctsForDomain('domain_a', projectRoot);
+    assert.strictEqual(instincts.length, 1);
+    assert.strictEqual(instincts[0].trigger, 'project trigger');
+  } finally {
+    os.homedir = originalHomedir;
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+    fs.rmSync(projectRoot, { recursive: true, force: true });
+  }
+});
+
+run('loadInstinctsForDomain: composes with selectTopInstincts for the injection cap', () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'instinct-loader-home-'));
+  const originalHomedir = os.homedir;
+  try {
+    const personalDir = path.join(tmpHome, '.claude', 'homunculus', 'instincts', 'personal');
+    for (let i = 0; i < 4; i++) {
+      writeInstinct(path.join(personalDir, `inst-${i}.yaml`), [
+        `id: inst-${i}`,
+        `trigger: "trigger ${i}"`,
+        `confidence: 0.${75 + i}`,
+        `outcome: ${i === 3 ? 'failure' : 'success'}`,
+        'linked_domain: domain_a',
+      ]);
+    }
+    os.homedir = () => tmpHome;
+
+    const selected = selectTopInstincts(loadInstinctsForDomain('domain_a', process.cwd()), { cap: 2 });
+    assert.strictEqual(selected.length, 2);
+    assert.strictEqual(selected[0].id, 'inst-3', 'failure-outcome instinct should come first');
   } finally {
     os.homedir = originalHomedir;
     fs.rmSync(tmpHome, { recursive: true, force: true });

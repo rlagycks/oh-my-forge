@@ -11,7 +11,12 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const { inferDependsOn, passPathOverlap, collectJsFiles } = require('../../scripts/lib/ontology-blast-radius');
+const {
+  inferDependsOn,
+  passPathOverlap,
+  collectJsFiles,
+  traverseDependsOn,
+} = require('../../scripts/lib/ontology-blast-radius');
 
 function test(name, fn) {
   try {
@@ -167,6 +172,48 @@ run('inferDependsOn works on the real project without throwing', () => {
   const result = inferDependsOn(REPO_ROOT, indexJson);
   // Just verify it returns a plain object without throwing
   assert.strictEqual(typeof result, 'object');
+});
+
+// --- traverseDependsOn (recorded-edge traversal) ---
+
+const TRAVERSAL_GRAPH = {
+  domain_a: { dependsOn: ['domain_b', 'domain_c'] },
+  domain_b: { dependsOn: ['domain_d'] },
+  domain_c: { dependsOn: [] },
+  domain_d: { dependsOn: ['domain_a'] }, // cycle back to a
+};
+
+run('traverseDependsOn forward depth 1 returns the direct dependsOn edges in order', () => {
+  const result = traverseDependsOn('domain_a', TRAVERSAL_GRAPH, { depth: 1 });
+  assert.deepStrictEqual(result, ['domain_b', 'domain_c']);
+});
+
+run('traverseDependsOn defaults to forward depth 1', () => {
+  assert.deepStrictEqual(
+    traverseDependsOn('domain_a', TRAVERSAL_GRAPH),
+    traverseDependsOn('domain_a', TRAVERSAL_GRAPH, { depth: 1, direction: 'forward' })
+  );
+});
+
+run('traverseDependsOn forward multi-hop dedupes and excludes the start domain (cycle-safe)', () => {
+  const result = traverseDependsOn('domain_a', TRAVERSAL_GRAPH, { depth: 5 });
+  assert.deepStrictEqual(result, ['domain_b', 'domain_c', 'domain_d']);
+  assert.ok(!result.includes('domain_a'), 'start domain must not appear even with a cycle');
+});
+
+run('traverseDependsOn reverse direction returns domains that depend on the start', () => {
+  const result = traverseDependsOn('domain_d', TRAVERSAL_GRAPH, { depth: 1, direction: 'reverse' });
+  assert.deepStrictEqual(result, ['domain_b']);
+
+  const deep = traverseDependsOn('domain_d', TRAVERSAL_GRAPH, { depth: 3, direction: 'reverse' });
+  assert.deepStrictEqual(deep, ['domain_b', 'domain_a']);
+});
+
+run('traverseDependsOn returns [] for unknown domains, falsy input, or empty graphs', () => {
+  assert.deepStrictEqual(traverseDependsOn('domain_missing', TRAVERSAL_GRAPH), []);
+  assert.deepStrictEqual(traverseDependsOn('', TRAVERSAL_GRAPH), []);
+  assert.deepStrictEqual(traverseDependsOn('domain_a', null), []);
+  assert.deepStrictEqual(traverseDependsOn('domain_a', {}), []);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
