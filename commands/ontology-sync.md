@@ -135,7 +135,8 @@ Edge Suggestions (리뷰 후 수동 추가):
 CLI로 직접 확인하려면:
 
 ```bash
-node scripts/lib/ontology-edge-suggest.js .claude/ontology
+OMF_ROOT="${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-$(cat "$HOME/.claude/.omf-root" 2>/dev/null || echo "$HOME/.claude")}}"
+node "$OMF_ROOT/scripts/lib/ontology-edge-suggest.js" .claude/ontology
 ```
 
 ---
