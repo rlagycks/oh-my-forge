@@ -102,7 +102,7 @@ function parseInstinctFrontmatter(content) {
  * never block session start.
  *
  * @param {string} dir
- * @returns {Array<{id: string, trigger: string, confidence: number, outcome: string, title: string}>}
+ * @returns {Array<{id: string, trigger: string, confidence: number, outcome: string, title: string, linkedDomain: string}>}
  */
 function loadInstinctsFromDir(dir) {
   if (!dir) return [];
@@ -125,7 +125,10 @@ function loadInstinctsFromDir(dir) {
       trigger: parsed.trigger || '',
       confidence,
       outcome: parsed.outcome || '',
-      title: parsed.title || ''
+      title: parsed.title || '',
+      // linked_domain is written by /error-capture (see skills/continuous-learning-v2)
+      // and consumed here for domain-scoped recall (loadInstinctsForDomain below).
+      linkedDomain: parsed.linked_domain || ''
     });
   }
 
@@ -261,6 +264,35 @@ function collectInstinctContext(cwd) {
   return { instincts, context: buildInstinctsContext(instincts) };
 }
 
+/**
+ * Load instincts scoped to a single domain, for recall at file-touch time
+ * (scripts/hooks/domain-context-inject.js) rather than at SessionStart.
+ *
+ * Reuses the same global + project directory resolution and parsing as
+ * collectInstinctContext, but filters by frontmatter `linked_domain` instead
+ * of selecting the global top-N. Does not apply confidence filtering or
+ * capping itself — callers should run the result through selectTopInstincts()
+ * (e.g. with `{ cap: 2 }`) to pick what to actually inject, keeping selection
+ * logic in one place.
+ *
+ * @param {string} domainKey - e.g. 'domain_hooks'. Returns [] when falsy.
+ * @param {string} cwd - Current working directory (process.cwd()), used to
+ *   resolve the project-scoped instincts directory.
+ * @returns {Array<{id: string, trigger: string, confidence: number, outcome: string, title: string, linkedDomain: string}>}
+ */
+function loadInstinctsForDomain(domainKey, cwd) {
+  if (!domainKey) return [];
+
+  const globalInstinctsDir = path.join(getClaudeDir(), 'homunculus', 'instincts', 'personal');
+  const projectInstinctsDir = findProjectInstinctsDir(cwd);
+  const candidateInstincts = mergeInstincts(
+    loadInstinctsFromDir(globalInstinctsDir),
+    projectInstinctsDir ? loadInstinctsFromDir(projectInstinctsDir) : []
+  );
+
+  return candidateInstincts.filter(instinct => instinct.linkedDomain === domainKey);
+}
+
 module.exports = {
   INSTINCT_CONFIDENCE_THRESHOLD,
   INSTINCT_CAP,
@@ -274,4 +306,5 @@ module.exports = {
   selectTopInstincts,
   buildInstinctsContext,
   collectInstinctContext,
+  loadInstinctsForDomain,
 };
