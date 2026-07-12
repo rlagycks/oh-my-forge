@@ -2,15 +2,6 @@
 'use strict';
 
 const MAX_STDIN = 1024 * 1024;
-let raw = '';
-
-process.stdin.setEncoding('utf8');
-process.stdin.on('data', chunk => {
-  if (raw.length < MAX_STDIN) {
-    const remaining = MAX_STDIN - raw.length;
-    raw += chunk.substring(0, remaining);
-  }
-});
 
 /**
  * Extract command output text from a PostToolUse payload.
@@ -34,9 +25,12 @@ function extractOutputText(input) {
   return '';
 }
 
-process.stdin.on('end', () => {
+/**
+ * Synchronous, in-process implementation used by run-with-flags.js.
+ */
+function run(rawInput) {
   try {
-    const input = JSON.parse(raw);
+    const input = JSON.parse(rawInput);
     const cmd = String(input.tool_input?.command || '');
 
     if (/\bgh\s+pr\s+create\b/.test(cmd)) {
@@ -46,13 +40,53 @@ process.stdin.on('end', () => {
         const prUrl = match[0];
         const repo = prUrl.replace(/https:\/\/github\.com\/([^/]+\/[^/]+)\/pull\/\d+/, '$1');
         const prNum = prUrl.replace(/.+\/pull\/(\d+)/, '$1');
-        console.error(`[Hook] PR created: ${prUrl}`);
-        console.error(`[Hook] To review: gh pr review ${prNum} --repo ${repo}`);
+        return {
+          exitCode: 0,
+          stderr: `[Hook] PR created: ${prUrl}\n[Hook] To review: gh pr review ${prNum} --repo ${repo}`,
+        };
       }
     }
   } catch {
     // ignore parse errors and pass through
   }
 
-  process.stdout.write(raw);
-});
+  return { exitCode: 0 };
+}
+
+module.exports = { run };
+
+// Allow direct execution for testing / legacy spawn path
+if (require.main === module) {
+  let raw = '';
+
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', chunk => {
+    if (raw.length < MAX_STDIN) {
+      const remaining = MAX_STDIN - raw.length;
+      raw += chunk.substring(0, remaining);
+    }
+  });
+
+  process.stdin.on('end', () => {
+    try {
+      const input = JSON.parse(raw);
+      const cmd = String(input.tool_input?.command || '');
+
+      if (/\bgh\s+pr\s+create\b/.test(cmd)) {
+        const out = extractOutputText(input);
+        const match = out.match(/https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/);
+        if (match) {
+          const prUrl = match[0];
+          const repo = prUrl.replace(/https:\/\/github\.com\/([^/]+\/[^/]+)\/pull\/\d+/, '$1');
+          const prNum = prUrl.replace(/.+\/pull\/(\d+)/, '$1');
+          console.error(`[Hook] PR created: ${prUrl}`);
+          console.error(`[Hook] To review: gh pr review ${prNum} --repo ${repo}`);
+        }
+      }
+    } catch {
+      // ignore parse errors and pass through
+    }
+
+    process.stdout.write(raw);
+  });
+}

@@ -20,6 +20,7 @@ const {
   writeFile,
   log
 } = require('../lib/utils');
+const { buildContinuityPacket } = require('../lib/continuity-packet');
 
 // Matches both the legacy per-compaction marker line (with its leading
 // separator) and the consolidated marker this hook now writes, so repeated
@@ -27,6 +28,12 @@ const {
 // accumulating unboundedly in the session file.
 const LEGACY_MARKER_RE = /\n?---\n\*\*\[Compaction occurred at [^\]]+\]\*\* - Context was summarized\n?/g;
 const CONSOLIDATED_MARKER_RE = /\n?---\n\*\*\[Compactions: (\d+), last at [^\]]+\]\*\* - Context was summarized\n?/g;
+
+// Delimits the embedded continuity packet section so it can be stripped and
+// re-appended fresh on every compaction, instead of accumulating.
+const CONTINUITY_PACKET_BEGIN = '<!-- CONTINUITY-PACKET:BEGIN -->';
+const CONTINUITY_PACKET_END = '<!-- CONTINUITY-PACKET:END -->';
+const CONTINUITY_PACKET_RE = /\n?<!-- CONTINUITY-PACKET:BEGIN -->[\s\S]*?<!-- CONTINUITY-PACKET:END -->\n?/g;
 
 /**
  * Strip any existing compaction marker lines from session content and
@@ -50,6 +57,15 @@ function stripCompactionMarkers(content) {
   return { content, priorCount };
 }
 
+/**
+ * Strip any previously embedded continuity packet section from session
+ * content so a fresh packet replaces it rather than accumulating across
+ * repeated compactions.
+ */
+function stripContinuityPacket(content) {
+  return content.replace(CONTINUITY_PACKET_RE, '');
+}
+
 async function main() {
   const sessionsDir = getSessionsDir();
   const compactionLog = path.join(sessionsDir, 'compaction-log.txt');
@@ -69,10 +85,19 @@ async function main() {
     const activeSession = sessions[0].path;
     const timeStr = getTimeString();
     const existing = readFile(activeSession) || '';
-    const { content: cleaned, priorCount } = stripCompactionMarkers(existing);
+    const { content: markersStripped, priorCount } = stripCompactionMarkers(existing);
+    const cleaned = stripContinuityPacket(markersStripped);
     const nextCount = priorCount + 1;
     const marker = `\n---\n**[Compactions: ${nextCount}, last at ${timeStr}]** - Context was summarized\n`;
-    writeFile(activeSession, `${cleaned}${marker}`);
+
+    let updated = `${cleaned}${marker}`;
+
+    const { text: packetText } = buildContinuityPacket({ cwd: process.cwd() });
+    if (packetText) {
+      updated += `\n${CONTINUITY_PACKET_BEGIN}\n${packetText}\n${CONTINUITY_PACKET_END}\n`;
+    }
+
+    writeFile(activeSession, updated);
   }
 
   log('[PreCompact] State saved before compaction');
