@@ -102,7 +102,8 @@
       "scripts/lib/implementation-engine.js",
       "scripts/lib/ontology-packet.js",
       "scripts/lib/ontology-routing.js",
-      "scripts/lib/hook-flags.js"
+      "scripts/lib/hook-flags.js",
+      "scripts/hooks/pre-bash-block-no-verify.js"
     ],
     "spec": "docs/features/hooks.md",
     "detail": ".claude/ontology/domain_hooks.json",
@@ -153,7 +154,9 @@
       "scripts/hooks/session-start-bootstrap.js",
       "scripts/lib/session-manager.js",
       "scripts/lib/session-aliases.js",
-      "scripts/lib/decisions.js"
+      "scripts/lib/decisions.js",
+      "scripts/lib/continuity-packet.js",
+      "scripts/hooks/pre-compact.js"
     ],
     "spec": "docs/features/session.md",
     "detail": ".claude/ontology/domain_session.json",

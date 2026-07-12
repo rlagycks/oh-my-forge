@@ -381,6 +381,31 @@
         "tests/hooks/error-tracker.test.js"
       ],
       "prevention": "Constraint added to domain_hooks: failure-tracking hooks must register on PostToolUseFailure; never gate on tool_response.exitCode (field does not exist for Bash)"
+    },
+    {
+      "id": "dec-20260712-47y",
+      "date": "2026-07-12",
+      "type": "design",
+      "domain": "domain_hooks",
+      "summary": "Hooks converted to in-process run() export; mcp-health-check scoped to mcp__.*",
+      "why": "31 sync hooks double-spawned node per tool call and mcp-health-check fired on every tool, adding harness overhead that throttles the model. post-edit-typecheck deliberately kept on spawn path (tsc up to 30s).",
+      "files": [
+        "scripts/hooks/run-with-flags.js",
+        "hooks/hooks.json"
+      ],
+      "ref": "105e32a"
+    },
+    {
+      "id": "dec-20260712-a6q",
+      "date": "2026-07-12",
+      "type": "design",
+      "domain": "domain_hooks",
+      "summary": "npx hook-bypass blocker replaced with local pre-bash-block-no-verify hook",
+      "why": "npx fetch on every fresh install broke offline machines and added first-run latency; local script is behavior-compatible and token-aware so flag text inside quoted strings is not falsely blocked (the old npx version false-positived on this very changeset).",
+      "files": [
+        "scripts/hooks/pre-bash-block-no-verify.js"
+      ],
+      "ref": "105e32a"
     }
   ]
 }

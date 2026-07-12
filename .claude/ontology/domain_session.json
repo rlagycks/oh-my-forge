@@ -134,5 +134,24 @@
       "maxDecisions": 0
     }
   },
-  "dependsOn": ["domain_state_store", "domain_hooks"]
+  "dependsOn": [
+    "domain_state_store",
+    "domain_hooks"
+  ],
+  "decisions": [
+    {
+      "id": "dec-20260712-fev",
+      "date": "2026-07-12",
+      "type": "design",
+      "domain": "domain_session",
+      "summary": "Continuity packet re-injects decision rationale after compact/clear",
+      "why": "Context resets severed the why-chain: decisions.js captured rationale but nothing re-surfaced it across session/compaction boundaries. Packet capped at 1500 chars to honor the no-context-bloat goal.",
+      "files": [
+        "scripts/lib/continuity-packet.js",
+        "scripts/hooks/pre-compact.js",
+        "scripts/hooks/session-start.js"
+      ],
+      "ref": "e54cd07"
+    }
+  ]
 }
