@@ -31,6 +31,7 @@ const {
   normalizePath,
   collectInstinctContext
 } = require('../lib/instinct-loader');
+const { buildContinuityPacket } = require('../lib/continuity-packet');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -47,6 +48,13 @@ const SESSION_METADATA_PATTERN = /^\*\*(Project|Branch|Worktree):\*\*\s*(.+)$/gm
 // hook's session_id (falls back to a hash of cwd when session_id is absent).
 const DUPLICATE_MARKER_TTL_MS = 60 * 1000;
 const STDIN_READ_TIMEOUT_MS = 500;
+
+// SessionStart `source` values for which the continuity packet is injected
+// unconditionally (context was just wiped/summarized, so re-grounding is
+// worth the tokens even with few decisions). On "startup"/"resume" the
+// packet is only injected when it actually has content, since the prior
+// session summary already carries most of that context.
+const ALWAYS_INCLUDE_CONTINUITY_SOURCES = new Set(['clear', 'compact']);
 
 // Learned instinct injection (Change 2) lives in ../lib/instinct-loader.js.
 
@@ -421,6 +429,23 @@ async function main() {
   if (instinctsContext) {
     additionalContextParts.push(instinctsContext);
     log(`[SessionStart] ${topInstincts.length} learned instinct(s) injected (confidence >= ${INSTINCT_CONFIDENCE_THRESHOLD})`);
+  }
+
+  // Inject the continuity packet (recent decisions "why"), so rationale
+  // survives /clear and context compaction. Never throws by contract, but
+  // wrapped defensively since this must not break the rest of the hook.
+  try {
+    const source = hookInput && typeof hookInput.source === 'string' ? hookInput.source : '';
+    const packet = buildContinuityPacket({ cwd: process.cwd() });
+    const shouldInject = packet.text
+      && (ALWAYS_INCLUDE_CONTINUITY_SOURCES.has(source) || packet.decisionCount > 0);
+
+    if (shouldInject) {
+      additionalContextParts.push(packet.text);
+      log(`[SessionStart] Continuity packet injected (${packet.decisionCount} decision(s), source=${source || 'unknown'})`);
+    }
+  } catch (err) {
+    log(`[SessionStart] Continuity packet injection failed: ${err.message}`);
   }
 
   await writeSessionStartPayload(additionalContextParts.join('\n\n'));

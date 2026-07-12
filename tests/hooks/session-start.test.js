@@ -95,9 +95,9 @@ run('getMarkerPath: keys under ~/.claude/tmp/session-start-emitted-<key>', () =>
 // Integration tests — spawn the real hook script end-to-end
 // ---------------------------------------------------------------------------
 
-function runHook({ home, cwd, sessionId }) {
+function runHook({ home, cwd, sessionId, source }) {
   return spawnSync(process.execPath, [sessionStartPath], {
-    input: JSON.stringify({ session_id: sessionId, hook_event_name: 'SessionStart' }),
+    input: JSON.stringify({ session_id: sessionId, hook_event_name: 'SessionStart', source }),
     encoding: 'utf8',
     cwd,
     env: {
@@ -107,6 +107,13 @@ function runHook({ home, cwd, sessionId }) {
     },
     timeout: 10_000,
   });
+}
+
+function writeDecisionsLog(home, entries) {
+  const decisionsDir = path.join(home, '.claude', 'decisions');
+  mkdirp(decisionsDir);
+  const lines = entries.map(entry => JSON.stringify(entry)).join('\n') + '\n';
+  fs.writeFileSync(path.join(decisionsDir, 'index.jsonl'), lines, 'utf8');
 }
 
 function parseAdditionalContext(stdout) {
@@ -184,6 +191,51 @@ run('main(): low-confidence instincts are not injected', () => {
     assert.strictEqual(result.status, 0, result.stderr);
     const context = parseAdditionalContext(result.stdout);
     assert.ok(!context.includes('Learned instincts'), context);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+    fs.rmSync(projectDir, { recursive: true, force: true });
+  }
+});
+
+run('main(): source=compact includes the continuity packet in additionalContext and emits valid JSON', () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'session-start-continuity-home-'));
+  const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'session-start-continuity-project-'));
+
+  try {
+    writeDecisionsLog(tmpHome, [{
+      id: 'd1',
+      date: '2026-01-01',
+      type: 'fix',
+      domain: 'domain_x',
+      summary: 'Fixed the widget',
+      why: 'root cause was X',
+      project: path.basename(projectDir),
+    }]);
+
+    const result = runHook({ home: tmpHome, cwd: projectDir, sessionId: 'continuity-compact', source: 'compact' });
+    assert.strictEqual(result.status, 0, result.stderr);
+
+    const context = parseAdditionalContext(result.stdout);
+    assert.ok(context.includes('Recent decisions (why)'), context);
+    assert.ok(context.includes('Fixed the widget'), context);
+    assert.ok(result.stderr.includes('[SessionStart] Continuity packet injected'), result.stderr);
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+    fs.rmSync(projectDir, { recursive: true, force: true });
+  }
+});
+
+run('main(): with no decisions log, additionalContext has no continuity packet and JSON is still valid', () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'session-start-nocontinuity-home-'));
+  const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'session-start-nocontinuity-project-'));
+
+  try {
+    const result = runHook({ home: tmpHome, cwd: projectDir, sessionId: 'no-continuity', source: 'startup' });
+    assert.strictEqual(result.status, 0, result.stderr);
+
+    const context = parseAdditionalContext(result.stdout);
+    assert.ok(!context.includes('Recent decisions (why)'), context);
+    assert.ok(!result.stderr.includes('[SessionStart] Continuity packet injected'), result.stderr);
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
     fs.rmSync(projectDir, { recursive: true, force: true });

@@ -982,6 +982,94 @@ async function runTests() {
     passed++;
   else failed++;
 
+  if (
+    await asyncTest('embeds continuity packet section into session file and replaces on repeated runs', async () => {
+      const isoHome = path.join(os.tmpdir(), `ecc-compact-continuity-${Date.now()}`);
+      const sessionsDir = getCanonicalSessionsDir(isoHome);
+      fs.mkdirSync(sessionsDir, { recursive: true });
+
+      const sessionFile = path.join(sessionsDir, '2026-02-11-continuity-session.tmp');
+      fs.writeFileSync(sessionFile, '# Session: 2026-02-11\n**Started:** 10:00\n');
+
+      const decisionsDir = path.join(isoHome, '.claude', 'decisions');
+      fs.mkdirSync(decisionsDir, { recursive: true });
+      const decisionsLog = path.join(decisionsDir, 'index.jsonl');
+      const project = path.basename(process.cwd());
+      fs.writeFileSync(
+        decisionsLog,
+        JSON.stringify({
+          id: 'd1',
+          date: '2026-01-01',
+          type: 'fix',
+          domain: 'domain_x',
+          summary: 'Fixed the widget',
+          why: 'root cause was X',
+          project
+        }) + '\n'
+      );
+
+      try {
+        const first = await runScript(path.join(scriptsDir, 'pre-compact.js'), '', {
+          HOME: isoHome,
+          USERPROFILE: isoHome
+        });
+        assert.strictEqual(first.code, 0, first.stderr);
+
+        const contentAfterFirst = fs.readFileSync(sessionFile, 'utf8');
+        assert.ok(
+          contentAfterFirst.includes('<!-- CONTINUITY-PACKET:BEGIN -->')
+            && contentAfterFirst.includes('<!-- CONTINUITY-PACKET:END -->'),
+          `Should embed a delimited continuity packet section, got: ${contentAfterFirst}`
+        );
+        assert.ok(contentAfterFirst.includes('Fixed the widget'), 'Should include the decision summary');
+
+        const second = await runScript(path.join(scriptsDir, 'pre-compact.js'), '', {
+          HOME: isoHome,
+          USERPROFILE: isoHome
+        });
+        assert.strictEqual(second.code, 0, second.stderr);
+
+        const contentAfterSecond = fs.readFileSync(sessionFile, 'utf8');
+        const beginMatches = contentAfterSecond.match(/<!-- CONTINUITY-PACKET:BEGIN -->/g) || [];
+        assert.strictEqual(beginMatches.length, 1, `Should have exactly one packet section after repeated runs, got: ${contentAfterSecond}`);
+        // Compaction marker consolidation must still hold alongside the packet section.
+        const markerMatches = contentAfterSecond.match(/\*\*\[Compactions: \d+, last at [\d:]+\]\*\*/g) || [];
+        assert.strictEqual(markerMatches.length, 1, `Should have exactly one consolidated compaction marker, got: ${contentAfterSecond}`);
+      } finally {
+        fs.rmSync(isoHome, { recursive: true, force: true });
+      }
+    })
+  )
+    passed++;
+  else failed++;
+
+  if (
+    await asyncTest('with no decisions log, session file has no continuity packet section', async () => {
+      const isoHome = path.join(os.tmpdir(), `ecc-compact-nopacket-${Date.now()}`);
+      const sessionsDir = getCanonicalSessionsDir(isoHome);
+      fs.mkdirSync(sessionsDir, { recursive: true });
+
+      const sessionFile = path.join(sessionsDir, '2026-02-11-nopacket-session.tmp');
+      fs.writeFileSync(sessionFile, '# Session: 2026-02-11\n**Started:** 10:00\n');
+
+      try {
+        const result = await runScript(path.join(scriptsDir, 'pre-compact.js'), '', {
+          HOME: isoHome,
+          USERPROFILE: isoHome
+        });
+        assert.strictEqual(result.code, 0, result.stderr);
+
+        const content = fs.readFileSync(sessionFile, 'utf8');
+        assert.ok(!content.includes('CONTINUITY-PACKET'), `Should not embed a packet section when there are no decisions, got: ${content}`);
+        assert.ok(content.includes('Compactions:'), 'Should still write the compaction marker');
+      } finally {
+        fs.rmSync(isoHome, { recursive: true, force: true });
+      }
+    })
+  )
+    passed++;
+  else failed++;
+
   // suggest-compact.js tests
   console.log('\nsuggest-compact.js:');
 
