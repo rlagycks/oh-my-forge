@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const pluginRoot = '/Users/gimhyochan/oh-my-forge';
+const pluginRoot = path.resolve(__dirname, '..', '..');
 
 function test(name, fn) {
   try {
