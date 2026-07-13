@@ -12,7 +12,6 @@ module.exports = { run };
 
 // Allow direct execution for testing
 if (require.main === module) {
-  const path = require('path');
   const MAX_STDIN = 1024 * 1024;
   let data = '';
 

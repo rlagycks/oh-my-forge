@@ -63,8 +63,8 @@ function runHookFresh(scriptPath, payload, hookLabel) {
       freshProject
     };
   } finally {
-    try { fs.rmSync(freshHome, { recursive: true }); } catch {}
-    try { fs.rmSync(freshProject, { recursive: true }); } catch {}
+    try { fs.rmSync(freshHome, { recursive: true }); } catch { /* best-effort cleanup */ }
+    try { fs.rmSync(freshProject, { recursive: true }); } catch { /* best-effort cleanup */ }
   }
 }
 

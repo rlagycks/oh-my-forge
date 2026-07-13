@@ -21,7 +21,7 @@ const {
   log
 } = require('../lib/utils');
 
-function run(rawInput) {
+function run(_rawInput) {
   try {
     // Track tool call count (increment in a temp file)
     // Use a session-specific counter file based on session ID from environment
