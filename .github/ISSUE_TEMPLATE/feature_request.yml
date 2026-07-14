@@ -1,0 +1,80 @@
+name: Feature request
+description: Propose a new agent, command, skill, hook, or rule — or an improvement to an existing one
+title: "[FEAT] "
+labels:
+  - enhancement
+body:
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      options:
+        - Agent
+        - Command
+        - Skill
+        - Hook
+        - Rule
+        - Ontology domain / constraint
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What do you want to add?
+      description: Describe the agent / command / skill / hook / rule you have in mind, and why.
+      placeholder: |
+        Add a `/db-migration-check` command that verifies a pending migration is reversible
+        before it's committed. Right now nothing catches non-reversible migrations until
+        they've already shipped.
+    validations:
+      required: true
+
+  - type: textarea
+    id: tasks
+    attributes:
+      label: Implementation checklist
+      description: What needs to be done for this to be considered complete?
+      placeholder: |
+        - [ ] Add `commands/db-migration-check.md`
+        - [ ] Add detection logic to `scripts/lib/`
+        - [ ] Register a matching test in `tests/lib/`
+        - [ ] Add a row to `docs/features/index.md`
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What has to be true for this issue to be closed?
+      placeholder: |
+        - Running the command against a non-reversible migration blocks with a clear message
+        - `node tests/run-all.js` passes
+    validations:
+      required: true
+
+  - type: textarea
+    id: approach
+    attributes:
+      label: Proposed approach
+      description: How would it work? Which files would it touch? (optional)
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you thought about and why you ruled them out. (optional)
+    validations:
+      required: false
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Related issues, PRs, or external links. (optional)
+    validations:
+      required: false

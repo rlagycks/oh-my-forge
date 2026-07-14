@@ -1,0 +1,114 @@
+name: Bug report
+description: Something isn't working as expected
+title: "[BUG] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Concrete, reproducible reports get fixed fastest.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched existing issues and this isn't a duplicate.
+          required: true
+        - label: I reproduced this on the latest `main`.
+          required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of oh-my-forge does this affect?
+      options:
+        - Agents
+        - Skills
+        - Commands
+        - Hooks
+        - Rules
+        - Ontology / codex-delegate
+        - Installation / package manager detection
+        - Tests / CI
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing the bug.
+      placeholder: The pre-compact hook doesn't clear domain-context dedup state, so context never re-injects after the first compaction.
+    validations:
+      required: true
+
+  - type: input
+    id: component
+    attributes:
+      label: Relevant file, hook, or command
+      description: Path or name if you know it.
+      placeholder: scripts/hooks/pre-compact.js, or /codex-delegate
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Steps a reviewer can follow exactly.
+      placeholder: |
+        1. Run `node scripts/hooks/pre-compact.js` with ...
+        2. Trigger a context compaction
+        3. Observe that ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: The dedup state file should be cleared so domain context re-injects.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: The dedup state file is never cleared, so the domain is never re-injected again this session.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / error output
+      description: Hook stderr, test failures, stack traces — whatever is relevant.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: |
+        - OS:
+        - Node.js version (`node -v`):
+        - Claude Code version (`claude --version`):
+        - Package manager (npm/pnpm/yarn/bun):
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Anything else that might help — related ontology domain, recent changes, workarounds tried.
+    validations:
+      required: false
