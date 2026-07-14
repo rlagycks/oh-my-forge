@@ -4,7 +4,6 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const { execFileSync } = require('child_process');
 
 function getSessionKey() {
   if (process.env.CLAUDE_SESSION_ID) return process.env.CLAUDE_SESSION_ID;
@@ -54,12 +53,11 @@ function readConfiguredEngine(projectRoot) {
     } catch { /* skip */ }
   }
 
-  try {
-    execFileSync('which', ['codex'], { stdio: 'ignore' });
-    return 'codex';
-  } catch {
-    return 'claude';
-  }
+  // Codex is opt-in. Having the binary installed is not a statement of intent,
+  // and treating it as one silently locks every ontology-tracked file behind
+  // /codex-delegate for users who never asked for it. To route work through
+  // Codex, set implementationEngine: "codex" or CLAUDE_IMPL_ENGINE=codex.
+  return 'claude';
 }
 
 function detectPinnedImplementationEngine(projectRoot) {

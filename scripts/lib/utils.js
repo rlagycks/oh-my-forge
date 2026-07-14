@@ -365,12 +365,21 @@ function appendFile(filePath, content) {
 /**
  * Detect which implementation engine to use: "codex" or "claude".
  *
+ * Codex is opt-in: it must be requested explicitly. Merely having the binary
+ * installed is not a statement of intent, and treating it as one used to route
+ * work to Codex — and lock ontology-tracked files behind /codex-delegate — for
+ * users who never asked for it.
+ *
  * Resolution order (first match wins):
  * 1. CLAUDE_IMPL_ENGINE environment variable
  * 2. Project-level .claude/settings.json implementationEngine field
  * 3. Global ~/.claude/settings.json implementationEngine field
- * 4. Auto-detect: if `codex` binary is not in PATH → "claude"
- * 5. Default: "codex"
+ * 4. Default: "claude"
+ *
+ * Kept in lockstep with detectPinnedImplementationEngine() in
+ * scripts/lib/implementation-engine.js — the two must never disagree, or /plan
+ * would delegate to Codex while the guards allow direct Claude edits.
+ * tests/lib/implementation-engine.test.js asserts they agree.
  *
  * @returns {"codex"|"claude"}
  */
@@ -401,11 +410,8 @@ function detectImplementationEngine() {
     } catch { /* ignore parse errors */ }
   }
 
-  // 4. Auto-detect: fall back to "claude" if codex binary is absent
-  if (!commandExists('codex')) return 'claude';
-
-  // 5. Default
-  return 'codex';
+  // 4. Default — Codex must be opted into explicitly (see above).
+  return 'claude';
 }
 
 /**

@@ -4,7 +4,16 @@
 
 OpenAI Codex CLI를 OMF에 통합하여 Claude(오케스트레이터)와 Codex(구현자)의 하이브리드 멀티 에이전트 구조를 구성하는 시스템. `config.toml`이 Codex 행동을 제어(sandbox, approval, 역할별 지시)하고, `openai-codex` 플러그인(구: `codex-plugin-cc`)이 Claude-Codex 통신 채널을 제공한다. `merge-mcp-config.js`가 OMF 관리 MCP 서버 설정을 `~/.codex/config.toml`에 안전하게 병합한다.
 
-> **Codex 없이도 사용 가능**: `codex` 바이너리가 PATH에 없으면 `/plan`이 자동으로 `/claude-implement`로 폴백한다. Claude만 구독 중인 유저는 별도 설정 없이 동일한 온톨로지 GPS 워크플로우를 사용할 수 있다. 엔진 감지 로직은 `scripts/lib/utils.js`의 `detectImplementationEngine()`을 참고.
+> **Codex는 옵트인(opt-in)이다**: 기본 엔진은 `claude`다. `codex` 바이너리가 설치돼 있다는 사실만으로는 Codex 위임이 켜지지 않는다 — 바이너리 존재는 사용자의 의도가 아니며, 이를 의도로 간주하면 Codex를 요청한 적 없는 사용자의 온톨로지 추적 파일이 전부 `/codex-delegate` 뒤로 잠긴다.
+>
+> Codex로 라우팅하려면 명시적으로 설정한다:
+>
+> - `.claude/settings.json` (프로젝트) 또는 `~/.claude/settings.json` (전역)에 `"implementationEngine": "codex"`
+> - 또는 환경변수 `CLAUDE_IMPL_ENGINE=codex`
+>
+> 설정이 없으면 `/plan`은 `/claude-implement`로 가고, codex 가드는 직접 편집을 허용한다. Claude만 구독 중인 유저는 별도 설정 없이 동일한 온톨로지 GPS 워크플로우를 사용할 수 있다.
+>
+> 엔진 해석은 두 곳에서 동일하게 구현돼 있으며 서로 일치해야 한다 — `scripts/lib/implementation-engine.js`의 `detectPinnedImplementationEngine()` (가드용)과 `scripts/lib/utils.js`의 `detectImplementationEngine()` (`/plan` 라우팅용).
 
 ## 진입점
 

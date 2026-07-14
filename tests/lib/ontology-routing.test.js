@@ -189,6 +189,47 @@ if (test('matchFileToDomain supports exact file, directory prefix, and slug matc
   }
 })) passed++; else failed++;
 
+// Regression for #59: the slug fallback exists to infer coordinates for
+// split-format domains that do NOT enumerate their files. Applying it to a
+// domain that already declares files[] turns any same-named path segment
+// anywhere in the tree into a false match — e.g. tests/exact/... claiming to
+// be domain_exact source, or a consumer project's own src/session/ claiming
+// to be this plugin's domain_session.
+if (test('slug matching does not apply to domains that declare explicit files', () => {
+  const fixture = makeFixture();
+  try {
+    const ontologyRoot = fixture.projectRoot;
+    const maps = loadOntologyMaps(ontologyRoot);
+
+    // domain_exact declares files: ['src/tracked.js'], so the bare segment
+    // "exact" must not pull unrelated paths into that domain.
+    const falsePositive = matchFileToDomain({
+      filePath: path.join(fixture.projectRoot, 'tests', 'exact', 'helper.test.js'),
+      ontologyRoot,
+      fileMap: maps.fileMap,
+    });
+    assert.strictEqual(falsePositive, null, 'a path segment must not match a domain that enumerates its files');
+
+    // domain_src declares files: ['src/'], likewise.
+    const prefixDomainFalsePositive = matchFileToDomain({
+      filePath: path.join(fixture.projectRoot, 'docs', 'src', 'notes.md'),
+      ontologyRoot,
+      fileMap: maps.fileMap,
+    });
+    assert.strictEqual(prefixDomainFalsePositive, null, 'a segment must not match a directory-prefix domain out of tree');
+
+    // But the split-format case still works: domain_inventory has files: [].
+    const stillMatches = matchFileToDomain({
+      filePath: path.join(fixture.projectRoot, 'services', 'inventory', 'service.js'),
+      ontologyRoot,
+      fileMap: maps.fileMap,
+    });
+    assert.strictEqual(stillMatches.domainKey, 'domain_inventory');
+  } finally {
+    fs.rmSync(fixture.root, { recursive: true, force: true });
+  }
+})) passed++; else failed++;
+
 if (test('sourceDocs paths are routable without loading the raw markdown content', () => {
   const fixture = makeFixture();
   try {

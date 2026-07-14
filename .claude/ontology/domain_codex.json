@@ -111,7 +111,8 @@
     "codex-companion.mjs task 호출은 인라인 positional 프롬프트 금지 — --prompt-file 사용 필수|pattern:companion.mjs task \"",
     "codex-rescue 에이전트 수정 시 반드시 fail-fast 보장 — 재시도 루프 추가 금지|pattern:retry",
     "[prevention] Codex guard asymmetry: pre-write-edit-codex-guard blocks Edit/Write on ontology-tracked meta files, but pre-bash-codex-guard exempts the same meta-path prefixes and ignores ECC_BYPASS_CODEX_GUARD — Bash-level writes bypass the policy entirely|pattern:Align the two guards: pre-bash-codex-guard should honor ECC_BYPASS_CODEX_GUARD and apply the same self-repo meta-path gate as pre-write-edit-codex-guard (or exempt symmetrically). Not fixed in this pass — out of approved scope; recorded for follow-up.",
-    "[prevention] Codex-first pin has no fallback when Codex itself is unavailable: three agents were blocked mid-task by codex quota exhaustion (resets 2026-07-13)|pattern:Follow-up: on codex dispatch failure with a usage-limit/availability error, guards should honor a session-scoped engine downgrade instead of hard-blocking"
+    "[prevention] Codex-first pin has no fallback when Codex itself is unavailable: three agents were blocked mid-task by codex quota exhaustion (resets 2026-07-13)|pattern:Follow-up: on codex dispatch failure with a usage-limit/availability error, guards should honor a session-scoped engine downgrade instead of hard-blocking",
+    "Codex는 옵트인 — implementationEngine 설정(settings.json) 또는 CLAUDE_IMPL_ENGINE 없이는 codex로 라우팅하지 않는다. `which codex` 같은 바이너리 존재 감지를 엔진 선택 근거로 삼지 말 것 (바이너리 존재는 사용자 의도가 아님)|pattern:execFileSync('which', ['codex']"
   ],
   "vsClaudeCode": {
     "hooks": "Codex는 훅 없음 — approval_policy + sandbox_mode + notify로 대체",

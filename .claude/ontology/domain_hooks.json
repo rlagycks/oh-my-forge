@@ -238,7 +238,8 @@
     "pre-write-edit-codex-guard는 implementationEngine를 세션 단위로 고정하고, .claude/settings.json의 implementationEngine 변경은 explicit bypass 없이 차단",
     "ontology packet은 deprecated/stale/superseded/expired 항목을 제외하고 freshness(updatedAt > lastSeenAt > createdAt > date) 정렬 후 profile limit을 적용한다",
     "[prevention] error-tracker.js was registered on PostToolUse, which never fires for failed Bash commands — the error→edit→/decide chain was silently dead|pattern:Constraint added to domain_hooks: failure-tracking hooks must register on PostToolUseFailure; never gate on tool_response.exitCode (field does not exist for Bash)",
-    "실패 추적 훅은 PostToolUseFailure에 등록 — PostToolUse는 성공 시에만 발생하며 Bash tool_response에 exitCode 필드는 존재하지 않음|pattern:tool_response.exitcode"
+    "실패 추적 훅은 PostToolUseFailure에 등록 — PostToolUse는 성공 시에만 발생하며 Bash tool_response에 exitCode 필드는 존재하지 않음|pattern:tool_response.exitcode",
+    "온톨로지 슬러그 폴백 매칭은 files[]/source[]가 비어 있는 도메인에만 적용 — 명시적 파일 목록이 있는 도메인에 슬러그 매칭을 걸면 경로 세그먼트가 같은 무관한 파일(소비자 프로젝트의 src/session/ 등)이 오탐된다"
   ],
   "executionContract": {
     "mission": "훅은 빠르게 신호를 캡처하고 컨텍스트를 주입하되, 무거운 판정은 런타임과 CI에 넘긴다.",
