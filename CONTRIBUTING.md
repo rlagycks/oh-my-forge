@@ -209,7 +209,7 @@ PRs that skip the checklist or break tests will not be merged.
 
 ## Reporting a Bug
 
-Use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.md).
+Use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.yml).
 
 Include:
 - What you did

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contributing guide
+    url: https://github.com/rlagycks/oh-my-forge/blob/main/CONTRIBUTING.md
+    about: Read this before filing an issue or opening a PR — setup, project structure, testing.
+  - name: Feature docs (docs/features/)
+    url: https://github.com/rlagycks/oh-my-forge/tree/main/docs/features
+    about: Check whether the behavior you're seeing is already documented as intentional.
