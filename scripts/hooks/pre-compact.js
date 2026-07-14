@@ -21,6 +21,7 @@ const {
   log
 } = require('../lib/utils');
 const { buildContinuityPacket } = require('../lib/continuity-packet');
+const { clearInjected } = require('../lib/inject-dedup');
 
 // Matches both the legacy per-compaction marker line (with its leading
 // separator) and the consolidated marker this hook now writes, so repeated
@@ -75,6 +76,10 @@ async function main() {
   // Log compaction event with timestamp
   const timestamp = getDateTimeString();
   appendFile(compactionLog, `[${timestamp}] Context compaction triggered\n`);
+
+  // Compaction can drop injected domain context while session_id stays the
+  // same, so reset dedup state or domains may never re-inject this session.
+  clearInjected();
 
   // If there's an active session file, note the compaction. findFiles()
   // already sorts results newest-mtime-first, so [0] is the most recently

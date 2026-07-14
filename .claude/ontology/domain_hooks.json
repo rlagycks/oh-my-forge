@@ -12,7 +12,8 @@
     "scripts/lib/implementation-engine.js",
     "scripts/lib/ontology-packet.js",
     "scripts/lib/ontology-routing.js",
-    "scripts/lib/hook-flags.js"
+    "scripts/lib/hook-flags.js",
+    "scripts/lib/inject-dedup.js"
   ],
   "summary": "Claude Code 훅 시스템. PreToolUse/PostToolUse/Stop/SessionStart 이벤트에 반응하여 품질 게이트, 보안 검사, 세션 관리, 포맷/타입체크 자동화 실행.",
   "models": [
