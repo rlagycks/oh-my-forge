@@ -107,7 +107,7 @@ function bothEngines(projectRoot) {
   const { detectImplementationEngine } = freshRequire(utilsPath);
   return {
     pinned: detectPinnedImplementationEngine(projectRoot),
-    plan: detectImplementationEngine(),
+    plan: detectImplementationEngine(projectRoot),
   };
 }
 
@@ -192,6 +192,60 @@ if (test('an explicit claude setting stays claude', () => {
     const { pinned, plan } = bothEngines(projectRoot);
     assert.strictEqual(pinned, 'claude');
     assert.strictEqual(plan, 'claude');
+  });
+})) passed++; else failed++;
+
+// --- The two resolvers must agree even when cwd is not the project root ---
+
+// The guard resolves projectRoot by walking up from the edited file, while
+// /plan resolves a routingRoot — neither is necessarily process.cwd(). If only
+// one of them consults the project's settings.json, a user who opted into Codex
+// at the project root but is working from a subdirectory gets a split brain:
+// the guard blocks direct edits ("delegate to Codex") while /plan implements
+// inline as Claude. Both resolvers must therefore accept an explicit root.
+if (test('both resolvers honor a project-root setting when cwd is a subdirectory', () => {
+  withProject({ projectEngine: 'codex' }, (projectRoot) => {
+    const nested = path.join(projectRoot, 'packages', 'app');
+    fs.mkdirSync(nested, { recursive: true });
+    const cwdBefore = process.cwd();
+    process.chdir(nested);
+    try {
+      const { pinned, plan } = bothEngines(projectRoot);
+      assert.strictEqual(pinned, 'codex', 'guard-side must see the project-root opt-in');
+      assert.strictEqual(plan, 'codex', '/plan-side must see the same project-root opt-in');
+    } finally {
+      process.chdir(cwdBefore);
+    }
+  });
+})) passed++; else failed++;
+
+// --- A pin written before Codex became opt-in must not survive the upgrade ---
+
+// detectPinnedImplementationEngine caches the resolved engine to a tmp file.
+// Pins written by the old auto-detecting code recorded engine: "codex" for
+// users who never opted in; without invalidation those users keep getting the
+// codex-first lockdown after upgrading, silently defeating this whole change.
+if (test('a stale pre-opt-in pin does not keep forcing codex', () => {
+  withProject({}, (projectRoot) => {
+    const { getPinnedEnginePath, detectPinnedImplementationEngine } = freshRequire(enginePath);
+    // Simulate what the old code wrote: bare {engine} with no policy marker.
+    fs.writeFileSync(getPinnedEnginePath(projectRoot), JSON.stringify({ engine: 'codex' }), 'utf8');
+
+    assert.strictEqual(
+      detectPinnedImplementationEngine(projectRoot),
+      'claude',
+      'a pin with no opt-in policy marker must be ignored and re-resolved'
+    );
+  });
+})) passed++; else failed++;
+
+if (test('a pin written by the current policy is still honored', () => {
+  withProject({ projectEngine: 'codex' }, (projectRoot) => {
+    const { detectPinnedImplementationEngine } = freshRequire(enginePath);
+    // First call resolves from settings and writes a current-policy pin.
+    assert.strictEqual(detectPinnedImplementationEngine(projectRoot), 'codex');
+    // Second call must read that pin back rather than re-resolving from scratch.
+    assert.strictEqual(detectPinnedImplementationEngine(projectRoot), 'codex');
   });
 })) passed++; else failed++;
 

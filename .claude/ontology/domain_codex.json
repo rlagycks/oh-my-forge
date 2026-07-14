@@ -112,7 +112,9 @@
     "codex-rescue 에이전트 수정 시 반드시 fail-fast 보장 — 재시도 루프 추가 금지|pattern:retry",
     "[prevention] Codex guard asymmetry: pre-write-edit-codex-guard blocks Edit/Write on ontology-tracked meta files, but pre-bash-codex-guard exempts the same meta-path prefixes and ignores ECC_BYPASS_CODEX_GUARD — Bash-level writes bypass the policy entirely|pattern:Align the two guards: pre-bash-codex-guard should honor ECC_BYPASS_CODEX_GUARD and apply the same self-repo meta-path gate as pre-write-edit-codex-guard (or exempt symmetrically). Not fixed in this pass — out of approved scope; recorded for follow-up.",
     "[prevention] Codex-first pin has no fallback when Codex itself is unavailable: three agents were blocked mid-task by codex quota exhaustion (resets 2026-07-13)|pattern:Follow-up: on codex dispatch failure with a usage-limit/availability error, guards should honor a session-scoped engine downgrade instead of hard-blocking",
-    "Codex는 옵트인 — implementationEngine 설정(settings.json) 또는 CLAUDE_IMPL_ENGINE 없이는 codex로 라우팅하지 않는다. `which codex` 같은 바이너리 존재 감지를 엔진 선택 근거로 삼지 말 것 (바이너리 존재는 사용자 의도가 아님)|pattern:execFileSync('which', ['codex']"
+    "Codex는 옵트인 — implementationEngine 설정(settings.json) 또는 CLAUDE_IMPL_ENGINE 없이는 codex로 라우팅하지 않는다. `which codex` 같은 바이너리 존재 감지를 엔진 선택 근거로 삼지 말 것 (바이너리 존재는 사용자 의도가 아님)|pattern:execFileSync('which', ['codex']",
+    "엔진 해석 정책은 scripts/lib/implementation-engine.js의 readConfiguredEngine()이 단일 소유 — utils.js의 detectImplementationEngine()은 여기에 위임한다. 정책을 두 곳에 복제하면 cwd≠projectRoot일 때 가드는 codex로 차단하고 /plan은 claude로 인라인 구현하는 split-brain이 발생|pattern:function detectImplementationEngine",
+    "엔진 pin 파일은 ENGINE_PIN_POLICY 마커를 포함해야 하며, 마커가 불일치하면 무시하고 재해석한다 — 정책 변경 시 캐시된 구 판정이 조용히 살아남아 수정을 무력화한다"
   ],
   "vsClaudeCode": {
     "hooks": "Codex는 훅 없음 — approval_policy + sandbox_mode + notify로 대체",
