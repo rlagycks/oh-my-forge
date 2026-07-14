@@ -16,7 +16,7 @@ OMF 세션 데이터, 스킬 이력, 오케스트레이션 상태를 SQLite(sql.
 - sql.js(WASM) 의존성 유지 — better-sqlite3로 교체 금지 (Node.js 바이너리 빌드 의존성 없앤 이유)
 - 트랜잭션 없이 직접 쓰기 금지 — 모든 변경은 트랜잭션으로 감쌀 것
 - 마이그레이션은 항상 멱등 (이미 적용된 버전 재실행 시 오류 없이 통과)
-- DB 파일 경로 기본값: `~/.claude/ecc-state.db`
+- DB 파일 경로 기본값: `~/.claude/ecc/state.db`
 
 ## 관련 도메인
 
