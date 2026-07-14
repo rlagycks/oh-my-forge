@@ -171,7 +171,7 @@ function runDelegate(argv) {
   const explicitEngine = readFlag('--engine', argv);
   const engine = explicitEngine === 'claude' || explicitEngine === 'codex'
     ? explicitEngine
-    : detectImplementationEngine();
+    : detectImplementationEngine(routingRoot);
 
   const markdown = readInputMarkdown(argv);
   const featureName = readFlag('--feature-name', argv) || undefined;

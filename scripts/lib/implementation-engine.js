@@ -4,7 +4,6 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const { execFileSync } = require('child_process');
 
 function getSessionKey() {
   if (process.env.CLAUDE_SESSION_ID) return process.env.CLAUDE_SESSION_ID;
@@ -20,9 +19,17 @@ function getPinnedEnginePath(projectRoot) {
   return path.join(os.tmpdir(), `ecc-codex-engine-${getSessionKey()}-${rootHash}.json`);
 }
 
+// Stamped into every pin this version writes. Pins written before Codex became
+// opt-in carry no marker: they recorded engine: "codex" purely because a codex
+// binary was on PATH, and honoring them after the upgrade would keep forcing the
+// codex-first lockdown on users who never opted in. Bump this whenever a change
+// to the resolution policy makes previously-cached verdicts wrong.
+const ENGINE_PIN_POLICY = 'codex-opt-in-v1';
+
 function loadPinnedEngine(projectRoot) {
   try {
     const data = JSON.parse(fs.readFileSync(getPinnedEnginePath(projectRoot), 'utf8'));
+    if (data?.policy !== ENGINE_PIN_POLICY) return null;
     return data?.engine === 'claude' || data?.engine === 'codex' ? data.engine : null;
   } catch {
     return null;
@@ -31,7 +38,11 @@ function loadPinnedEngine(projectRoot) {
 
 function savePinnedEngine(projectRoot, engine) {
   try {
-    fs.writeFileSync(getPinnedEnginePath(projectRoot), JSON.stringify({ engine }), 'utf8');
+    fs.writeFileSync(
+      getPinnedEnginePath(projectRoot),
+      JSON.stringify({ engine, policy: ENGINE_PIN_POLICY }),
+      'utf8'
+    );
   } catch { /* never block on state save failure */ }
 }
 
@@ -54,12 +65,11 @@ function readConfiguredEngine(projectRoot) {
     } catch { /* skip */ }
   }
 
-  try {
-    execFileSync('which', ['codex'], { stdio: 'ignore' });
-    return 'codex';
-  } catch {
-    return 'claude';
-  }
+  // Codex is opt-in. Having the binary installed is not a statement of intent,
+  // and treating it as one silently locks every ontology-tracked file behind
+  // /codex-delegate for users who never asked for it. To route work through
+  // Codex, set implementationEngine: "codex" or CLAUDE_IMPL_ENGINE=codex.
+  return 'claude';
 }
 
 function detectPinnedImplementationEngine(projectRoot) {
@@ -93,7 +103,10 @@ function touchesImplementationEngine(text) {
 }
 
 module.exports = {
+  ENGINE_PIN_POLICY,
   detectPinnedImplementationEngine,
+  getPinnedEnginePath,
+  readConfiguredEngine,
   readImplementationEngineValue,
   touchesImplementationEngine,
 };

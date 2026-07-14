@@ -365,47 +365,31 @@ function appendFile(filePath, content) {
 /**
  * Detect which implementation engine to use: "codex" or "claude".
  *
+ * Codex is opt-in: it must be requested explicitly. Merely having the binary
+ * installed is not a statement of intent, and treating it as one used to route
+ * work to Codex — and lock ontology-tracked files behind /codex-delegate — for
+ * users who never asked for it.
+ *
  * Resolution order (first match wins):
  * 1. CLAUDE_IMPL_ENGINE environment variable
  * 2. Project-level .claude/settings.json implementationEngine field
+ *    (checked at both process.cwd() and the caller-supplied projectRoot)
  * 3. Global ~/.claude/settings.json implementationEngine field
- * 4. Auto-detect: if `codex` binary is not in PATH → "claude"
- * 5. Default: "codex"
+ * 4. Default: "claude"
  *
+ * This delegates to readConfiguredEngine() in scripts/lib/implementation-engine.js
+ * rather than reimplementing the policy. The guards resolve their engine through
+ * that same function, and a second copy here previously drifted: it consulted
+ * only process.cwd(), so a project-root opt-in was invisible to /plan whenever
+ * the cwd was a subdirectory — the guards would block direct edits as "codex"
+ * while /plan implemented inline as "claude".
+ *
+ * @param {string} [projectRoot] - Project/routing root, when known. Defaults to cwd.
  * @returns {"codex"|"claude"}
  */
-function detectImplementationEngine() {
-  // 1. Environment variable override
-  const envEngine = process.env.CLAUDE_IMPL_ENGINE;
-  if (envEngine === 'claude' || envEngine === 'codex') return envEngine;
-
-  // 2. Project-level settings
-  const projectSettings = readFile(path.join(process.cwd(), '.claude', 'settings.json'));
-  if (projectSettings) {
-    try {
-      const parsed = JSON.parse(projectSettings);
-      if (parsed.implementationEngine === 'claude' || parsed.implementationEngine === 'codex') {
-        return parsed.implementationEngine;
-      }
-    } catch { /* ignore parse errors */ }
-  }
-
-  // 3. Global settings
-  const globalSettings = readFile(path.join(getClaudeDir(), 'settings.json'));
-  if (globalSettings) {
-    try {
-      const parsed = JSON.parse(globalSettings);
-      if (parsed.implementationEngine === 'claude' || parsed.implementationEngine === 'codex') {
-        return parsed.implementationEngine;
-      }
-    } catch { /* ignore parse errors */ }
-  }
-
-  // 4. Auto-detect: fall back to "claude" if codex binary is absent
-  if (!commandExists('codex')) return 'claude';
-
-  // 5. Default
-  return 'codex';
+function detectImplementationEngine(projectRoot) {
+  const { readConfiguredEngine } = require('./implementation-engine');
+  return readConfiguredEngine(projectRoot || process.cwd());
 }
 
 /**

@@ -160,8 +160,19 @@ function loadOntologyMaps(ontologyRoot) {
         }
       }
 
+      // The slug fallback infers coordinates for split-format domains that do
+      // not enumerate their files (e.g. domain_ar -> any src/**/ar/** path).
+      // Registering it for a domain that DOES declare files turns every
+      // same-named path segment anywhere in the tree into a false match — a
+      // consumer project's own src/session/ would be claimed by this plugin's
+      // domain_session, and tests/hooks/*.test.js by domain_hooks. Only fall
+      // back to slug inference when the domain gives us nothing better.
+      const hasExplicitCoordinates =
+        (Array.isArray(entry.files) && entry.files.length > 0) ||
+        (Array.isArray(entry.source) && entry.source.length > 0);
+
       const slug = domainSlug(domainKey);
-      if (slug) {
+      if (slug && !hasExplicitCoordinates) {
         fileMap[`__slug__${normalizeOntologyPath(slug)}`] = normalizedEntry;
       }
     }
