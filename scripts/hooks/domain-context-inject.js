@@ -40,7 +40,6 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const crypto = require('crypto');
 const {
   resolveProjectOntologyRoot,
   loadOntologyMaps,
@@ -50,35 +49,10 @@ const {
 const { buildDomainPacket } = require('../lib/ontology-packet');
 const { traverseDependsOn } = require('../lib/ontology-blast-radius');
 const { loadInstinctsForDomain, selectTopInstincts } = require('../lib/instinct-loader');
+const { loadInjected, saveInjected } = require('../lib/inject-dedup');
 
 const RECALL_LOG_PATH = path.join(os.homedir(), '.claude', 'logs', 'recall-hits.jsonl');
 const DOMAIN_INSTINCT_CAP = 2;
-
-// --- Session-scoped deduplication ---
-
-function getSessionKey() {
-  if (process.env.CLAUDE_SESSION_ID) return process.env.CLAUDE_SESSION_ID;
-  return crypto.createHash('sha1').update(process.cwd()).digest('hex').slice(0, 12);
-}
-
-function getStatePath() {
-  return path.join(os.tmpdir(), `ecc-injected-${getSessionKey()}.json`);
-}
-
-function loadInjected() {
-  try {
-    const data = JSON.parse(fs.readFileSync(getStatePath(), 'utf8'));
-    return Array.isArray(data) ? new Set(data) : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-function saveInjected(set) {
-  try {
-    fs.writeFileSync(getStatePath(), JSON.stringify([...set]), 'utf8');
-  } catch { /* ignore write errors — never block */ }
-}
 
 function sourceDocEntries(sourceDocs = {}) {
   return Object.entries(normalizeSourceDocs(sourceDocs));
