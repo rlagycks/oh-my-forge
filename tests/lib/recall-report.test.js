@@ -123,6 +123,19 @@ if (test('filterSince returns all records when sinceMs is null', () => {
   assert.strictEqual(filterSince(records, null).length, 2);
 })) passed++; else failed++;
 
+if (test('filterSince treats sinceMs of 0 as a zero-width window, not "no filter"', () => {
+  // Regression: a zero-magnitude window like "0d" must not be conflated with
+  // "no --since given" just because 0 is falsy.
+  const now = Date.parse('2026-07-10T00:00:00.000Z');
+  const records = [
+    { ts: '2026-07-09T23:59:59.999Z' }, // 1ms before now — outside a zero-width window
+    { ts: '2026-07-10T00:00:00.000Z' }, // exactly now — inside a zero-width window
+  ];
+  const result = filterSince(records, 0, now);
+  assert.strictEqual(result.length, 1);
+  assert.strictEqual(result[0].ts, '2026-07-10T00:00:00.000Z');
+})) passed++; else failed++;
+
 if (test('aggregateByDomain sums kinds/chars per domain and sorts by hits desc', () => {
   const records = [
     JSON.parse(hit({ ts: '2026-07-01T00:00:00.000Z', domain: 'domain_a', constraints: 1, chars: 10 })),

@@ -74,7 +74,7 @@ function parseSince(since) {
  * @returns {object[]}
  */
 function filterSince(records, sinceMs, now = Date.now()) {
-  if (!sinceMs) return records;
+  if (sinceMs === null) return records;
   const cutoff = now - sinceMs;
   return records.filter((record) => {
     const ts = Date.parse(record.ts);
