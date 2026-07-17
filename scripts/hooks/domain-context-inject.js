@@ -39,7 +39,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const {
   resolveProjectOntologyRoot,
   loadOntologyMaps,
@@ -50,8 +49,14 @@ const { buildDomainPacket } = require('../lib/ontology-packet');
 const { traverseDependsOn } = require('../lib/ontology-blast-radius');
 const { loadInstinctsForDomain, selectTopInstincts } = require('../lib/instinct-loader');
 const { loadInjected, saveInjected } = require('../lib/inject-dedup');
+const {
+  EVENT_TYPES,
+  appendEventAsync,
+  createEvent,
+  getDefaultEventLogPath,
+} = require('../lib/harness-events');
 
-const RECALL_LOG_PATH = path.join(os.homedir(), '.claude', 'logs', 'recall-hits.jsonl');
+const RECALL_LOG_PATH = getDefaultEventLogPath();
 const DOMAIN_INSTINCT_CAP = 2;
 
 function sourceDocEntries(sourceDocs = {}) {
@@ -100,10 +105,31 @@ function selectRecentDecisions(entry, max = 3) {
  * @param {number} hit.instincts
  * @param {number} hit.chars
  */
-function logRecallHit(hit) {
+function logRecallHit(hit, input, latencyMs) {
   try {
-    const line = `${JSON.stringify({
-      ts: new Date().toISOString(),
+    const sessionId = input.session_id || process.env.CLAUDE_SESSION_ID || null;
+    const event = createEvent({
+      eventType: EVENT_TYPES.CONTEXT_INJECTION,
+      source: 'domain-context-inject',
+      episodeId: process.env.OMF_EPISODE_ID || sessionId,
+      sessionId,
+      payload: {
+        domain: hit.domain,
+        itemCounts: {
+          constraints: hit.constraints,
+          decisions: hit.decisions,
+          instincts: hit.instincts,
+        },
+        chars: hit.chars,
+        tokenEstimate: Math.ceil(hit.chars / 4),
+        latencyMs,
+      },
+    });
+
+    // Keep the legacy top-level fields for existing consumers and older
+    // installations while the event payload becomes the canonical shape.
+    const legacyCompatibleEvent = {
+      ...event,
       domain: hit.domain,
       kinds: {
         constraints: hit.constraints,
@@ -111,12 +137,8 @@ function logRecallHit(hit) {
         instincts: hit.instincts,
       },
       chars: hit.chars,
-    })}\n`;
-
-    fs.mkdir(path.dirname(RECALL_LOG_PATH), { recursive: true }, (mkdirErr) => {
-      if (mkdirErr) return;
-      fs.appendFile(RECALL_LOG_PATH, line, () => { /* fire-and-forget */ });
-    });
+    };
+    appendEventAsync(legacyCompatibleEvent, RECALL_LOG_PATH);
   } catch {
     /* never let recall instrumentation block or crash the hook */
   }
@@ -125,6 +147,7 @@ function logRecallHit(hit) {
 // --- Main ---
 
 function run(rawInput) {
+  const startedAt = Date.now();
   let input;
   try {
     input = JSON.parse(rawInput);
@@ -268,7 +291,7 @@ function run(rawInput) {
     decisions: recentDecisions.length,
     instincts: domainInstincts.length,
     chars: injectedText.length,
-  });
+  }, input, Date.now() - startedAt);
 
   // Mark primary domain (and shown dep domains) as injected
   injected.add(entry.domainKey);

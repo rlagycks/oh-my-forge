@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "suite": "omf-harness-effectiveness",
+  "description": "Small, deterministic starting set for measuring whether OMF context and failure memory improve coding-agent work.",
+  "tasks": [
+    {
+      "id": "observability-recall-backward-compatibility",
+      "prompt": "Extend the recall report without breaking legacy recall-hits.jsonl records. Add a regression test for mixed legacy and structured events.",
+      "tags": ["observability", "backward-compatibility"],
+      "success_criteria": [
+        "Legacy injection records remain readable",
+        "Structured task outcomes are reported",
+        "Tests cover both event shapes"
+      ],
+      "verification": {
+        "argv": ["node", "scripts/recall-report.js", "--help"],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "ontology-guard-regression",
+      "prompt": "Add a machine-checkable ontology constraint to a high-risk domain and verify that the guard emits a warning for a matching edit without blocking the tool.",
+      "tags": ["ontology", "constraint-guard", "regression"],
+      "success_criteria": [
+        "The constraint is schema-valid",
+        "A matching edit produces a warning",
+        "The original tool input is passed through"
+      ],
+      "verification": {
+        "argv": ["node", "scripts/ci/validate-ontology.js"],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "session-continuity-preservation",
+      "prompt": "Preserve the next action and evidence when a long-running session is compacted, without duplicating continuity packets on repeated compactions.",
+      "tags": ["session", "compaction", "continuity"],
+      "success_criteria": [
+        "The continuity packet survives compaction",
+        "Repeated compaction replaces rather than duplicates the packet",
+        "The session hook remains safe with empty state"
+      ],
+      "verification": {
+        "argv": ["node", "tests/run-all.js"],
+        "expected_exit_code": 0
+      }
+    }
+  ]
+}

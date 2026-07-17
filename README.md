@@ -342,6 +342,24 @@ oh-my-forge does not send local hook telemetry to a hosted analytics service, bu
 Hook processing runs locally inside Claude Code.
 Network access can still occur when you opt into MCP servers or use tools that call external services.
 
+### Harness effectiveness events
+
+The existing `~/.claude/logs/recall-hits.jsonl` stream also accepts structured, privacy-preserving harness events. Context injections and task outcomes can share an `episode_id`, allowing offline analysis of whether injected context helped without storing raw prompts or context text.
+
+```bash
+node scripts/record-harness-event.js \
+  --type task_outcome \
+  --episode episode-123 \
+  --outcome success \
+  --input-tokens 1200 \
+  --output-tokens 300 \
+  --tests-passed true
+
+node scripts/recall-report.js --json
+```
+
+See `docs/evals/golden-tasks.json` for the initial replay suite definition.
+
 ---
 
 ## Based on

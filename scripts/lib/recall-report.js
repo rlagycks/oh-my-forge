@@ -10,15 +10,38 @@
  * hit counts and a time-window filter, surfaced via scripts/recall-report.js.
  */
 
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+const {
+  EVENT_TYPES,
+  getDefaultEventLogPath,
+  readEvents,
+} = require('./harness-events');
 
 const SINCE_UNIT_MS = { s: 1000, m: 60 * 1000, h: 60 * 60 * 1000, d: 24 * 60 * 60 * 1000 };
 const SINCE_PATTERN = /^(\d+)([smhd])$/;
 
 function getDefaultRecallLogPath() {
-  return path.join(os.homedir(), '.claude', 'logs', 'recall-hits.jsonl');
+  return getDefaultEventLogPath();
+}
+
+function toLegacyRecallRecord(event) {
+  if (!event || event.event_type !== EVENT_TYPES.CONTEXT_INJECTION) return null;
+  return {
+    ts: event.ts,
+    domain: event.payload?.domain,
+    episode_id: event.episode_id || null,
+    session_id: event.session_id || null,
+    kinds: {
+      constraints: Number(event.payload?.item_counts?.constraints) || 0,
+      decisions: Number(event.payload?.item_counts?.decisions) || 0,
+      instincts: Number(event.payload?.item_counts?.instincts) || 0,
+    },
+    chars: Number(event.payload?.chars) || 0,
+    token_estimate: Number(event.payload?.token_estimate) || 0,
+  };
+}
+
+function readHarnessEvents(logPath) {
+  return readEvents(logPath);
 }
 
 /**
@@ -27,32 +50,13 @@ function getDefaultRecallLogPath() {
  * @returns {{records: object[], skipped: number}}
  */
 function readRecallHits(logPath) {
-  const resolvedPath = logPath || getDefaultRecallLogPath();
-  if (!fs.existsSync(resolvedPath)) {
-    return { records: [], skipped: 0 };
-  }
-
-  const lines = fs.readFileSync(resolvedPath, 'utf8').split(/\r?\n/).filter(Boolean);
-  const records = [];
-  let skipped = 0;
-
-  for (const line of lines) {
-    let parsed;
-    try {
-      parsed = JSON.parse(line);
-    } catch {
-      skipped += 1;
-      continue;
-    }
-
-    if (parsed && typeof parsed.domain === 'string' && typeof parsed.ts === 'string') {
-      records.push(parsed);
-    } else {
-      skipped += 1;
-    }
-  }
-
-  return { records, skipped };
+  const { events, skipped } = readHarnessEvents(logPath || getDefaultRecallLogPath());
+  return {
+    records: events
+      .filter(event => event.event_type === EVENT_TYPES.CONTEXT_INJECTION)
+      .map(toLegacyRecallRecord),
+    skipped,
+  };
 }
 
 /**
@@ -91,19 +95,81 @@ function aggregateByDomain(records) {
   const byDomain = new Map();
 
   for (const record of records) {
-    const key = record.domain;
+    const normalized = record.event_type ? toLegacyRecallRecord(record) : record;
+    if (!normalized || typeof normalized.domain !== 'string') continue;
+    const key = normalized.domain;
     if (!byDomain.has(key)) {
       byDomain.set(key, { domain: key, hits: 0, constraints: 0, decisions: 0, instincts: 0, chars: 0 });
     }
     const entry = byDomain.get(key);
     entry.hits += 1;
-    entry.constraints += Number(record.kinds?.constraints) || 0;
-    entry.decisions += Number(record.kinds?.decisions) || 0;
-    entry.instincts += Number(record.kinds?.instincts) || 0;
-    entry.chars += Number(record.chars) || 0;
+    entry.constraints += Number(normalized.kinds?.constraints) || 0;
+    entry.decisions += Number(normalized.kinds?.decisions) || 0;
+    entry.instincts += Number(normalized.kinds?.instincts) || 0;
+    entry.chars += Number(normalized.chars) || 0;
   }
 
   return [...byDomain.values()].sort((a, b) => b.hits - a.hits);
+}
+
+function aggregateOutcomes(events) {
+  const outcomes = events.filter(event => event.event_type === EVENT_TYPES.TASK_OUTCOME);
+  const result = {
+    total: outcomes.length,
+    successCount: 0,
+    failureCount: 0,
+    unknownCount: 0,
+    successRate: null,
+    inputTokens: 0,
+    outputTokens: 0,
+    toolCalls: 0,
+  };
+
+  for (const event of outcomes) {
+    const outcome = event.payload?.outcome;
+    if (outcome === 'success') result.successCount += 1;
+    else if (outcome === 'failure') result.failureCount += 1;
+    else result.unknownCount += 1;
+    result.inputTokens += Number(event.payload?.input_tokens) || 0;
+    result.outputTokens += Number(event.payload?.output_tokens) || 0;
+    result.toolCalls += Number(event.payload?.tool_calls) || 0;
+  }
+
+  const known = result.successCount + result.failureCount;
+  result.successRate = known > 0 ? Number(((result.successCount / known) * 100).toFixed(1)) : null;
+  return result;
+}
+
+function aggregateLinkedInjections(events) {
+  const injections = events.filter(event => event.event_type === EVENT_TYPES.CONTEXT_INJECTION);
+  const outcomesByEpisode = new Map();
+  for (const event of events) {
+    if (event.event_type === EVENT_TYPES.TASK_OUTCOME && event.episode_id) {
+      outcomesByEpisode.set(event.episode_id, event);
+    }
+  }
+
+  const result = {
+    total: injections.length,
+    withOutcome: 0,
+    successCount: 0,
+    failureCount: 0,
+    unknownCount: 0,
+    successRate: null,
+  };
+
+  for (const injection of injections) {
+    const outcome = injection.episode_id ? outcomesByEpisode.get(injection.episode_id) : null;
+    if (!outcome) continue;
+    result.withOutcome += 1;
+    if (outcome.payload.outcome === 'success') result.successCount += 1;
+    else if (outcome.payload.outcome === 'failure') result.failureCount += 1;
+    else result.unknownCount += 1;
+  }
+
+  const known = result.successCount + result.failureCount;
+  result.successRate = known > 0 ? Number(((result.successCount / known) * 100).toFixed(1)) : null;
+  return result;
 }
 
 /**
@@ -115,8 +181,14 @@ function aggregateByDomain(records) {
  * @returns {object}
  */
 function buildReport({ logPath, since, now } = {}) {
-  const { records, skipped } = readRecallHits(logPath);
-  const filtered = filterSince(records, parseSince(since), now);
+  const { events, skipped } = readHarnessEvents(logPath || getDefaultRecallLogPath());
+  const filteredEvents = filterSince(events, parseSince(since), now);
+  const records = events
+    .filter(event => event.event_type === EVENT_TYPES.CONTEXT_INJECTION)
+    .map(toLegacyRecallRecord);
+  const filtered = filteredEvents
+    .filter(event => event.event_type === EVENT_TYPES.CONTEXT_INJECTION)
+    .map(toLegacyRecallRecord);
   const byDomain = aggregateByDomain(filtered);
 
   const totals = byDomain.reduce((acc, domain) => ({
@@ -133,9 +205,13 @@ function buildReport({ logPath, since, now } = {}) {
     since: since || null,
     totalRecords: records.length,
     matchedRecords: filtered.length,
+    totalEvents: events.length,
+    matchedEvents: filteredEvents.length,
     skippedLines: skipped,
     totals,
     byDomain,
+    outcomes: aggregateOutcomes(filteredEvents),
+    linkedInjections: aggregateLinkedInjections(filteredEvents),
   };
 }
 
@@ -152,10 +228,14 @@ function formatTable(report) {
   lines.push(
     `Total records: ${report.totalRecords}  Matched: ${report.matchedRecords}  Skipped (malformed): ${report.skippedLines}`
   );
+  lines.push(
+    `Events: ${report.totalEvents}  Outcomes: ${report.outcomes.total}  `
+      + `Outcome success rate: ${report.outcomes.successRate === null ? 'n/a' : `${report.outcomes.successRate}%`}`
+  );
   lines.push('');
 
   if (report.byDomain.length === 0) {
-    lines.push('(no matching recall hits)');
+    lines.push(report.outcomes.total > 0 ? '(no matching recall hits; outcome events found)' : '(no matching recall hits)');
     return lines.join('\n');
   }
 
@@ -179,10 +259,13 @@ function formatTable(report) {
 
 module.exports = {
   getDefaultRecallLogPath,
+  readHarnessEvents,
   readRecallHits,
   parseSince,
   filterSince,
   aggregateByDomain,
+  aggregateOutcomes,
+  aggregateLinkedInjections,
   buildReport,
   formatTable,
 };
