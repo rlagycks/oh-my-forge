@@ -46,7 +46,11 @@
               "tool_calls": { "type": "integer", "minimum": 0 },
               "duration_ms": { "type": "integer", "minimum": 0 },
               "tests_passed": { "type": "boolean" },
-              "human_intervention": { "type": "boolean" }
+              "human_intervention": { "type": "boolean" },
+              "verification_exit_code": { "type": ["integer", "null"] },
+              "expected_exit_code": { "type": "integer" },
+              "timed_out": { "type": "boolean" },
+              "error_code": { "type": ["string", "null"] }
             }
           }
         }

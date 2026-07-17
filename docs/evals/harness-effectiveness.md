@@ -46,6 +46,36 @@ The default event log can be redirected for isolated runs or CI with
 `OMF_HARNESS_EVENT_LOG=/path/to/events.jsonl`. The `--log` option on both
 CLIs takes precedence when supplied.
 
+## Verification runner
+
+P1 adds a deterministic runner for the declared verification commands. It
+accepts only the `node` command, invokes it with `shell: false`, captures no
+command output, records no command output in the event log, and records the
+exit code, timeout, duration, and task id.
+
+Run one task:
+
+```bash
+node scripts/run-golden-task.js \
+  --task observability-recall-backward-compatibility \
+  --episode episode-123 \
+  --log /tmp/omf-events.jsonl \
+  --json
+```
+
+Run the full suite with one distinct episode per task:
+
+```bash
+node scripts/run-golden-task.js \
+  --all \
+  --episode-prefix paired-run-on \
+  --log /tmp/omf-events.jsonl
+```
+
+The runner is a verification and outcome-recording layer, not a model
+provider or harness on/off orchestrator. Provider adapters, cost controls,
+randomized paired execution, and statistical analysis remain later work.
+
 An episode is expected to have one final `task_outcome`. If retries or
 intermediate outcomes are recorded, the report uses the latest outcome by
 timestamp for episode linking and exposes the number of episodes with
