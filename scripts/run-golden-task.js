@@ -3,10 +3,12 @@
 
 const {
   DEFAULT_TIMEOUT_MS,
+  MAX_TIMEOUT_MS,
   findGoldenTask,
   readGoldenTaskSuite,
   runGoldenTask,
 } = require('./lib/golden-task-runner');
+const { parseInteger, requireValue } = require('./lib/cli-args');
 
 function showHelp() {
   console.log(`
@@ -24,23 +26,11 @@ Options:
   --episode-prefix <prefix>   Prefix for generated ids in --all mode
   --suite <path>              Golden task JSON path
   --cwd <path>                Verification working directory
-  --timeout-ms <n>            Child timeout, 1-${600000} ms (default: ${DEFAULT_TIMEOUT_MS})
+  --timeout-ms <n>            Child timeout, 1-${MAX_TIMEOUT_MS} ms (default: ${DEFAULT_TIMEOUT_MS})
   --log <path>                Harness event log path
   --json                      Emit machine-readable results
   --help                      Show this help text
 `);
-}
-
-function requireValue(argv, index, flag) {
-  const value = argv[index + 1];
-  if (!value || value.startsWith('--')) throw new Error(`Missing value for ${flag}`);
-  return value;
-}
-
-function parseInteger(value, flag) {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed)) throw new Error(`${flag} must be an integer`);
-  return parsed;
 }
 
 function parseArgs(argv) {
@@ -64,7 +54,9 @@ function parseArgs(argv) {
 
 function createEpisodeId(options, taskId, runStartedAt) {
   if (options.episodeId) return options.episodeId;
-  const prefix = options.episodePrefix || `golden-run-${runStartedAt}`;
+  const prefix = options.episodePrefix
+    ? `${options.episodePrefix}-${runStartedAt}`
+    : `golden-run-${runStartedAt}`;
   return `${prefix}:${taskId}`;
 }
 
@@ -92,12 +84,13 @@ function main() {
 
   const suite = readGoldenTaskSuite(options.suitePath);
   const tasks = options.all ? suite.tasks : [findGoldenTask(suite, options.taskId)];
-  if (!tasks[0]) throw new Error(`Unknown golden task: ${options.taskId}`);
+  if (options.all && tasks.length === 0) throw new Error('Golden task suite is empty');
+  if (!options.all && !tasks[0]) throw new Error(`Unknown golden task: ${options.taskId}`);
 
   const runStartedAt = Date.now();
   const results = tasks.map(task => runGoldenTask(task, {
     cwd: options.cwd,
-    timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS,
+    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     logPath: options.logPath,
     episodeId: createEpisodeId(options, task.id, runStartedAt),
   }));

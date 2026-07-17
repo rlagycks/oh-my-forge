@@ -53,6 +53,10 @@ accepts only the `node` command, invokes it with `shell: false`, captures no
 command output, records no command output in the event log, and records the
 exit code, timeout, duration, and task id.
 
+Suite JSON is trusted executable configuration: `shell: false` prevents shell
+interpolation, but a trusted suite is still required because `node -e` can run
+arbitrary code.
+
 Run one task:
 
 ```bash
@@ -71,6 +75,9 @@ node scripts/run-golden-task.js \
   --episode-prefix paired-run-on \
   --log /tmp/omf-events.jsonl
 ```
+
+The runner appends the run timestamp to `--episode-prefix`, so reusing a
+prefix across repeated runs still produces distinct episode ids.
 
 The runner is a verification and outcome-recording layer, not a model
 provider or harness on/off orchestrator. Provider adapters, cost controls,

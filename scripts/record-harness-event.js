@@ -6,6 +6,7 @@ const {
   appendEventSync,
   createEvent,
 } = require('./lib/harness-events');
+const { parseInteger, requireValue } = require('./lib/cli-args');
 
 function showHelp() {
   console.log(`
@@ -32,22 +33,10 @@ Optional:
 `);
 }
 
-function requireValue(argv, index, flag) {
-  const value = argv[index + 1];
-  if (!value || value.startsWith('--')) throw new Error(`Missing value for ${flag}`);
-  return value;
-}
-
 function parseBoolean(value, flag) {
   if (value === 'true') return true;
   if (value === 'false') return false;
   throw new Error(`${flag} must be true or false`);
-}
-
-function parseNumber(value, flag) {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 0) throw new Error(`${flag} must be a non-negative integer`);
-  return parsed;
 }
 
 function parseArgs(argv) {
@@ -61,10 +50,10 @@ function parseArgs(argv) {
     else if (arg === '--task') options.taskId = requireValue(argv, index++, arg);
     else if (arg === '--outcome') options.outcome = requireValue(argv, index++, arg);
     else if (arg === '--log') options.logPath = requireValue(argv, index++, arg);
-    else if (arg === '--input-tokens') options.inputTokens = parseNumber(requireValue(argv, index++, arg), arg);
-    else if (arg === '--output-tokens') options.outputTokens = parseNumber(requireValue(argv, index++, arg), arg);
-    else if (arg === '--tool-calls') options.toolCalls = parseNumber(requireValue(argv, index++, arg), arg);
-    else if (arg === '--duration-ms') options.durationMs = parseNumber(requireValue(argv, index++, arg), arg);
+    else if (arg === '--input-tokens') options.inputTokens = parseInteger(requireValue(argv, index++, arg), arg, { minimum: 0 });
+    else if (arg === '--output-tokens') options.outputTokens = parseInteger(requireValue(argv, index++, arg), arg, { minimum: 0 });
+    else if (arg === '--tool-calls') options.toolCalls = parseInteger(requireValue(argv, index++, arg), arg, { minimum: 0 });
+    else if (arg === '--duration-ms') options.durationMs = parseInteger(requireValue(argv, index++, arg), arg, { minimum: 0 });
     else if (arg === '--tests-passed') options.testsPassed = parseBoolean(requireValue(argv, index++, arg), arg);
     else if (arg === '--human-intervention') options.humanIntervention = parseBoolean(requireValue(argv, index++, arg), arg);
     else throw new Error(`Unknown option: ${arg}`);
