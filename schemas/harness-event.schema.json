@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/rlagycks/oh-my-forge/schemas/harness-event.schema.json",
+  "title": "Oh My Forge Harness Event",
+  "type": "object",
+  "required": ["schema_version", "event_type", "ts", "source", "payload"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "event_type": { "enum": ["context_injection", "task_outcome"] },
+    "ts": { "type": "string", "format": "date-time" },
+    "source": { "type": "string", "minLength": 1 },
+    "episode_id": { "type": ["string", "null"] },
+    "session_id": { "type": ["string", "null"] },
+    "payload": { "type": "object" },
+    "domain": { "type": "string" },
+    "kinds": { "type": "object" },
+    "chars": { "type": "integer", "minimum": 0 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "event_type": { "const": "context_injection" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["domain", "item_counts"],
+            "properties": {
+              "domain": { "type": "string", "minLength": 1 },
+              "item_counts": { "type": "object" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "task_outcome" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["outcome"],
+            "properties": {
+              "outcome": { "enum": ["success", "failure", "unknown"] },
+              "input_tokens": { "type": "integer", "minimum": 0 },
+              "output_tokens": { "type": "integer", "minimum": 0 },
+              "tool_calls": { "type": "integer", "minimum": 0 },
+              "duration_ms": { "type": "integer", "minimum": 0 },
+              "tests_passed": { "type": "boolean" },
+              "human_intervention": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}

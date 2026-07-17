@@ -42,13 +42,127 @@ function hit({ ts, domain, constraints = 0, decisions = 0, instincts = 0, chars 
 
 const {
   getDefaultRecallLogPath,
+  readHarnessEvents,
   readRecallHits,
   parseSince,
   filterSince,
   aggregateByDomain,
+  aggregateLinkedInjections,
   buildReport,
   formatTable,
 } = require(recallReportPath);
+
+if (test('readHarnessEvents normalizes legacy injections and reads task outcomes', () => {
+  const { dir, logPath } = makeTempLog([
+    JSON.stringify({
+      schema_version: 1,
+      event_type: 'context_injection',
+      ts: '2026-07-17T00:00:00.000Z',
+      source: 'test',
+      episode_id: 'episode-1',
+      payload: { domain: 'domain_hooks', item_counts: { constraints: 2 }, chars: 100 },
+    }),
+    JSON.stringify({
+      ts: '2026-07-17T00:00:01.000Z',
+      domain: 'domain_legacy',
+      kinds: { decisions: 1 },
+      chars: 20,
+    }),
+    JSON.stringify({
+      schema_version: 1,
+      event_type: 'task_outcome',
+      ts: '2026-07-17T00:00:02.000Z',
+      source: 'test',
+      episode_id: 'episode-1',
+      payload: { outcome: 'success', input_tokens: 1000, output_tokens: 200 },
+    }),
+  ]);
+  try {
+    const result = readHarnessEvents(logPath);
+    assert.strictEqual(result.events.length, 3);
+    assert.strictEqual(result.events[1].payload.domain, 'domain_legacy');
+    assert.strictEqual(result.events[2].event_type, 'task_outcome');
+    assert.strictEqual(result.skipped, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+})) passed++; else failed++;
+
+if (test('buildReport links injections to outcomes by episode and reports token totals', () => {
+  const { dir, logPath } = makeTempLog([
+    JSON.stringify({
+      schema_version: 1,
+      event_type: 'context_injection',
+      ts: '2026-07-17T00:00:00.000Z',
+      source: 'test',
+      episode_id: 'episode-success',
+      payload: { domain: 'domain_hooks', item_counts: { constraints: 1 }, chars: 50, token_estimate: 20 },
+    }),
+    JSON.stringify({
+      schema_version: 1,
+      event_type: 'task_outcome',
+      ts: '2026-07-17T00:00:01.000Z',
+      source: 'test',
+      episode_id: 'episode-success',
+      payload: { outcome: 'success', input_tokens: 1000, output_tokens: 200, tool_calls: 3 },
+    }),
+    JSON.stringify({
+      schema_version: 1,
+      event_type: 'task_outcome',
+      ts: '2026-07-17T00:00:02.000Z',
+      source: 'test',
+      episode_id: 'episode-failure',
+      payload: { outcome: 'failure', input_tokens: 500, output_tokens: 100, tool_calls: 2 },
+    }),
+  ]);
+  try {
+    const report = buildReport({ logPath, now: Date.parse('2026-07-17T00:01:00.000Z') });
+    assert.strictEqual(report.outcomes.total, 2);
+    assert.strictEqual(report.outcomes.successCount, 1);
+    assert.strictEqual(report.outcomes.failureCount, 1);
+    assert.strictEqual(report.outcomes.successRate, 50);
+    assert.strictEqual(report.outcomes.inputTokens, 1500);
+    assert.strictEqual(report.linkedInjections.total, 1);
+    assert.strictEqual(report.linkedInjections.withOutcome, 1);
+    assert.strictEqual(report.linkedInjections.successCount, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+})) passed++; else failed++;
+
+if (test('links duplicate episode outcomes by latest timestamp and reports duplicates', () => {
+  const events = [
+    {
+      schema_version: 1,
+      event_type: 'context_injection',
+      ts: '2026-07-17T00:00:00.000Z',
+      source: 'test',
+      episode_id: 'episode-retry',
+      payload: { domain: 'domain_hooks', item_counts: {} },
+    },
+    {
+      schema_version: 1,
+      event_type: 'task_outcome',
+      ts: '2026-07-17T00:00:02.000Z',
+      source: 'test',
+      episode_id: 'episode-retry',
+      payload: { outcome: 'failure' },
+    },
+    {
+      schema_version: 1,
+      event_type: 'task_outcome',
+      ts: '2026-07-17T00:00:01.000Z',
+      source: 'test',
+      episode_id: 'episode-retry',
+      payload: { outcome: 'success' },
+    },
+  ];
+  const linked = aggregateLinkedInjections(events);
+  assert.strictEqual(linked.duplicateOutcomeEpisodes, 1);
+  assert.strictEqual(linked.withOutcome, 1);
+  assert.strictEqual(linked.successCount, 0);
+  assert.strictEqual(linked.failureCount, 1);
+})) passed++; else failed++;
 
 if (test('getDefaultRecallLogPath resolves under ~/.claude/logs/recall-hits.jsonl', () => {
   const expected = path.join(os.homedir(), '.claude', 'logs', 'recall-hits.jsonl');

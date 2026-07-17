@@ -72,6 +72,8 @@
     "scripts/doctor.js",
     "scripts/status.js",
     "scripts/sessions-cli.js",
+    "scripts/record-harness-event.js",
+    "scripts/recall-report.js",
     "scripts/install-apply.js",
     "scripts/install-plan.js",
     "scripts/list-installed.js",

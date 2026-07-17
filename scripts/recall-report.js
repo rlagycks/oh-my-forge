@@ -8,7 +8,8 @@ function showHelp() {
 Usage: node scripts/recall-report.js [options]
 
 Analyzes ~/.claude/logs/recall-hits.jsonl (domain-context-inject.js's
-recall-hit instrumentation) and reports per-domain injection counts.
+recall-hit instrumentation plus task outcome events) and reports per-domain
+injection counts, outcome rates, and episode-linked results.
 
 Options:
   --log <path>      Override recall-hits.jsonl path
