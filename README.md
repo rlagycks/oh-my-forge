@@ -364,6 +364,16 @@ over this environment variable.
 
 See `docs/evals/golden-tasks.json` for the initial replay suite definition.
 
+To run deterministic verification and record a task outcome without shell
+interpolation:
+
+```bash
+node scripts/run-golden-task.js \
+  --task observability-recall-backward-compatibility \
+  --episode episode-123 \
+  --json
+```
+
 ---
 
 ## Based on
