@@ -40,6 +40,12 @@ function toLegacyRecallRecord(event) {
   };
 }
 
+function toLegacyRecallRecords(events) {
+  return events
+    .filter(event => event.event_type === EVENT_TYPES.CONTEXT_INJECTION)
+    .map(toLegacyRecallRecord);
+}
+
 function readHarnessEvents(logPath) {
   return readEvents(logPath);
 }
@@ -52,9 +58,7 @@ function readHarnessEvents(logPath) {
 function readRecallHits(logPath) {
   const { events, skipped } = readHarnessEvents(logPath || getDefaultRecallLogPath());
   return {
-    records: events
-      .filter(event => event.event_type === EVENT_TYPES.CONTEXT_INJECTION)
-      .map(toLegacyRecallRecord),
+    records: toLegacyRecallRecords(events),
     skipped,
   };
 }
@@ -95,18 +99,17 @@ function aggregateByDomain(records) {
   const byDomain = new Map();
 
   for (const record of records) {
-    const normalized = record.event_type ? toLegacyRecallRecord(record) : record;
-    if (!normalized || typeof normalized.domain !== 'string') continue;
-    const key = normalized.domain;
+    if (!record || typeof record.domain !== 'string') continue;
+    const key = record.domain;
     if (!byDomain.has(key)) {
       byDomain.set(key, { domain: key, hits: 0, constraints: 0, decisions: 0, instincts: 0, chars: 0 });
     }
     const entry = byDomain.get(key);
     entry.hits += 1;
-    entry.constraints += Number(normalized.kinds?.constraints) || 0;
-    entry.decisions += Number(normalized.kinds?.decisions) || 0;
-    entry.instincts += Number(normalized.kinds?.instincts) || 0;
-    entry.chars += Number(normalized.chars) || 0;
+    entry.constraints += Number(record.kinds?.constraints) || 0;
+    entry.decisions += Number(record.kinds?.decisions) || 0;
+    entry.instincts += Number(record.kinds?.instincts) || 0;
+    entry.chars += Number(record.chars) || 0;
   }
 
   return [...byDomain.values()].sort((a, b) => b.hits - a.hits);
@@ -143,9 +146,14 @@ function aggregateOutcomes(events) {
 function aggregateLinkedInjections(events) {
   const injections = events.filter(event => event.event_type === EVENT_TYPES.CONTEXT_INJECTION);
   const outcomesByEpisode = new Map();
+  const duplicateOutcomeEpisodes = new Set();
   for (const event of events) {
     if (event.event_type === EVENT_TYPES.TASK_OUTCOME && event.episode_id) {
-      outcomesByEpisode.set(event.episode_id, event);
+      if (outcomesByEpisode.has(event.episode_id)) duplicateOutcomeEpisodes.add(event.episode_id);
+      const current = outcomesByEpisode.get(event.episode_id);
+      if (!current || Date.parse(event.ts) >= Date.parse(current.ts)) {
+        outcomesByEpisode.set(event.episode_id, event);
+      }
     }
   }
 
@@ -156,6 +164,7 @@ function aggregateLinkedInjections(events) {
     failureCount: 0,
     unknownCount: 0,
     successRate: null,
+    duplicateOutcomeEpisodes: duplicateOutcomeEpisodes.size,
   };
 
   for (const injection of injections) {
@@ -183,12 +192,8 @@ function aggregateLinkedInjections(events) {
 function buildReport({ logPath, since, now } = {}) {
   const { events, skipped } = readHarnessEvents(logPath || getDefaultRecallLogPath());
   const filteredEvents = filterSince(events, parseSince(since), now);
-  const records = events
-    .filter(event => event.event_type === EVENT_TYPES.CONTEXT_INJECTION)
-    .map(toLegacyRecallRecord);
-  const filtered = filteredEvents
-    .filter(event => event.event_type === EVENT_TYPES.CONTEXT_INJECTION)
-    .map(toLegacyRecallRecord);
+  const records = toLegacyRecallRecords(events);
+  const filtered = toLegacyRecallRecords(filteredEvents);
   const byDomain = aggregateByDomain(filtered);
 
   const totals = byDomain.reduce((acc, domain) => ({

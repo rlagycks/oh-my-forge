@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('assert');
+const Ajv = require('ajv');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -15,6 +16,7 @@ const {
   appendEventSync,
   createEvent,
   getDefaultEventLogPath,
+  normalizeLegacyRecallRecord,
   readEvents,
   validateEvent,
 } = require('../../scripts/lib/harness-events');
@@ -99,6 +101,37 @@ test('rejects unknown event types and invalid outcome values', () => {
   assert.strictEqual(validateEvent(invalidOutcome).valid, false);
 });
 
+test('treats optional linkage fields as optional and validates session_id when present', () => {
+  const withoutLinkage = {
+    schema_version: 1,
+    event_type: EVENT_TYPES.TASK_OUTCOME,
+    ts: '2026-07-17T00:00:00.000Z',
+    source: 'test',
+    payload: { outcome: 'unknown' },
+  };
+  assert.strictEqual(validateEvent(withoutLinkage).valid, true);
+
+  const invalidSession = { ...withoutLinkage, session_id: 42 };
+  assert.strictEqual(validateEvent(invalidSession).valid, false);
+});
+
+test('estimates tokens for legacy records without token_estimate', () => {
+  const legacy = normalizeLegacyRecallRecord({
+    ts: '2026-07-17T00:00:00.000Z',
+    domain: 'domain_legacy',
+    chars: 101,
+  });
+  assert.strictEqual(legacy.payload.token_estimate, 26);
+
+  const explicitZero = normalizeLegacyRecallRecord({
+    ts: '2026-07-17T00:00:00.000Z',
+    domain: 'domain_legacy',
+    chars: 101,
+    token_estimate: 0,
+  });
+  assert.strictEqual(explicitZero.payload.token_estimate, 0);
+});
+
 test('appends and reads structured events while preserving legacy recall records', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-events-'));
   const logPath = path.join(dir, 'events.jsonl');
@@ -141,6 +174,27 @@ test('ships a machine-readable event schema with the runtime contract', () => {
     eventSchema.properties.event_type.enum.sort(),
     ['context_injection', 'task_outcome']
   );
+});
+
+test('validates both generated event types against the shipped JSON schema', () => {
+  const ajv = new Ajv({ allErrors: true, strict: false, validateFormats: false });
+  const validateSchema = ajv.compile(eventSchema);
+  const events = [
+    createEvent({
+      eventType: EVENT_TYPES.CONTEXT_INJECTION,
+      source: 'test',
+      payload: { domain: 'domain_hooks', itemCounts: { constraints: 1 } },
+    }),
+    createEvent({
+      eventType: EVENT_TYPES.TASK_OUTCOME,
+      source: 'test',
+      payload: { outcome: 'success', inputTokens: 10 },
+    }),
+  ];
+
+  for (const event of events) {
+    assert.strictEqual(validateSchema(event), true, ajv.errorsText(validateSchema.errors));
+  }
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

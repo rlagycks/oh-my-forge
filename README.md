@@ -358,6 +358,10 @@ node scripts/record-harness-event.js \
 node scripts/recall-report.js --json
 ```
 
+Set `OMF_HARNESS_EVENT_LOG=/path/to/events.jsonl` to use an isolated event
+log in CI or local experiments. The explicit `--log` option takes precedence
+over this environment variable.
+
 See `docs/evals/golden-tasks.json` for the initial replay suite definition.
 
 ---

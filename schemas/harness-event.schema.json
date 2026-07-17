@@ -22,6 +22,7 @@
       "then": {
         "properties": {
           "payload": {
+            "type": "object",
             "required": ["domain", "item_counts"],
             "properties": {
               "domain": { "type": "string", "minLength": 1 },
@@ -36,6 +37,7 @@
       "then": {
         "properties": {
           "payload": {
+            "type": "object",
             "required": ["outcome"],
             "properties": {
               "outcome": { "enum": ["success", "failure", "unknown"] },

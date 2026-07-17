@@ -104,6 +104,8 @@ function selectRecentDecisions(entry, max = 3) {
  * @param {number} hit.decisions
  * @param {number} hit.instincts
  * @param {number} hit.chars
+ * @param {object} input - Hook input, used only for episode/session linkage
+ * @param {number} latencyMs - Time spent building the injection packet
  */
 function logRecallHit(hit, input, latencyMs) {
   try {

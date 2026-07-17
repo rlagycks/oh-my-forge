@@ -56,8 +56,15 @@ function validateEvent(event) {
   if (typeof event.source !== 'string' || event.source.trim() === '') {
     errors.push('source must be a non-empty string');
   }
-  if (event.episode_id !== null && typeof event.episode_id !== 'string') {
+  if (Object.prototype.hasOwnProperty.call(event, 'episode_id')
+      && event.episode_id !== null
+      && typeof event.episode_id !== 'string') {
     errors.push('episode_id must be a string or null');
+  }
+  if (Object.prototype.hasOwnProperty.call(event, 'session_id')
+      && event.session_id !== null
+      && typeof event.session_id !== 'string') {
+    errors.push('session_id must be a string or null');
   }
   if (!event.payload || typeof event.payload !== 'object' || Array.isArray(event.payload)) {
     errors.push('payload must be an object');
@@ -109,6 +116,15 @@ function normalizeLegacyRecallRecord(record) {
   if (record.event_type) return record;
   if (typeof record.domain !== 'string' || typeof record.ts !== 'string') return null;
 
+  const chars = Number(record.chars);
+  const normalizedChars = Number.isFinite(chars) && chars >= 0 ? chars : 0;
+  const tokenEstimate = Number(record.token_estimate);
+  const normalizedTokenEstimate = Object.prototype.hasOwnProperty.call(record, 'token_estimate')
+    && Number.isFinite(tokenEstimate)
+    && tokenEstimate >= 0
+    ? tokenEstimate
+    : Math.ceil(normalizedChars / 4);
+
   return createEvent({
     eventType: EVENT_TYPES.CONTEXT_INJECTION,
     source: 'legacy-recall-log',
@@ -122,8 +138,8 @@ function normalizeLegacyRecallRecord(record) {
         decisions: Number(record.kinds?.decisions) || 0,
         instincts: Number(record.kinds?.instincts) || 0,
       },
-      chars: Number(record.chars) || 0,
-      tokenEstimate: Number(record.token_estimate) || 0,
+      chars: normalizedChars,
+      tokenEstimate: normalizedTokenEstimate,
     },
   });
 }

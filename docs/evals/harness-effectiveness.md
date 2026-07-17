@@ -42,8 +42,17 @@ node scripts/record-harness-event.js \
 node scripts/recall-report.js --json
 ```
 
+The default event log can be redirected for isolated runs or CI with
+`OMF_HARNESS_EVENT_LOG=/path/to/events.jsonl`. The `--log` option on both
+CLIs takes precedence when supplied.
+
+An episode is expected to have one final `task_outcome`. If retries or
+intermediate outcomes are recorded, the report uses the latest outcome by
+timestamp for episode linking and exposes the number of episodes with
+duplicates as `linkedInjections.duplicateOutcomeEpisodes`.
+
 ## 현재 범위와 한계
 
-현재는 이벤트 계약·기록·집계 기반만 제공한다. 실제 Claude/Codex 실행을 자동화하는 benchmark runner, 모델별 토큰 tokenizer, 통계적 유의성 검정은 후속 작업이다.
+현재는 이벤트 계약·기록·집계 기반만 제공한다. 실제 Claude/Codex 실행을 자동화하는 benchmark runner, 모델별 토큰 tokenizer, 통계적 유의성 검정, 장기 실행 환경의 로그 rotation/streaming은 후속 작업이다.
 
 `golden-tasks.json`의 verification은 실행 가능한 argv 메타데이터이며, 신뢰할 수 없는 외부 입력을 shell 문자열로 실행해서는 안 된다.

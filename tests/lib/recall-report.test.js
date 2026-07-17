@@ -47,6 +47,7 @@ const {
   parseSince,
   filterSince,
   aggregateByDomain,
+  aggregateLinkedInjections,
   buildReport,
   formatTable,
 } = require(recallReportPath);
@@ -127,6 +128,40 @@ if (test('buildReport links injections to outcomes by episode and reports token 
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+})) passed++; else failed++;
+
+if (test('links duplicate episode outcomes by latest timestamp and reports duplicates', () => {
+  const events = [
+    {
+      schema_version: 1,
+      event_type: 'context_injection',
+      ts: '2026-07-17T00:00:00.000Z',
+      source: 'test',
+      episode_id: 'episode-retry',
+      payload: { domain: 'domain_hooks', item_counts: {} },
+    },
+    {
+      schema_version: 1,
+      event_type: 'task_outcome',
+      ts: '2026-07-17T00:00:02.000Z',
+      source: 'test',
+      episode_id: 'episode-retry',
+      payload: { outcome: 'failure' },
+    },
+    {
+      schema_version: 1,
+      event_type: 'task_outcome',
+      ts: '2026-07-17T00:00:01.000Z',
+      source: 'test',
+      episode_id: 'episode-retry',
+      payload: { outcome: 'success' },
+    },
+  ];
+  const linked = aggregateLinkedInjections(events);
+  assert.strictEqual(linked.duplicateOutcomeEpisodes, 1);
+  assert.strictEqual(linked.withOutcome, 1);
+  assert.strictEqual(linked.successCount, 0);
+  assert.strictEqual(linked.failureCount, 1);
 })) passed++; else failed++;
 
 if (test('getDefaultRecallLogPath resolves under ~/.claude/logs/recall-hits.jsonl', () => {
