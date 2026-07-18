@@ -14,6 +14,29 @@ const DEFAULT_SUITE_PATH = path.resolve(__dirname, '../../docs/evals/golden-task
 const DEFAULT_TIMEOUT_MS = 120000;
 const MAX_TIMEOUT_MS = 600000;
 const ALLOWED_VERIFICATION_COMMANDS = new Set(['node']);
+const ALLOWED_DIFFICULTIES = new Set(['easy', 'medium', 'hard']);
+const hasOwn = (object, property) => Object.prototype.hasOwnProperty.call(object, property);
+
+function validateNonEmptyStringArray(value, field) {
+  if (!Array.isArray(value) || value.length === 0 || value.some(item => typeof item !== 'string' || item.trim() === '')) {
+    return [`${field} must be a non-empty string array`];
+  }
+  return new Set(value).size === value.length ? [] : [`${field} must not contain duplicates`];
+}
+
+function validateProvenance(provenance) {
+  if (!provenance || typeof provenance !== 'object' || Array.isArray(provenance)) {
+    return ['provenance must be an object'];
+  }
+  const errors = [];
+  if (typeof provenance.source !== 'string' || provenance.source.trim() === '') {
+    errors.push('provenance.source must be non-empty');
+  }
+  if (typeof provenance.incident !== 'string' || provenance.incident.trim() === '') {
+    errors.push('provenance.incident must be non-empty');
+  }
+  return errors;
+}
 
 function readGoldenTaskSuite(suitePath = DEFAULT_SUITE_PATH) {
   const resolvedPath = path.resolve(suitePath);
@@ -39,6 +62,18 @@ function validateGoldenTask(task) {
     return ['task must be an object'];
   }
   if (typeof task.id !== 'string' || task.id.trim() === '') errors.push('id must be non-empty');
+  if (typeof task.prompt !== 'string' || task.prompt.trim() === '') errors.push('prompt must be non-empty');
+
+  if (!hasOwn(task, 'provenance')) errors.push('provenance must be an object');
+  else errors.push(...validateProvenance(task.provenance));
+  if (!hasOwn(task, 'tags')) errors.push('tags must be a non-empty string array');
+  else errors.push(...validateNonEmptyStringArray(task.tags, 'tags'));
+  if (!hasOwn(task, 'difficulty') || typeof task.difficulty !== 'string' || !ALLOWED_DIFFICULTIES.has(task.difficulty)) {
+    errors.push(`difficulty must be one of: ${[...ALLOWED_DIFFICULTIES].join(', ')}`);
+  }
+  if (!hasOwn(task, 'success_criteria')) errors.push('success_criteria must be a non-empty string array');
+  else errors.push(...validateNonEmptyStringArray(task.success_criteria, 'success_criteria'));
+
   if (!task.verification || typeof task.verification !== 'object' || Array.isArray(task.verification)) {
     errors.push('verification must be an object');
     return errors;
@@ -106,7 +141,7 @@ function executeVerification(task, { cwd = process.cwd(), timeoutMs = DEFAULT_TI
   };
 }
 
-function recordVerificationOutcome(result, { episodeId, logPath } = {}) {
+function recordVerificationOutcome(result, { episodeId, logPath, metadata = {} } = {}) {
   if (typeof episodeId !== 'string' || episodeId.trim() === '') {
     throw new Error('episodeId must be a non-empty string');
   }
@@ -116,6 +151,7 @@ function recordVerificationOutcome(result, { episodeId, logPath } = {}) {
     source: 'run-golden-task',
     episodeId,
     payload: {
+      ...metadata,
       taskId: result.taskId,
       outcome: result.outcome,
       testsPassed: result.testsPassed,

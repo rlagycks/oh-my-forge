@@ -18,10 +18,19 @@ fs.writeFileSync(suitePath, `${JSON.stringify({
     {
       id: 'cli-pass',
       prompt: 'not persisted',
+      provenance: { source: 'tests/run-golden-task-cli.test.js', incident: 'CLI success fixture' },
+      tags: ['test', 'cli'],
+      difficulty: 'easy',
+      success_criteria: ['The CLI records a successful verification'],
       verification: { argv: ['node', '-e', 'process.exit(0)'], expected_exit_code: 0 },
     },
     {
       id: 'cli-fail',
+      prompt: 'deterministic failure fixture',
+      provenance: { source: 'tests/run-golden-task-cli.test.js', incident: 'CLI failure fixture' },
+      tags: ['test', 'cli'],
+      difficulty: 'easy',
+      success_criteria: ['The CLI records a failed verification'],
       verification: { argv: ['node', '-e', 'process.exit(1)'], expected_exit_code: 0 },
     },
   ],
@@ -59,6 +68,11 @@ try {
     suite: 'all-suite',
     tasks: [{
       id: 'cli-pass',
+      prompt: 'deterministic all-mode fixture',
+      provenance: { source: 'tests/run-golden-task-cli.test.js', incident: 'CLI all-mode fixture' },
+      tags: ['test', 'cli'],
+      difficulty: 'easy',
+      success_criteria: ['The all-mode runner records success'],
       verification: { argv: ['node', '-e', 'process.exit(0)'], expected_exit_code: 0 },
     }],
   }), 'utf8');

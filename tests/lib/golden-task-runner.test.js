@@ -41,6 +41,10 @@ function makeFixture() {
       {
         id: 'pass-task',
         prompt: 'This prompt must never be written to the event log.',
+        provenance: { source: 'tests/lib/golden-task-runner.test.js', incident: 'shell safety regression fixture' },
+        tags: ['test', 'security'],
+        difficulty: 'easy',
+        success_criteria: ['The verification exits with the expected code'],
         verification: {
           argv: ['node', '-e', 'process.exit(process.argv[1] === "safe;touch" ? 0 : 1)', 'safe;touch'],
           expected_exit_code: 0,
@@ -48,10 +52,20 @@ function makeFixture() {
       },
       {
         id: 'expected-failure-task',
+        prompt: 'Run a deterministic expected-failure fixture.',
+        provenance: { source: 'tests/lib/golden-task-runner.test.js', incident: 'exit-code mismatch fixture' },
+        tags: ['test', 'verification'],
+        difficulty: 'easy',
+        success_criteria: ['The mismatch is recorded as a failure'],
         verification: { argv: ['node', '-e', 'process.exit(2)'], expected_exit_code: 0 },
       },
       {
         id: 'timeout-task',
+        prompt: 'Run a deterministic timeout fixture.',
+        provenance: { source: 'tests/lib/golden-task-runner.test.js', incident: 'timeout handling fixture' },
+        tags: ['test', 'timeout'],
+        difficulty: 'easy',
+        success_criteria: ['The timeout is recorded as a failure'],
         verification: { argv: ['node', '-e', 'setTimeout(() => {}, 200)'], expected_exit_code: 0 },
       },
     ],
@@ -62,7 +76,7 @@ function makeFixture() {
 
 test('loads the checked-in suite and validates node-only verification argv', () => {
   const suite = readGoldenTaskSuite(path.resolve(__dirname, '../../docs/evals/golden-tasks.json'));
-  assert.strictEqual(suite.tasks.length, 3);
+  assert.ok(suite.tasks.length >= 10);
   assert.deepStrictEqual(validateGoldenTask(suite.tasks[0]), []);
   assert.ok(validateGoldenTask({ id: 'shell', verification: { argv: ['sh', '-c', 'echo unsafe'], expected_exit_code: 0 } }).length > 0);
   assert.strictEqual(findGoldenTask(suite, 'missing-task'), null);
@@ -83,6 +97,53 @@ test('rejects malformed task definitions and duplicate ids', () => {
     parsed.tasks.push({ ...parsed.tasks[0] });
     fs.writeFileSync(fixture.suitePath, JSON.stringify(parsed), 'utf8');
     assert.throws(() => readGoldenTaskSuite(fixture.suitePath), /Duplicate golden task id/);
+  } finally {
+    fs.rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test('rejects tasks missing required corpus metadata', () => {
+  const baseTask = {
+    id: 'metadata-task',
+    prompt: 'A complete deterministic task.',
+    provenance: { source: 'docs/qa/bug-topology.md', incident: 'documented failure pattern' },
+    tags: ['qa'],
+    difficulty: 'medium',
+    success_criteria: ['A deterministic check passes'],
+    verification: { argv: ['node', '--version'], expected_exit_code: 0 },
+  };
+
+  for (const field of ['prompt', 'provenance', 'tags', 'difficulty', 'success_criteria', 'verification']) {
+    const task = { ...baseTask };
+    delete task[field];
+    assert.ok(validateGoldenTask(task).some(error => error.startsWith(field)), `missing ${field} should be rejected`);
+  }
+  assert.ok(validateGoldenTask({ ...baseTask, provenance: { source: '' } }).some(error => error.includes('provenance')));
+  assert.ok(validateGoldenTask({ ...baseTask, tags: ['qa', ''] }).some(error => error.includes('tags')));
+  assert.ok(validateGoldenTask({ ...baseTask, difficulty: 'trivial' }).some(error => error.includes('difficulty')));
+  assert.ok(validateGoldenTask({ ...baseTask, success_criteria: [''] }).some(error => error.includes('success_criteria')));
+});
+
+test('metadata cannot overwrite verification outcome fields', () => {
+  const fixture = makeFixture();
+  try {
+    const event = recordVerificationOutcome({
+      taskId: 'pass-task',
+      outcome: 'success',
+      testsPassed: true,
+      durationMs: 12,
+      exitCode: 0,
+      expectedExitCode: 0,
+      timedOut: false,
+      errorCode: null,
+    }, {
+      episodeId: 'episode-metadata',
+      logPath: fixture.logPath,
+      metadata: { outcome: 'failure', taskId: 'spoofed-task', testsPassed: false },
+    });
+    assert.strictEqual(event.payload.outcome, 'success');
+    assert.strictEqual(event.payload.task_id, 'pass-task');
+    assert.strictEqual(event.payload.tests_passed, true);
   } finally {
     fs.rmSync(fixture.dir, { recursive: true, force: true });
   }
@@ -137,6 +198,11 @@ test('records expected failures and timeout failures with safe metadata', () => 
 test('returns a non-success result when the expected exit code does not match', () => {
   const result = executeVerification({
     id: 'mismatch',
+    prompt: 'Run a deterministic mismatch fixture.',
+    provenance: { source: 'tests/lib/golden-task-runner.test.js', incident: 'exit-code mismatch fixture' },
+    tags: ['test', 'verification'],
+    difficulty: 'easy',
+    success_criteria: ['The mismatch is reported as failure'],
     verification: { argv: ['node', '-e', 'process.exit(3)'], expected_exit_code: 0 },
   }, { timeoutMs: 1000 });
   assert.strictEqual(result.outcome, 'failure');
@@ -147,6 +213,11 @@ test('returns a non-success result when the expected exit code does not match', 
 test('handles invalid timeout, missing episode, and spawn errors without output capture', () => {
   const task = {
     id: 'error-paths',
+    prompt: 'Exercise timeout and spawn error handling.',
+    provenance: { source: 'tests/lib/golden-task-runner.test.js', incident: 'verification error-path fixture' },
+    tags: ['test', 'errors'],
+    difficulty: 'medium',
+    success_criteria: ['Invalid execution inputs fail safely'],
     verification: { argv: ['node', '-e', 'process.exit(0)'], expected_exit_code: 0 },
   };
   assert.throws(() => executeVerification(task, { timeoutMs: 0 }), /timeoutMs/);
