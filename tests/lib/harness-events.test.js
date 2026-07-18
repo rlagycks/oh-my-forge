@@ -16,6 +16,7 @@ const {
   appendEventSync,
   createEvent,
   getDefaultEventLogPath,
+  getEventLogConfig,
   normalizeLegacyRecallRecord,
   readEvents,
   validateEvent,
@@ -228,6 +229,27 @@ test('distinguishes malformed JSONL from a truncated final record', () => {
   }
 });
 
+test('enforces maxEvents inside a large read chunk', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-events-max-events-'));
+  const logPath = path.join(dir, 'events.jsonl');
+  try {
+    const lines = Array.from({ length: 20 }, (_, index) => JSON.stringify(createEvent({
+      eventType: EVENT_TYPES.TASK_OUTCOME,
+      source: 'test',
+      episodeId: `max-events-${index}`,
+      payload: { outcome: 'success' },
+    })));
+    fs.writeFileSync(logPath, `${lines.join('\n')}\n`, 'utf8');
+
+    const result = readEvents(logPath, { maxEvents: 3 });
+    assert.strictEqual(result.events.length, 3);
+    assert.strictEqual(result.truncated, true);
+    assert.ok(result.diagnostics.some(diagnostic => diagnostic.detail === 'max_events'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('rotates the active log and enforces configured retention', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-events-rotation-'));
   const logPath = path.join(dir, 'events.jsonl');
@@ -257,6 +279,10 @@ test('uses the existing recall log path by default for backward compatibility', 
     getDefaultEventLogPath(),
     path.join(os.homedir(), '.claude', 'logs', 'recall-hits.jsonl')
   );
+});
+
+test('rejects invalid explicit rotation size instead of silently disabling rotation', () => {
+  assert.throws(() => getEventLogConfig({ maxBytes: 'not-a-size' }), /maxBytes must be an integer/);
 });
 
 test('ships a machine-readable event schema with the runtime contract', () => {

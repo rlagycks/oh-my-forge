@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs');
+const crypto = require('crypto');
 const os = require('os');
 const path = require('path');
 const { StringDecoder } = require('string_decoder');
@@ -12,6 +13,7 @@ const DEFAULT_EVENT_LOG_READ_MAX_BYTES = 16 * 1024 * 1024;
 const DEFAULT_EVENT_LOG_READ_MAX_EVENTS = 100000;
 const EVENT_LOG_READ_CHUNK_BYTES = 64 * 1024;
 const MAX_RETENTION_FILES = 100;
+const ROTATION_LOCK_STALE_MS = 30 * 1000;
 const EVENT_TYPES = Object.freeze({
   CONTEXT_INJECTION: 'context_injection',
   TASK_OUTCOME: 'task_outcome',
@@ -31,9 +33,19 @@ function parseConfiguredInteger(value, fallback, { minimum = 0, maximum = Number
   return parsed;
 }
 
+function parseExplicitInteger(value, field, { minimum = 0, maximum = Number.MAX_SAFE_INTEGER } = {}) {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new Error(`${field} must be an integer from ${minimum} to ${maximum}`);
+  }
+  return parsed;
+}
+
 function getEventLogConfig(options = {}) {
   const maxBytes = options.maxBytes !== undefined
-    ? parseConfiguredInteger(options.maxBytes, null, { maximum: Number.MAX_SAFE_INTEGER })
+    ? options.maxBytes === null
+      ? null
+      : parseExplicitInteger(options.maxBytes, 'maxBytes')
     : parseConfiguredInteger(
       process.env.OMF_HARNESS_EVENT_LOG_MAX_BYTES,
       DEFAULT_EVENT_LOG_MAX_BYTES,
@@ -147,24 +159,56 @@ function getRotatedLogPath(logPath, generation) {
   return `${logPath}.${generation}`;
 }
 
+function createRotationLockToken() {
+  return `${process.pid}-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
+}
+
+function openRotationLockSync(lockPath) {
+  const fd = fs.openSync(lockPath, 'wx');
+  const token = createRotationLockToken();
+  try {
+    fs.writeSync(fd, token, null, 'utf8');
+    return { fd, lockPath, token };
+  } catch (error) {
+    try { fs.closeSync(fd); } catch (_cleanupError) { /* best effort */ }
+    try { fs.unlinkSync(lockPath); } catch (_cleanupError) { /* best effort */ }
+    throw error;
+  }
+}
+
 function acquireRotationLock(logPath) {
   const lockPath = `${logPath}.lock`;
   try {
-    const fd = fs.openSync(lockPath, 'wx');
-    return { fd, lockPath };
+    return openRotationLockSync(lockPath);
   } catch (error) {
     if (error.code !== 'EEXIST') throw error;
     try {
       const ageMs = Date.now() - fs.statSync(lockPath).mtimeMs;
-      if (ageMs > 30 * 1000) {
-        fs.unlinkSync(lockPath);
-        const fd = fs.openSync(lockPath, 'wx');
-        return { fd, lockPath };
+      if (ageMs > ROTATION_LOCK_STALE_MS) {
+        try {
+          fs.unlinkSync(lockPath);
+        } catch (unlinkError) {
+          if (unlinkError.code !== 'ENOENT') throw unlinkError;
+        }
+        try {
+          return openRotationLockSync(lockPath);
+        } catch (openError) {
+          if (openError.code !== 'EEXIST') throw openError;
+        }
       }
     } catch (staleLockError) {
-      if (staleLockError.code !== 'EEXIST') throw staleLockError;
+      if (staleLockError.code !== 'EEXIST' && staleLockError.code !== 'ENOENT') throw staleLockError;
     }
     return null;
+  }
+}
+
+function ownsRotationLockSync(lock) {
+  try {
+    return fs.readFileSync(lock.lockPath, 'utf8') === lock.token;
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
   }
 }
 
@@ -178,7 +222,7 @@ function releaseRotationLock(lock) {
     closeError = error;
   }
   try {
-    fs.unlinkSync(lock.lockPath);
+    if (ownsRotationLockSync(lock)) fs.unlinkSync(lock.lockPath);
   } catch (error) {
     if (error.code !== 'ENOENT') unlinkError = error;
   }
@@ -186,26 +230,50 @@ function releaseRotationLock(lock) {
   if (unlinkError) throw unlinkError;
 }
 
+async function openRotationLockAsync(lockPath) {
+  const handle = await fs.promises.open(lockPath, 'wx');
+  const token = createRotationLockToken();
+  try {
+    await handle.writeFile(token, 'utf8');
+    return { handle, lockPath, token };
+  } catch (error) {
+    try { await handle.close(); } catch (_cleanupError) { /* best effort */ }
+    try { await fs.promises.unlink(lockPath); } catch (_cleanupError) { /* best effort */ }
+    throw error;
+  }
+}
+
 async function acquireRotationLockAsync(logPath) {
   const lockPath = `${logPath}.lock`;
   try {
-    const handle = await fs.promises.open(lockPath, 'wx');
-    return { handle, lockPath };
+    return await openRotationLockAsync(lockPath);
   } catch (error) {
     if (error.code !== 'EEXIST') throw error;
     try {
       const stat = await fs.promises.stat(lockPath);
-      if (Date.now() - stat.mtimeMs > 30 * 1000) {
+      if (Date.now() - stat.mtimeMs > ROTATION_LOCK_STALE_MS) {
         await fs.promises.unlink(lockPath).catch(unlinkError => {
           if (unlinkError.code !== 'ENOENT') throw unlinkError;
         });
-        const handle = await fs.promises.open(lockPath, 'wx');
-        return { handle, lockPath };
+        try {
+          return await openRotationLockAsync(lockPath);
+        } catch (openError) {
+          if (openError.code !== 'EEXIST') throw openError;
+        }
       }
     } catch (staleLockError) {
-      if (staleLockError.code !== 'EEXIST') throw staleLockError;
+      if (staleLockError.code !== 'EEXIST' && staleLockError.code !== 'ENOENT') throw staleLockError;
     }
     return null;
+  }
+}
+
+async function ownsRotationLockAsync(lock) {
+  try {
+    return await fs.promises.readFile(lock.lockPath, 'utf8') === lock.token;
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
   }
 }
 
@@ -219,12 +287,54 @@ async function releaseRotationLockAsync(lock) {
     closeError = error;
   }
   try {
-    await fs.promises.unlink(lock.lockPath);
+    if (await ownsRotationLockAsync(lock)) await fs.promises.unlink(lock.lockPath);
   } catch (error) {
     if (error.code !== 'ENOENT') unlinkError = error;
   }
   if (closeError) throw closeError;
   if (unlinkError) throw unlinkError;
+}
+
+function assertRotationLockOwnershipSync(lock) {
+  if (lock && !ownsRotationLockSync(lock)) {
+    const error = new Error('Rotation lock ownership was lost');
+    error.code = 'ELOCKLOST';
+    throw error;
+  }
+}
+
+async function assertRotationLockOwnershipAsync(lock) {
+  if (lock && !(await ownsRotationLockAsync(lock))) {
+    const error = new Error('Rotation lock ownership was lost');
+    error.code = 'ELOCKLOST';
+    throw error;
+  }
+}
+
+function replaceRenameSync(sourcePath, targetPath) {
+  try {
+    fs.renameSync(sourcePath, targetPath);
+  } catch (error) {
+    if (!['EEXIST', 'EPERM', 'EACCES'].includes(error.code)) throw error;
+    try {
+      fs.unlinkSync(targetPath);
+    } catch (unlinkError) {
+      if (unlinkError.code !== 'ENOENT') throw unlinkError;
+    }
+    fs.renameSync(sourcePath, targetPath);
+  }
+}
+
+async function replaceRenameAsync(sourcePath, targetPath) {
+  try {
+    await fs.promises.rename(sourcePath, targetPath);
+  } catch (error) {
+    if (!['EEXIST', 'EPERM', 'EACCES'].includes(error.code)) throw error;
+    await fs.promises.unlink(targetPath).catch(unlinkError => {
+      if (unlinkError.code !== 'ENOENT') throw unlinkError;
+    });
+    await fs.promises.rename(sourcePath, targetPath);
+  }
 }
 
 function rotateEventLogSync(logPath, incomingBytes, options = {}) {
@@ -238,14 +348,13 @@ function rotateEventLogSync(logPath, incomingBytes, options = {}) {
     const newerPath = getRotatedLogPath(logPath, generation + 1);
     if (!fs.existsSync(olderPath)) continue;
     try {
-      fs.renameSync(olderPath, newerPath);
+      replaceRenameSync(olderPath, newerPath);
     } catch (error) {
-      if (error.code !== 'EEXIST') throw error;
-      fs.unlinkSync(newerPath);
-      fs.renameSync(olderPath, newerPath);
+      if (error.code === 'ENOENT') continue;
+      throw error;
     }
   }
-  fs.renameSync(logPath, getRotatedLogPath(logPath, 1));
+  replaceRenameSync(logPath, getRotatedLogPath(logPath, 1));
   return true;
 }
 
@@ -264,16 +373,36 @@ async function rotateEventLogAsync(logPath, incomingBytes, options = {}) {
     const olderPath = getRotatedLogPath(logPath, generation);
     const newerPath = getRotatedLogPath(logPath, generation + 1);
     try {
-      await fs.promises.rename(olderPath, newerPath);
+      await replaceRenameAsync(olderPath, newerPath);
     } catch (error) {
       if (error.code === 'ENOENT') continue;
-      if (error.code !== 'EEXIST') throw error;
-      await fs.promises.unlink(newerPath);
-      await fs.promises.rename(olderPath, newerPath);
+      throw error;
     }
   }
-  await fs.promises.rename(logPath, getRotatedLogPath(logPath, 1));
+  await replaceRenameAsync(logPath, getRotatedLogPath(logPath, 1));
   return true;
+}
+
+function shouldAttemptRotationSync(logPath, incomingBytes, config) {
+  if (!config.maxBytes || config.retention < 1) return false;
+  try {
+    const currentBytes = fs.statSync(logPath).size;
+    return currentBytes > 0 && currentBytes + incomingBytes > config.maxBytes;
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+async function shouldAttemptRotationAsync(logPath, incomingBytes, config) {
+  if (!config.maxBytes || config.retention < 1) return false;
+  try {
+    const currentBytes = (await fs.promises.stat(logPath)).size;
+    return currentBytes > 0 && currentBytes + incomingBytes > config.maxBytes;
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
 }
 
 function appendEventSync(event, logPath = getDefaultEventLogPath(), options = {}) {
@@ -283,16 +412,19 @@ function appendEventSync(event, logPath = getDefaultEventLogPath(), options = {}
   fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
 
   const config = getEventLogConfig(options);
-  const lock = acquireRotationLock(resolvedPath);
+  const rotationCandidate = shouldAttemptRotationSync(resolvedPath, Buffer.byteLength(line), config);
+  const lock = rotationCandidate ? acquireRotationLock(resolvedPath) : null;
   let rotated = false;
   try {
+    assertRotationLockOwnershipSync(lock);
     if (lock) rotated = rotateEventLogSync(resolvedPath, Buffer.byteLength(line), config);
+    assertRotationLockOwnershipSync(lock);
     fs.appendFileSync(resolvedPath, line, { encoding: 'utf8', flag: 'a' });
   } finally {
     releaseRotationLock(lock);
   }
 
-  return { logPath: resolvedPath, rotated, rotationSkipped: !lock && Boolean(config.maxBytes) };
+  return { logPath: resolvedPath, rotated, rotationSkipped: rotationCandidate && !lock };
 }
 
 function appendEventAsync(event, logPath = getDefaultEventLogPath(), options = {}) {
@@ -303,15 +435,18 @@ function appendEventAsync(event, logPath = getDefaultEventLogPath(), options = {
       const line = `${JSON.stringify(event)}\n`;
       await fs.promises.mkdir(path.dirname(resolvedPath), { recursive: true });
       const config = getEventLogConfig(options);
-      const lock = await acquireRotationLockAsync(resolvedPath);
+      const rotationCandidate = await shouldAttemptRotationAsync(resolvedPath, Buffer.byteLength(line), config);
+      const lock = rotationCandidate ? await acquireRotationLockAsync(resolvedPath) : null;
       let rotated = false;
       try {
+        await assertRotationLockOwnershipAsync(lock);
         if (lock) rotated = await rotateEventLogAsync(resolvedPath, Buffer.byteLength(line), config);
+        await assertRotationLockOwnershipAsync(lock);
         await fs.promises.appendFile(resolvedPath, line, { encoding: 'utf8', flag: 'a' });
       } finally {
         await releaseRotationLockAsync(lock);
       }
-      return { logPath: resolvedPath, rotated, rotationSkipped: !lock && Boolean(config.maxBytes) };
+      return { logPath: resolvedPath, rotated, rotationSkipped: rotationCandidate && !lock };
     } catch {
       // Instrumentation must never affect the hook path.
       return undefined;
@@ -356,9 +491,10 @@ function listEventLogSegments(logPath) {
   if (!fs.existsSync(logPath)) return [];
   const directory = path.dirname(logPath);
   const baseName = path.basename(logPath);
+  const segmentPattern = new RegExp(`^${escapeRegExp(baseName)}\\.(\\d+)$`);
   const rotated = fs.readdirSync(directory)
     .map(name => {
-      const match = new RegExp(`^${escapeRegExp(baseName)}\\.(\\d+)$`).exec(name);
+      const match = segmentPattern.exec(name);
       return match ? { generation: Number(match[1]), path: path.join(directory, name) } : null;
     })
     .filter(Boolean)
@@ -442,9 +578,13 @@ function scanSegmentSync(segment, selection, state) {
   let lineNumber = 0;
   let offset = start;
   const startsMidRecord = start > 0 && (() => {
-    const previousByte = Buffer.alloc(1);
-    fs.readSync(fd, previousByte, 0, 1, start - 1);
-    return previousByte[0] !== 0x0a;
+    try {
+      const previousByte = Buffer.alloc(1);
+      const bytesRead = fs.readSync(fd, previousByte, 0, 1, start - 1);
+      return bytesRead === 1 && previousByte[0] !== 0x0a;
+    } catch {
+      return true;
+    }
   })();
   let skippedPartialLine = !startsMidRecord;
   try {
@@ -469,12 +609,12 @@ function scanSegmentSync(segment, selection, state) {
         } else {
           processEventLine(line, segment, lineNumber, state, true);
         }
+        if (state.maxEvents !== null && state.eventsRead >= state.maxEvents) {
+          state.truncated = true;
+          addDiagnostic(state, 'read_limit', segment, lineNumber, { detail: 'max_events' });
+          return;
+        }
         newlineIndex = pending.indexOf('\n');
-      }
-      if (state.maxEvents !== null && state.eventsRead >= state.maxEvents) {
-        state.truncated = true;
-        addDiagnostic(state, 'read_limit', segment, lineNumber, { detail: 'max_events' });
-        return;
       }
     }
 
