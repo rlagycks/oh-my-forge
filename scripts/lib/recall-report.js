@@ -46,8 +46,8 @@ function toLegacyRecallRecords(events) {
     .map(toLegacyRecallRecord);
 }
 
-function readHarnessEvents(logPath) {
-  return readEvents(logPath);
+function readHarnessEvents(logPath, options = {}) {
+  return readEvents(logPath, options);
 }
 
 /**
@@ -55,11 +55,12 @@ function readHarnessEvents(logPath) {
  * @param {string} [logPath] - defaults to getDefaultRecallLogPath()
  * @returns {{records: object[], skipped: number}}
  */
-function readRecallHits(logPath) {
-  const { events, skipped } = readHarnessEvents(logPath || getDefaultRecallLogPath());
+function readRecallHits(logPath, options = {}) {
+  const { events, skipped, ...read } = readHarnessEvents(logPath || getDefaultRecallLogPath(), options);
   return {
     records: toLegacyRecallRecords(events),
     skipped,
+    read,
   };
 }
 
@@ -187,10 +188,15 @@ function aggregateLinkedInjections(events) {
  * @param {string} [options.logPath]
  * @param {string} [options.since] - e.g. "24h", "7d"
  * @param {number} [options.now] - override current time (tests)
+ * @param {number} [options.maxBytes] - bound the logical JSONL read
+ * @param {number} [options.maxEvents] - bound the number of parsed events
  * @returns {object}
  */
-function buildReport({ logPath, since, now } = {}) {
-  const { events, skipped } = readHarnessEvents(logPath || getDefaultRecallLogPath());
+function buildReport({ logPath, since, now, maxBytes, maxEvents } = {}) {
+  const { events, skipped, ...read } = readHarnessEvents(logPath || getDefaultRecallLogPath(), {
+    maxBytes,
+    maxEvents,
+  });
   const filteredEvents = filterSince(events, parseSince(since), now);
   const records = toLegacyRecallRecords(events);
   const filtered = toLegacyRecallRecords(filteredEvents);
@@ -213,6 +219,16 @@ function buildReport({ logPath, since, now } = {}) {
     totalEvents: events.length,
     matchedEvents: filteredEvents.length,
     skippedLines: skipped,
+    read: {
+      truncated: read.truncated,
+      readBytes: read.readBytes,
+      linesRead: read.linesRead,
+      segments: read.segments,
+      malformedRecords: read.malformedRecords,
+      invalidRecords: read.invalidRecords,
+      truncatedRecords: read.truncatedRecords,
+      diagnostics: read.diagnostics,
+    },
     totals,
     byDomain,
     outcomes: aggregateOutcomes(filteredEvents),
@@ -233,6 +249,13 @@ function formatTable(report) {
   lines.push(
     `Total records: ${report.totalRecords}  Matched: ${report.matchedRecords}  Skipped (malformed): ${report.skippedLines}`
   );
+  if (report.read) {
+    lines.push(
+      `Read: ${report.read.readBytes} bytes, ${report.read.linesRead} lines`
+      + (report.read.truncated ? ' (bounded)' : '')
+      + (report.read.diagnostics.length ? `, diagnostics=${report.read.diagnostics.length}` : '')
+    );
+  }
   lines.push(
     `Events: ${report.totalEvents}  Outcomes: ${report.outcomes.total}  `
       + `Outcome success rate: ${report.outcomes.successRate === null ? 'n/a' : `${report.outcomes.successRate}%`}`

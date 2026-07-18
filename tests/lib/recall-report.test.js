@@ -310,6 +310,25 @@ if (test('buildReport applies the since filter end-to-end', () => {
   }
 })) passed++; else failed++;
 
+if (test('buildReport exposes bounded-read diagnostics without changing report totals', () => {
+  const { dir, logPath } = makeTempLog([
+    hit({ ts: '2026-07-09T00:00:00.000Z', domain: 'domain_recent', chars: 20 }),
+    hit({ ts: '2026-07-10T00:00:00.000Z', domain: 'domain_recent', chars: 20 }),
+  ]);
+  try {
+    const report = buildReport({
+      logPath,
+      maxBytes: Buffer.byteLength(hit({ ts: '2026-07-09T00:00:00.000Z', domain: 'domain_recent', chars: 20 }) + '\n') + 1,
+      now: Date.parse('2026-07-10T00:00:00.000Z'),
+    });
+    assert.strictEqual(report.totalRecords, 1);
+    assert.strictEqual(report.read.truncated, true);
+    assert.ok(report.read.diagnostics.some(diagnostic => diagnostic.code === 'read_limit'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+})) passed++; else failed++;
+
 if (test('formatTable renders domain rows and a totals line', () => {
   const { dir, logPath } = makeTempLog([
     hit({ ts: '2026-07-01T00:00:00.000Z', domain: 'domain_hooks', constraints: 2, chars: 100 }),

@@ -16,6 +16,7 @@ const {
   appendEventSync,
   createEvent,
   getDefaultEventLogPath,
+  getEventLogConfig,
   normalizeLegacyRecallRecord,
   readEvents,
   validateEvent,
@@ -161,11 +162,127 @@ test('appends and reads structured events while preserving legacy recall records
   }
 });
 
+test('reads bounded JSONL data and reports that the read was truncated', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-events-bounded-'));
+  const logPath = path.join(dir, 'events.jsonl');
+  try {
+    const lines = [1, 2, 3].map((index) => JSON.stringify(createEvent({
+      eventType: EVENT_TYPES.TASK_OUTCOME,
+      source: 'test',
+      episodeId: `episode-${index}`,
+      payload: { outcome: 'success', taskId: `task-${index}` },
+    })));
+    fs.writeFileSync(logPath, `${lines.join('\n')}\n`, 'utf8');
+
+    const result = readEvents(logPath, { maxBytes: Buffer.byteLength(`${lines[0]}\n`) + 2 });
+    assert.strictEqual(result.events.length, 1);
+    assert.strictEqual(result.truncated, true);
+    assert.ok(result.diagnostics.some(diagnostic => diagnostic.code === 'read_limit'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('keeps the first event when a bounded read starts on a line boundary', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-events-boundary-'));
+  const logPath = path.join(dir, 'events.jsonl');
+  try {
+    const lines = [1, 2, 3].map((index) => JSON.stringify(createEvent({
+      eventType: EVENT_TYPES.TASK_OUTCOME,
+      source: 'test',
+      episodeId: `episode-${index}`,
+      payload: { outcome: 'success', taskId: `task-${index}` },
+    })));
+    fs.writeFileSync(logPath, `${lines.join('\n')}\n`, 'utf8');
+
+    const lastTwoBytes = Buffer.byteLength(`${lines[1]}\n${lines[2]}\n`);
+    const result = readEvents(logPath, { maxBytes: lastTwoBytes });
+    assert.deepStrictEqual(result.events.map(event => event.episode_id), ['episode-2', 'episode-3']);
+    assert.strictEqual(result.diagnostics.some(diagnostic => diagnostic.detail === 'partial_record_skipped'), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('distinguishes malformed JSONL from a truncated final record', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-events-diagnostics-'));
+  const logPath = path.join(dir, 'events.jsonl');
+  try {
+    const event = JSON.stringify(createEvent({
+      eventType: EVENT_TYPES.TASK_OUTCOME,
+      source: 'test',
+      payload: { outcome: 'success' },
+    }));
+    fs.writeFileSync(logPath, `${event}\nnot-json\n{"schema_version":1`, 'utf8');
+
+    const result = readEvents(logPath);
+    assert.strictEqual(result.events.length, 1);
+    assert.strictEqual(result.skipped, 2);
+    assert.strictEqual(result.malformedRecords, 1);
+    assert.strictEqual(result.truncatedRecords, 1);
+    assert.deepStrictEqual(
+      result.diagnostics.map(diagnostic => diagnostic.code),
+      ['malformed_json', 'truncated_record']
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('enforces maxEvents inside a large read chunk', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-events-max-events-'));
+  const logPath = path.join(dir, 'events.jsonl');
+  try {
+    const lines = Array.from({ length: 20 }, (_, index) => JSON.stringify(createEvent({
+      eventType: EVENT_TYPES.TASK_OUTCOME,
+      source: 'test',
+      episodeId: `max-events-${index}`,
+      payload: { outcome: 'success' },
+    })));
+    fs.writeFileSync(logPath, `${lines.join('\n')}\n`, 'utf8');
+
+    const result = readEvents(logPath, { maxEvents: 3 });
+    assert.strictEqual(result.events.length, 3);
+    assert.strictEqual(result.truncated, true);
+    assert.ok(result.diagnostics.some(diagnostic => diagnostic.detail === 'max_events'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('rotates the active log and enforces configured retention', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-events-rotation-'));
+  const logPath = path.join(dir, 'events.jsonl');
+  try {
+    const options = { maxBytes: 200, retention: 2 };
+    for (let index = 1; index <= 4; index += 1) {
+      appendEventSync(createEvent({
+        eventType: EVENT_TYPES.TASK_OUTCOME,
+        source: 'test',
+        episodeId: `episode-${index}`,
+        payload: { outcome: 'success', taskId: `task-${index}`, padding: 'x'.repeat(80) },
+      }), logPath, options);
+    }
+
+    assert.strictEqual(fs.existsSync(`${logPath}.1`), true);
+    assert.strictEqual(fs.existsSync(`${logPath}.2`), true);
+    assert.strictEqual(fs.existsSync(`${logPath}.3`), false);
+    const result = readEvents(logPath, { maxBytes: 4096 });
+    assert.ok(result.events.length >= 2);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('uses the existing recall log path by default for backward compatibility', () => {
   assert.strictEqual(
     getDefaultEventLogPath(),
     path.join(os.homedir(), '.claude', 'logs', 'recall-hits.jsonl')
   );
+});
+
+test('rejects invalid explicit rotation size instead of silently disabling rotation', () => {
+  assert.throws(() => getEventLogConfig({ maxBytes: 'not-a-size' }), /maxBytes must be an integer/);
 });
 
 test('ships a machine-readable event schema with the runtime contract', () => {
