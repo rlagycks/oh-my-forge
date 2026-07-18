@@ -49,6 +49,7 @@ const {
   aggregateByDomain,
   aggregateRecurrence,
   aggregateInjectionOutcomes,
+  aggregateOutcomes,
   aggregateLinkedInjections,
   buildReport,
   formatTable,
@@ -164,6 +165,10 @@ if (test('links duplicate episode outcomes by latest timestamp and reports dupli
   assert.strictEqual(linked.withOutcome, 1);
   assert.strictEqual(linked.successCount, 0);
   assert.strictEqual(linked.failureCount, 1);
+  const outcomes = aggregateOutcomes(events);
+  assert.strictEqual(outcomes.total, 2);
+  assert.strictEqual(outcomes.rawTotal, 2);
+  assert.strictEqual(outcomes.finalTotal, 1);
 })) passed++; else failed++;
 
 if (test('getDefaultRecallLogPath resolves under ~/.claude/logs/recall-hits.jsonl', () => {

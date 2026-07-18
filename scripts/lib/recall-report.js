@@ -320,9 +320,13 @@ function aggregateInjectionOutcomes(events) {
 
 function aggregateOutcomes(events) {
   const { outcomes: final, duplicateEpisodeIds } = finalOutcomes(events);
+  const rawTotal = events.filter(event => event.event_type === EVENT_TYPES.TASK_OUTCOME).length;
   const result = {
-    total: final.size,
-    rawTotal: events.filter(event => event.event_type === EVENT_TYPES.TASK_OUTCOME).length,
+    // Keep the original contract: total is the number of recorded outcome events.
+    // finalTotal exposes the deduplicated episode count used by the rates below.
+    total: rawTotal,
+    rawTotal,
+    finalTotal: final.size,
     successCount: 0,
     failureCount: 0,
     unknownCount: 0,

@@ -32,3 +32,7 @@ node scripts/record-harness-event.js --type task_outcome --episode episode-123 -
 Usefulness percentages are `null` below three classified episodes and the report marks `insufficientSample: true`; counts remain available. Unattributed injections are counted separately because they cannot be assigned to an episode outcome. The text table prints the same categories and marks insufficient samples.
 
 The existing `recall-hits.jsonl` path and legacy record parsing remain unchanged.
+
+`outcomes.total` and `outcomes.rawTotal` count recorded task-outcome events for
+backward compatibility. `outcomes.finalTotal` counts the latest outcome per
+episode; success/failure/unknown counts and rates use that final-outcome view.
