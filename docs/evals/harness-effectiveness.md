@@ -2,6 +2,29 @@
 
 이 디렉터리는 OMF의 기능 존재 여부가 아니라 **하네스가 실제 작업 결과를 개선하는지** 측정하기 위한 golden task를 관리한다.
 
+## Failure-replay corpus contract
+
+`golden-tasks.json` is a replay corpus, not a list of generic feature requests.
+Each task represents a failure mode observed in QA/RCA history, an ontology
+prevention constraint, or a documented harness regression. The checked-in corpus
+uses this required metadata:
+
+| Field | Requirement |
+|-------|-------------|
+| `id` | Stable, unique identifier; do not reuse an ID for a different failure mode |
+| `prompt` | Privacy-safe task statement with no secrets, user data, or machine-specific paths |
+| `provenance.source` | Repository-relative document or ontology file that grounds the task |
+| `provenance.incident` | Short, redacted description of the failure or prevention gap |
+| `tags` | One or more non-empty labels for domain and failure class |
+| `difficulty` | One of `easy`, `medium`, or `hard` |
+| `success_criteria` | One or more observable acceptance conditions |
+| `verification` | Node-only `argv` plus an integer `expected_exit_code` |
+
+The suite validator rejects missing or malformed metadata and duplicate IDs. The
+runner still treats the JSON as trusted executable configuration: only `node` is
+allowed, `shell: false` is mandatory, and verification output is not captured in
+events. Adding provenance or tags must never be used to relax those controls.
+
 ## 실행 원칙
 
 - 동일한 프로젝트 snapshot, 모델, 모델 설정, 사용자 요청으로 하네스 on/off를 비교한다.
@@ -93,3 +116,37 @@ duplicates as `linkedInjections.duplicateOutcomeEpisodes`.
 현재는 이벤트 계약·기록·집계 기반만 제공한다. 실제 Claude/Codex 실행을 자동화하는 benchmark runner, 모델별 토큰 tokenizer, 통계적 유의성 검정, 장기 실행 환경의 로그 rotation/streaming은 후속 작업이다.
 
 `golden-tasks.json`의 verification은 실행 가능한 argv 메타데이터이며, 신뢰할 수 없는 외부 입력을 shell 문자열로 실행해서는 안 된다.
+
+## Promoting an RCA incident
+
+Promote an incident only after the RCA report has a concrete root cause and a
+developer-approved corrective action. Preserve the useful failure signal while
+keeping the corpus safe to publish:
+
+1. Read the Phase 5 report in `docs/qa/rca-history/` and the owning
+   `.claude/ontology/domain_*.json` constraints. If the RCA is still only a
+   symptom (for example, "timeout" or "element not found"), finish the root-cause
+   and scope analysis first.
+2. Redact secrets, tokens, customer data, session IDs, hostnames, usernames, and
+   absolute paths. Replace them with stable role names or synthetic fixtures.
+3. Add one task to `docs/evals/golden-tasks.json` with a new stable ID, a
+   repository-relative `provenance.source`, a concise `provenance.incident`,
+   domain/failure tags, a difficulty rating, and observable success criteria.
+4. Prefer a checked-in test or CI validator for `verification.argv`. Keep it
+   deterministic, offline, and node-only; never turn an RCA command copied from a
+   report into a shell string.
+5. Run both metadata and execution checks:
+
+   ```bash
+   node tests/evals/golden-tasks.test.js
+   node tests/lib/golden-task-runner.test.js
+   node scripts/run-golden-task.js --task <task-id> --episode rca-replay-check --log /tmp/omf-golden-events.jsonl --json
+   ```
+
+6. Review the diff for privacy leaks and duplicate failure modes. Link the task
+   back to the RCA source in the commit or change description; do not copy the
+   full incident report into the prompt or event log.
+
+If the incident cannot be made deterministic or privacy-safe, keep it in the RCA
+history and record the unresolved limitation instead of adding a flaky golden
+task.

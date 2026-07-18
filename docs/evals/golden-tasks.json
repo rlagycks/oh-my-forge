@@ -1,12 +1,17 @@
 {
   "version": 1,
   "suite": "omf-harness-effectiveness",
-  "description": "Small, deterministic starting set for measuring whether OMF context and failure memory improve coding-agent work.",
+  "description": "Deterministic failure-replay corpus derived from OMF QA guidance, RCA patterns, ontology constraints, and harness research.",
   "tasks": [
     {
       "id": "observability-recall-backward-compatibility",
       "prompt": "Extend the recall report without breaking legacy recall-hits.jsonl records. Add a regression test for mixed legacy and structured events.",
-      "tags": ["observability", "backward-compatibility"],
+      "provenance": {
+        "source": "docs/evals/harness-effectiveness.md",
+        "incident": "Legacy recall-hits.jsonl records must remain readable alongside structured events."
+      },
+      "tags": ["observability", "backward-compatibility", "failure-replay"],
+      "difficulty": "medium",
       "success_criteria": [
         "Legacy injection records remain readable",
         "Structured task outcomes are reported",
@@ -20,7 +25,12 @@
     {
       "id": "ontology-guard-regression",
       "prompt": "Add a machine-checkable ontology constraint to a high-risk domain and verify that the guard emits a warning for a matching edit without blocking the tool.",
+      "provenance": {
+        "source": ".claude/ontology/domain_hooks.json",
+        "incident": "Constraint warnings must not block the original tool input."
+      },
       "tags": ["ontology", "constraint-guard", "regression"],
+      "difficulty": "medium",
       "success_criteria": [
         "The constraint is schema-valid",
         "A matching edit produces a warning",
@@ -34,14 +44,228 @@
     {
       "id": "session-continuity-preservation",
       "prompt": "Preserve the next action and evidence when a long-running session is compacted, without duplicating continuity packets on repeated compactions.",
+      "provenance": {
+        "source": ".claude/ontology/domain_session.json",
+        "incident": "Repeated compaction must replace continuity state rather than duplicate it."
+      },
       "tags": ["session", "compaction", "continuity"],
+      "difficulty": "hard",
       "success_criteria": [
         "The continuity packet survives compaction",
         "Repeated compaction replaces rather than duplicates the packet",
         "The session hook remains safe with empty state"
       ],
       "verification": {
-        "argv": ["node", "tests/run-all.js"],
+        "argv": ["node", "tests/lib/continuity-packet.test.js"],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "failure-hook-registration",
+      "prompt": "Repair failure tracking so failed Bash calls use the failure event path, while successful calls and non-Bash tools remain ignored.",
+      "provenance": {
+        "source": ".claude/ontology/domain_hooks.json",
+        "incident": "PostToolUse did not observe failed Bash commands, so failure tracking was silently skipped."
+      },
+      "tags": ["hooks", "failure-tracking", "event-contract"],
+      "difficulty": "hard",
+      "success_criteria": [
+        "A real failed Bash event creates a failure record",
+        "Successful Bash events do not create a failure record",
+        "Non-Bash events pass through safely"
+      ],
+      "verification": {
+        "argv": ["node", "tests/hooks/error-tracker.test.js"],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "project-ontology-routing-boundary",
+      "prompt": "Keep routing hooks anchored to the edited project's ontology when a different plugin-root ontology is present, and preserve pass-through behavior for unrelated files.",
+      "provenance": {
+        "source": ".claude/ontology/domain_hooks.json",
+        "incident": "Routing hooks could use the plugin ontology when the project ontology was available."
+      },
+      "tags": ["hooks", "ontology-routing", "project-boundary"],
+      "difficulty": "hard",
+      "success_criteria": [
+        "Project ontology data wins over plugin-root data",
+        "Tracked files receive the expected guard context",
+        "Unrelated files remain pass-through"
+      ],
+      "verification": {
+        "argv": ["node", "tests/hooks/project-ontology-routing.test.js"],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "codex-guard-policy-symmetry",
+      "prompt": "Align the write-tool and Bash Codex guards for tracked metadata, explicit bypasses, and untracked files without weakening the self-repository policy.",
+      "provenance": {
+        "source": ".claude/ontology/domain_codex.json",
+        "incident": "The write and Bash Codex guards had asymmetric bypass and self-repository meta-path behavior."
+      },
+      "tags": ["codex", "security", "guard"],
+      "difficulty": "hard",
+      "success_criteria": [
+        "Both guard paths agree for tracked metadata",
+        "An explicit bypass is honored consistently",
+        "Untracked files remain editable"
+      ],
+      "verification": {
+        "argv": ["node", "tests/hooks/codex-guard-symmetry.test.js"],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "false-normal-completion-rejection",
+      "prompt": "Reject a completion report that claims success without evidence, checks, false-normal signals, and a next action; accept a complete report.",
+      "provenance": {
+        "source": ".claude/ontology/domain_codex.json",
+        "incident": "A completion report marked DONE without evidence could be treated as success."
+      },
+      "tags": ["codex", "handoff", "false-normal"],
+      "difficulty": "medium",
+      "success_criteria": [
+        "Incomplete DONE reports are downgraded",
+        "Complete DONE reports remain accepted",
+        "Explicit BLOCKED reports remain blocked"
+      ],
+      "verification": {
+        "argv": ["node", "tests/lib/false-normal-detector.test.js"],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "session-failure-trace-evidence",
+      "prompt": "Preserve concrete failure evidence, hypotheses, missing evidence, and next investigation points when saving a session failure trace; do not replace it with a generic lesson.",
+      "provenance": {
+        "source": ".claude/ontology/domain_session.json",
+        "incident": "Generic lessons without concrete failure evidence can hide the next investigation step."
+      },
+      "tags": ["session", "failure-trace", "evidence"],
+      "difficulty": "medium",
+      "success_criteria": [
+        "Failure traces retain their root-cause context",
+        "Missing evidence and next checks are preserved",
+        "Generic lessons are not substituted for concrete failures"
+      ],
+      "verification": {
+        "argv": ["node", "tests/commands/save-session-failure-trace.test.js"],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "release-manifest-completeness",
+      "prompt": "Keep release automation synchronized with the complete set of files checked by release-manifest validation, without leaving a dirty partial update.",
+      "provenance": {
+        "source": ".claude/ontology/domain_install.json",
+        "incident": "Release updates covered only part of the validator's file set and aborted mid-run."
+      },
+      "tags": ["install", "release", "manifest"],
+      "difficulty": "medium",
+      "success_criteria": [
+        "All release metadata is validator-compliant",
+        "The release file set is complete",
+        "The check is deterministic without network access"
+      ],
+      "verification": {
+        "argv": ["node", "scripts/ci/validate-release-manifests.js"],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "install-manifest-boundary",
+      "prompt": "Validate installation profiles, modules, and components while keeping destinations manifest-defined and dry-run behavior free of filesystem writes.",
+      "provenance": {
+        "source": ".claude/ontology/domain_install.json",
+        "incident": "Installation targets must remain manifest-defined so profiles do not drift from their declared components."
+      },
+      "tags": ["install", "manifest", "dry-run"],
+      "difficulty": "easy",
+      "success_criteria": [
+        "Every install profile references valid modules",
+        "Every module references valid components",
+        "The manifest graph is internally consistent"
+      ],
+      "verification": {
+        "argv": ["node", "scripts/ci/validate-install-manifests.js"],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "ontology-promotion-contract",
+      "prompt": "Promote a complete design contract into ontology detail without accepting incomplete required sections or writing an invalid domain fragment.",
+      "provenance": {
+        "source": ".claude/ontology/domain_commands.json",
+        "incident": "Contract promotion must reject incomplete design inputs before they become ontology state."
+      },
+      "tags": ["ontology", "commands", "promotion"],
+      "difficulty": "hard",
+      "success_criteria": [
+        "Complete contracts produce a valid detail fragment",
+        "Incomplete contracts fail before writing",
+        "Existing detail data is preserved during merge"
+      ],
+      "verification": {
+        "argv": ["node", "tests/lib/ontology.test.js"],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "qa-context-pass-through",
+      "prompt": "Keep QA context injection non-blocking: malformed topology data, missing matches, and unrelated edits must pass through without preventing the tool call.",
+      "provenance": {
+        "source": "docs/features/qa-knowledge-layer.md",
+        "incident": "QA history lookup failures must never block an edit."
+      },
+      "tags": ["qa", "context-injection", "non-blocking"],
+      "difficulty": "medium",
+      "success_criteria": [
+        "Unrelated files receive unchanged input",
+        "Known QA context is emitted in the expected JSON envelope",
+        "Lookup failures exit safely"
+      ],
+      "verification": {
+        "argv": ["node", "tests/hooks/post-edit-ontology-check.test.js"],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "rca-root-cause-evidence",
+      "prompt": "Turn an observed test symptom into a replayable task with a concrete root cause, scope check, and deterministic acceptance evidence rather than a symptom-only description.",
+      "provenance": {
+        "source": "skills/e2e-rca/SKILL.md",
+        "incident": "RCA reports must identify root cause rather than stop at a failure symptom."
+      },
+      "tags": ["qa", "rca", "root-cause"],
+      "difficulty": "hard",
+      "success_criteria": [
+        "The task names the root-cause investigation target",
+        "The task includes a scope check",
+        "The result is verified by a deterministic command"
+      ],
+      "verification": {
+        "argv": ["node", "scripts/ci/validate-no-personal-paths.js"],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "golden-suite-security-boundary",
+      "prompt": "Preserve the trusted-suite security boundary while adding corpus metadata: verification must stay node-only, shell-free, output-free, and deterministic.",
+      "provenance": {
+        "source": "docs/evals/harness-effectiveness.md",
+        "incident": "The golden suite contains executable verification argv and must not become an untrusted shell command channel."
+      },
+      "tags": ["evals", "security", "determinism"],
+      "difficulty": "hard",
+      "success_criteria": [
+        "Unsafe verification commands remain rejected",
+        "Verification runs without shell interpolation",
+        "Prompts and command output are absent from event records"
+      ],
+      "verification": {
+        "argv": ["node", "tests/lib/golden-task-runner.test.js"],
         "expected_exit_code": 0
       }
     }

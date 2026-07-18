@@ -76,7 +76,7 @@ function makeFixture() {
 
 test('loads the checked-in suite and validates node-only verification argv', () => {
   const suite = readGoldenTaskSuite(path.resolve(__dirname, '../../docs/evals/golden-tasks.json'));
-  assert.strictEqual(suite.tasks.length, 3);
+  assert.ok(suite.tasks.length >= 10);
   assert.deepStrictEqual(validateGoldenTask(suite.tasks[0]), []);
   assert.ok(validateGoldenTask({ id: 'shell', verification: { argv: ['sh', '-c', 'echo unsafe'], expected_exit_code: 0 } }).length > 0);
   assert.strictEqual(findGoldenTask(suite, 'missing-task'), null);
@@ -173,6 +173,11 @@ test('records expected failures and timeout failures with safe metadata', () => 
 test('returns a non-success result when the expected exit code does not match', () => {
   const result = executeVerification({
     id: 'mismatch',
+    prompt: 'Run a deterministic mismatch fixture.',
+    provenance: { source: 'tests/lib/golden-task-runner.test.js', incident: 'exit-code mismatch fixture' },
+    tags: ['test', 'verification'],
+    difficulty: 'easy',
+    success_criteria: ['The mismatch is reported as failure'],
     verification: { argv: ['node', '-e', 'process.exit(3)'], expected_exit_code: 0 },
   }, { timeoutMs: 1000 });
   assert.strictEqual(result.outcome, 'failure');
@@ -183,6 +188,11 @@ test('returns a non-success result when the expected exit code does not match', 
 test('handles invalid timeout, missing episode, and spawn errors without output capture', () => {
   const task = {
     id: 'error-paths',
+    prompt: 'Exercise timeout and spawn error handling.',
+    provenance: { source: 'tests/lib/golden-task-runner.test.js', incident: 'verification error-path fixture' },
+    tags: ['test', 'errors'],
+    difficulty: 'medium',
+    success_criteria: ['Invalid execution inputs fail safely'],
     verification: { argv: ['node', '-e', 'process.exit(0)'], expected_exit_code: 0 },
   };
   assert.throws(() => executeVerification(task, { timeoutMs: 0 }), /timeoutMs/);
