@@ -91,6 +91,11 @@ async function run() {
               token: 'private token in adapter output',
               password: 'private password in adapter output',
               headers: 'private headers in adapter output',
+              auth: 'private auth in adapter output',
+              key: 'private key in adapter output',
+              jwt: 'private jwt in adapter output',
+              bearer: 'private bearer in adapter output',
+              endpoint: 'https://example.test/run?api_key=private-url-key',
             },
             inputTokens: 10,
             outputTokens: 5,
@@ -136,6 +141,11 @@ async function run() {
       assert.ok(!eventText.includes('private token'));
       assert.ok(!eventText.includes('private password'));
       assert.ok(!eventText.includes('private headers'));
+      assert.ok(!eventText.includes('private auth'));
+      assert.ok(!eventText.includes('private key'));
+      assert.ok(!eventText.includes('private jwt'));
+      assert.ok(!eventText.includes('private bearer'));
+      assert.ok(!eventText.includes('private-url-key'));
       const { events } = readEvents(fixture.logPath);
       assert.strictEqual(events.length, 8);
       assert.ok(events.every(event => event.event_type === 'task_outcome'));
@@ -159,6 +169,9 @@ async function run() {
         seed: 7,
         prompt: 'do not keep',
         nested: { context: 'do not keep' },
+        auth: 'do not keep',
+        endpoint: 'https://example.test/run?api_key=do-not-keep',
+        top_p: 0.9,
       },
       inputTokens: 1,
       outputTokens: 2,
@@ -171,7 +184,7 @@ async function run() {
     assert.deepStrictEqual(metadata, {
       provider: 'provider',
       model: 'model',
-      config: { temperature: 0.2, seed: 7 },
+      config: { temperature: 0.2, seed: 7, top_p: 0.9 },
       inputTokens: 1,
       outputTokens: 2,
       toolCalls: 3,
@@ -221,6 +234,22 @@ async function run() {
       assert.ok(costReport.results.length < 8);
       assert.strictEqual(calls, 2);
       assert.ok(costReport.pairs.some(pair => pair.complete === false));
+      assert.ok(costReport.comparison.pairs < costReport.pairs.length);
+      assert.strictEqual(costReport.comparison.on.attempted, costReport.comparison.pairs);
+      assert.strictEqual(costReport.comparison.off.attempted, costReport.comparison.pairs);
+    } finally {
+      fs.rmSync(fixture.dir, { recursive: true, force: true });
+    }
+  });
+
+  await test('rejects timeoutMs zero before adapter execution', async () => {
+    const fixture = makeFixture();
+    try {
+      await assert.rejects(() => runPairedBenchmark({
+        suitePath: fixture.suitePath,
+        adapter: async () => ({ provider: 'unused' }),
+        timeoutMs: 0,
+      }), /timeoutMs must be from 1/);
     } finally {
       fs.rmSync(fixture.dir, { recursive: true, force: true });
     }

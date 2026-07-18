@@ -60,6 +60,30 @@ try {
   assert.ok(textResult.stdout.includes('fixture-provider'));
   assert.ok(textResult.stdout.includes('on'));
   assert.ok(textResult.stdout.includes('off'));
+
+  const taskFailureSuitePath = path.join(dir, 'task-failure-suite.json');
+  fs.writeFileSync(taskFailureSuitePath, JSON.stringify({
+    suite: 'cli-task-failure-suite',
+    tasks: [{
+      id: 'cli-task-fails-verification',
+      prompt: 'deterministic task failure is benchmark data',
+      provenance: { source: 'fixture', incident: 'expected verification failure' },
+      tags: ['paired'],
+      difficulty: 'easy',
+      success_criteria: ['the failure is reported without a process error'],
+      verification: { argv: ['node', '-e', 'process.exit(1)'], expected_exit_code: 0 },
+    }],
+  }), 'utf8');
+  const taskFailureResult = spawnSync(process.execPath, [
+    cliPath,
+    '--suite', taskFailureSuitePath,
+    '--adapter', adapterPath,
+    '--snapshot-id', 'task-failure-snapshot',
+    '--log', path.join(dir, 'task-failure-events.jsonl'),
+    '--json',
+  ], { encoding: 'utf8' });
+  assert.strictEqual(taskFailureResult.status, 0, taskFailureResult.stderr);
+  assert.strictEqual(JSON.parse(taskFailureResult.stdout).results[0].outcome, 'failure');
   console.log('  ✓ CLI emits JSON and human-readable paired comparison output');
 } finally {
   fs.rmSync(dir, { recursive: true, force: true });

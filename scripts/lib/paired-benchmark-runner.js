@@ -17,6 +17,13 @@ const MAX_REPETITIONS = 100;
 const MAX_SEED = 0xffffffff;
 const CONDITIONS = Object.freeze(['on', 'off']);
 const SENSITIVE_KEY_PATTERN = /prompt|source|context|payload|message|content|raw|output|input|code|stdout|stderr|transcript|response|request|secret|password|token|authorization|credential|cookie|header|api[_-]?key|access[_-]?key|private[_-]?key/i;
+const SAFE_CONFIG_KEYS = new Set([
+  'temperature', 'topp', 'topk', 'maxtokens', 'maxoutputtokens', 'maxcompletiontokens',
+  'seed', 'stop', 'stopsequences', 'reasoningeffort', 'servicetier', 'stream',
+  'paralleltoolcalls', 'timeoutms', 'frequencypenalty', 'presencepenalty', 'logprobs',
+  'toplogprobs',
+]);
+const SENSITIVE_URL_VALUE_PATTERN = /https?:\/\/[^\s"'<>]*(?:[?&](?:api[_-]?key|access[_-]?key|private[_-]?key|token|secret|password|authorization|auth|jwt|bearer|key)=)[^&\s"'<>]*/i;
 const ADAPTER_METADATA_FIELDS = Object.freeze([
   'provider',
   'model',
@@ -49,7 +56,9 @@ function sanitizeConfig(config) {
 
   const sanitized = {};
   for (const [key, value] of Object.entries(config)) {
-    if (SENSITIVE_KEY_PATTERN.test(key)) continue;
+    const normalizedKey = key.replace(/[-_]/g, '').toLowerCase();
+    if (SENSITIVE_KEY_PATTERN.test(key) || !SAFE_CONFIG_KEYS.has(normalizedKey)) continue;
+    if (typeof value === 'string' && SENSITIVE_URL_VALUE_PATTERN.test(value)) continue;
     if (value === null || typeof value === 'string' || typeof value === 'boolean') {
       sanitized[key] = value;
     } else if (typeof value === 'number' && Number.isFinite(value)) {
@@ -258,15 +267,19 @@ function summarizeCondition(results) {
   };
 }
 
-function buildComparison(results, pairs) {
+function buildComparison(pairs) {
   const completePairs = pairs.filter(pair => pair.complete);
-  const conditionResults = condition => results.filter(result => result.condition === condition);
+  const conditionResults = condition => completePairs
+    .map(pair => pair.conditions[condition])
+    .filter(Boolean);
+  const on = summarizeCondition(conditionResults('on'));
+  const off = summarizeCondition(conditionResults('off'));
   return {
     pairs: completePairs.length,
-    on: summarizeCondition(conditionResults('on')),
-    off: summarizeCondition(conditionResults('off')),
+    on,
+    off,
     successRateDelta: completePairs.length > 0
-      ? Number((summarizeCondition(conditionResults('on')).successRate - summarizeCondition(conditionResults('off')).successRate).toFixed(1))
+      ? Number((on.successRate - off.successRate).toFixed(1))
       : null,
   };
 }
@@ -314,7 +327,7 @@ async function runPairedBenchmark(options = {}) {
   if (repetitions < 1 || repetitions > MAX_REPETITIONS) throw new Error(`repetitions must be from 1 to ${MAX_REPETITIONS}`);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   validateNonNegativeNumber(timeoutMs, 'timeoutMs', true);
-  if (timeoutMs > MAX_TIMEOUT_MS) throw new Error(`timeoutMs must be <= ${MAX_TIMEOUT_MS}`);
+  if (timeoutMs < 1 || timeoutMs > MAX_TIMEOUT_MS) throw new Error(`timeoutMs must be from 1 to ${MAX_TIMEOUT_MS}`);
   const maxCostUsd = options.maxCostUsd === undefined ? null : options.maxCostUsd;
   if (maxCostUsd !== null) validateNonNegativeNumber(maxCostUsd, 'maxCostUsd');
   const seed = createSeed(options.seed);
@@ -431,7 +444,6 @@ async function runPairedBenchmark(options = {}) {
       pair.conditions[condition] = result;
       if (maxCostUsd !== null && costUsd > maxCostUsd) {
         costExceeded = true;
-        pair.status = 'complete';
       }
     }
     if (pair.conditions.on && pair.conditions.off) {
@@ -458,7 +470,7 @@ async function runPairedBenchmark(options = {}) {
     results,
     executionOrder,
     providers,
-    comparison: buildComparison(results, pairs),
+    comparison: buildComparison(pairs),
     limits: {
       timeoutMs,
       maxCostUsd,

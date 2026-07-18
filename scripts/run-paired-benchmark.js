@@ -88,7 +88,11 @@ async function main() {
   });
   if (options.json) console.log(JSON.stringify(report, null, 2));
   else console.log(formatComparison(report));
-  if (report.results.some(result => result.outcome !== 'success') || report.comparison.pairs < report.pairs.length) {
+  const operationalFailure = report.limits.costExceeded
+    || report.limits.timeoutCount > 0
+    || report.comparison.pairs < report.pairs.length
+    || report.results.some(result => result.errorCode);
+  if (operationalFailure) {
     process.exitCode = 1;
   }
 }

@@ -149,10 +149,21 @@ id/hash, provider/model/config, token/tool-call counts, duration, and cost when
 the adapter supplies them. Timeout and cumulative reported-cost limits stop
 adapter execution safely; skipped pairs are marked incomplete.
 
+Condition summaries and `successRateDelta` include only complete on/off pairs;
+an incomplete pair is excluded so a cost-limited run cannot bias the comparison.
+Task verification failures are data in the report, not process failures. The CLI
+uses a non-zero exit code only for operational failures such as adapter errors,
+timeouts, cost exhaustion, or incomplete pairs.
+
 The runner never writes prompts, source, context payloads, model output, or
 adapter request/response objects. Snapshot restoration and provider-specific
 execution belong to the adapter; the runner passes the same opaque snapshot
 reference to each member of a pair.
+
+Adapter `config` metadata uses a small allowlist of scalar generation/runtime
+settings. Provider credentials, auth objects, URLs with sensitive query
+parameters, and unknown config keys are dropped before reports or events are
+written.
 
 An episode is expected to have one final `task_outcome`. If retries or
 intermediate outcomes are recorded, the report uses the latest outcome by
