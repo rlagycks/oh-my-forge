@@ -15,6 +15,7 @@ const DEFAULT_TIMEOUT_MS = 120000;
 const MAX_TIMEOUT_MS = 600000;
 const ALLOWED_VERIFICATION_COMMANDS = new Set(['node']);
 const ALLOWED_DIFFICULTIES = new Set(['easy', 'medium', 'hard']);
+const hasOwn = (object, property) => Object.prototype.hasOwnProperty.call(object, property);
 
 function validateNonEmptyStringArray(value, field) {
   if (!Array.isArray(value) || value.length === 0 || value.some(item => typeof item !== 'string' || item.trim() === '')) {
@@ -63,12 +64,15 @@ function validateGoldenTask(task) {
   if (typeof task.id !== 'string' || task.id.trim() === '') errors.push('id must be non-empty');
   if (typeof task.prompt !== 'string' || task.prompt.trim() === '') errors.push('prompt must be non-empty');
 
-  errors.push(...validateProvenance(task.provenance));
-  errors.push(...validateNonEmptyStringArray(task.tags, 'tags'));
-  if (typeof task.difficulty !== 'string' || !ALLOWED_DIFFICULTIES.has(task.difficulty)) {
+  if (!hasOwn(task, 'provenance')) errors.push('provenance must be an object');
+  else errors.push(...validateProvenance(task.provenance));
+  if (!hasOwn(task, 'tags')) errors.push('tags must be a non-empty string array');
+  else errors.push(...validateNonEmptyStringArray(task.tags, 'tags'));
+  if (!hasOwn(task, 'difficulty') || typeof task.difficulty !== 'string' || !ALLOWED_DIFFICULTIES.has(task.difficulty)) {
     errors.push(`difficulty must be one of: ${[...ALLOWED_DIFFICULTIES].join(', ')}`);
   }
-  errors.push(...validateNonEmptyStringArray(task.success_criteria, 'success_criteria'));
+  if (!hasOwn(task, 'success_criteria')) errors.push('success_criteria must be a non-empty string array');
+  else errors.push(...validateNonEmptyStringArray(task.success_criteria, 'success_criteria'));
 
   if (!task.verification || typeof task.verification !== 'object' || Array.isArray(task.verification)) {
     errors.push('verification must be an object');
@@ -147,6 +151,7 @@ function recordVerificationOutcome(result, { episodeId, logPath, metadata = {} }
     source: 'run-golden-task',
     episodeId,
     payload: {
+      ...metadata,
       taskId: result.taskId,
       outcome: result.outcome,
       testsPassed: result.testsPassed,
@@ -155,7 +160,6 @@ function recordVerificationOutcome(result, { episodeId, logPath, metadata = {} }
       expectedExitCode: result.expectedExitCode,
       timedOut: result.timedOut,
       errorCode: result.errorCode,
-      ...metadata,
     },
   });
   appendEventSync(event, logPath);

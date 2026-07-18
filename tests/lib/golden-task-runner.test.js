@@ -124,6 +124,31 @@ test('rejects tasks missing required corpus metadata', () => {
   assert.ok(validateGoldenTask({ ...baseTask, success_criteria: [''] }).some(error => error.includes('success_criteria')));
 });
 
+test('metadata cannot overwrite verification outcome fields', () => {
+  const fixture = makeFixture();
+  try {
+    const event = recordVerificationOutcome({
+      taskId: 'pass-task',
+      outcome: 'success',
+      testsPassed: true,
+      durationMs: 12,
+      exitCode: 0,
+      expectedExitCode: 0,
+      timedOut: false,
+      errorCode: null,
+    }, {
+      episodeId: 'episode-metadata',
+      logPath: fixture.logPath,
+      metadata: { outcome: 'failure', taskId: 'spoofed-task', testsPassed: false },
+    });
+    assert.strictEqual(event.payload.outcome, 'success');
+    assert.strictEqual(event.payload.task_id, 'pass-task');
+    assert.strictEqual(event.payload.tests_passed, true);
+  } finally {
+    fs.rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
 test('runs argv without shell interpolation and records no prompt or output text', () => {
   const fixture = makeFixture();
   try {

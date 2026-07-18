@@ -246,7 +246,7 @@
         "The result is verified by a deterministic command"
       ],
       "verification": {
-        "argv": ["node", "scripts/ci/validate-no-personal-paths.js"],
+        "argv": ["node", "scripts/ci/validate-golden-task-rca.js"],
         "expected_exit_code": 0
       }
     },
