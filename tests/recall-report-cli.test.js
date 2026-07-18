@@ -97,5 +97,24 @@ if (test('--since filters out older hits', () => {
   }
 })) passed++; else failed++;
 
+if (test('--max-bytes makes bounded reads visible in JSON output', () => {
+  const { dir, logPath } = makeTempLog([
+    { ts: '2026-07-01T00:00:00.000Z', domain: 'domain_hooks', kinds: {}, chars: 10 },
+    { ts: '2026-07-01T00:00:01.000Z', domain: 'domain_hooks', kinds: {}, chars: 10 },
+  ]);
+  try {
+    const firstLineBytes = Buffer.byteLength(JSON.stringify({
+      ts: '2026-07-01T00:00:00.000Z', domain: 'domain_hooks', kinds: {}, chars: 10,
+    }) + '\n');
+    const result = run(['--log', logPath, '--max-bytes', String(firstLineBytes + 1), '--json']);
+    assert.strictEqual(result.status, 0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.strictEqual(report.read.truncated, true);
+    assert.ok(report.read.diagnostics.some(diagnostic => diagnostic.code === 'read_limit'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+})) passed++; else failed++;
+
 console.log(`\n  ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
