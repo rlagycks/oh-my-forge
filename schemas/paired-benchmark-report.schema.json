@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/rlagycks/oh-my-forge/schemas/paired-benchmark-report.schema.json",
+  "title": "Oh My Forge Paired Benchmark Report",
+  "type": "object",
+  "required": ["schemaVersion", "benchmark", "runId", "repetitions", "seed", "pairs", "results", "comparison", "limits"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "benchmark": { "const": "paired" },
+    "runId": { "type": "string", "minLength": 1 },
+    "suite": { "type": ["string", "null"] },
+    "suitePath": { "type": "string", "minLength": 1 },
+    "repetitions": { "type": "integer", "minimum": 1 },
+    "seed": { "type": "integer", "minimum": 0 },
+    "snapshot": {
+      "type": ["object", "null"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "hash": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "pairs": { "type": "array" },
+    "results": { "type": "array" },
+    "executionOrder": { "type": "array", "items": { "type": "string" } },
+    "providers": { "type": "array", "items": { "type": "string" } },
+    "comparison": {
+      "type": "object",
+      "required": ["pairs", "on", "off"],
+      "properties": {
+        "pairs": { "type": "integer", "minimum": 0 },
+        "on": { "$ref": "#/$defs/conditionSummary" },
+        "off": { "$ref": "#/$defs/conditionSummary" },
+        "successRateDelta": { "type": ["number", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "limits": {
+      "type": "object",
+      "required": ["timeoutMs", "maxCostUsd", "costUsd", "costExceeded", "timeoutCount"],
+      "properties": {
+        "timeoutMs": { "type": "integer", "minimum": 1 },
+        "maxCostUsd": { "type": ["number", "null"], "minimum": 0 },
+        "costUsd": { "type": "number", "minimum": 0 },
+        "costExceeded": { "type": "boolean" },
+        "timeoutCount": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "conditionSummary": {
+      "type": "object",
+      "required": ["attempted", "passed", "failed", "successRate", "inputTokens", "outputTokens", "toolCalls", "durationMs", "costUsd"],
+      "properties": {
+        "attempted": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "successRate": { "type": ["number", "null"] },
+        "inputTokens": { "type": "number", "minimum": 0 },
+        "outputTokens": { "type": "number", "minimum": 0 },
+        "toolCalls": { "type": "number", "minimum": 0 },
+        "durationMs": { "type": "number", "minimum": 0 },
+        "costUsd": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
