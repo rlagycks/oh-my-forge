@@ -27,6 +27,7 @@ Optional:
   --duration-ms <n>          End-to-end duration
   --tests-passed <bool>      Deterministic verification result
   --human-intervention <bool>
+  --recall-used <bool>       Whether injected recall was explicitly used
   --session <id>             Harness session identifier
   --log <path>               Override the harness event log path
   --help                     Show this help text
@@ -56,6 +57,7 @@ function parseArgs(argv) {
     else if (arg === '--duration-ms') options.durationMs = parseInteger(requireValue(argv, index++, arg), arg, { minimum: 0 });
     else if (arg === '--tests-passed') options.testsPassed = parseBoolean(requireValue(argv, index++, arg), arg);
     else if (arg === '--human-intervention') options.humanIntervention = parseBoolean(requireValue(argv, index++, arg), arg);
+    else if (arg === '--recall-used') options.recallUsed = parseBoolean(requireValue(argv, index++, arg), arg);
     else throw new Error(`Unknown option: ${arg}`);
   }
   return options;
@@ -87,6 +89,7 @@ function main() {
       durationMs: options.durationMs,
       testsPassed: options.testsPassed,
       humanIntervention: options.humanIntervention,
+      recallUsed: options.recallUsed,
     },
   });
   appendEventSync(event, options.logPath);

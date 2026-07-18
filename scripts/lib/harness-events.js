@@ -136,11 +136,28 @@ function validateEvent(event) {
     if (typeof event.payload?.domain !== 'string' || event.payload.domain.trim() === '') {
       errors.push('context_injection payload.domain must be a non-empty string');
     }
+    for (const field of ['constraint_ids', 'memory_ids']) {
+      if (event.payload?.[field] === undefined) continue;
+      const values = event.payload[field];
+      if (!Array.isArray(values) || values.some(value => typeof value !== 'string' || value.trim() === '')
+          || new Set(values).size !== values.length) {
+        errors.push(`context_injection payload.${field} must be a unique string array`);
+      }
+    }
+    for (const field of ['constraint_id', 'memory_id']) {
+      if (event.payload?.[field] !== undefined
+          && (typeof event.payload[field] !== 'string' || event.payload[field].trim() === '')) {
+        errors.push(`context_injection payload.${field} must be a non-empty string`);
+      }
+    }
   }
 
   if (event.event_type === EVENT_TYPES.TASK_OUTCOME) {
     if (!OUTCOMES.has(event.payload?.outcome)) {
       errors.push('task_outcome payload.outcome must be success, failure, or unknown');
+    }
+    if (event.payload?.recall_used !== undefined && typeof event.payload.recall_used !== 'boolean') {
+      errors.push('task_outcome payload.recall_used must be boolean');
     }
   }
 

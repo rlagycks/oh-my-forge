@@ -23,6 +23,7 @@ try {
     '--output-tokens', '300',
     '--tool-calls', '5',
     '--tests-passed', 'true',
+    '--recall-used', 'true',
     '--log', logPath,
   ], { encoding: 'utf8' });
 
@@ -35,6 +36,7 @@ try {
   assert.strictEqual(events[0].payload.task_id, 'golden-001');
   assert.strictEqual(events[0].payload.input_tokens, 1200);
   assert.strictEqual(events[0].payload.tests_passed, true);
+  assert.strictEqual(events[0].payload.recall_used, true);
   console.log('  ✓ records a valid task outcome event through the CLI');
 } finally {
   fs.rmSync(dir, { recursive: true, force: true });

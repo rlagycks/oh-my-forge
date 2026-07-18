@@ -10,7 +10,9 @@ Usage: node scripts/recall-report.js [options]
 
 Analyzes ~/.claude/logs/recall-hits.jsonl (domain-context-inject.js's
 recall-hit instrumentation plus task outcome events) and reports per-domain
-injection counts, outcome rates, and episode-linked results.
+injection counts, recurrence rates, usefulness categories, outcome rates, and
+episode-linked results. Reports use metadata only; prompts and source context
+are never required.
 
 Options:
   --log <path>      Override recall-hits.jsonl path

@@ -47,6 +47,9 @@ const {
   parseSince,
   filterSince,
   aggregateByDomain,
+  aggregateRecurrence,
+  aggregateInjectionOutcomes,
+  aggregateOutcomes,
   aggregateLinkedInjections,
   buildReport,
   formatTable,
@@ -146,7 +149,7 @@ if (test('links duplicate episode outcomes by latest timestamp and reports dupli
       ts: '2026-07-17T00:00:02.000Z',
       source: 'test',
       episode_id: 'episode-retry',
-      payload: { outcome: 'failure' },
+      payload: { outcome: 'failure', input_tokens: 10, output_tokens: 20, tool_calls: 1 },
     },
     {
       schema_version: 1,
@@ -154,7 +157,7 @@ if (test('links duplicate episode outcomes by latest timestamp and reports dupli
       ts: '2026-07-17T00:00:01.000Z',
       source: 'test',
       episode_id: 'episode-retry',
-      payload: { outcome: 'success' },
+      payload: { outcome: 'success', input_tokens: 30, output_tokens: 40, tool_calls: 2 },
     },
   ];
   const linked = aggregateLinkedInjections(events);
@@ -162,6 +165,13 @@ if (test('links duplicate episode outcomes by latest timestamp and reports dupli
   assert.strictEqual(linked.withOutcome, 1);
   assert.strictEqual(linked.successCount, 0);
   assert.strictEqual(linked.failureCount, 1);
+  const outcomes = aggregateOutcomes(events);
+  assert.strictEqual(outcomes.total, 2);
+  assert.strictEqual(outcomes.rawTotal, 2);
+  assert.strictEqual(outcomes.finalTotal, 1);
+  assert.strictEqual(outcomes.inputTokens, 40);
+  assert.strictEqual(outcomes.outputTokens, 60);
+  assert.strictEqual(outcomes.toolCalls, 3);
 })) passed++; else failed++;
 
 if (test('getDefaultRecallLogPath resolves under ~/.claude/logs/recall-hits.jsonl', () => {
@@ -348,6 +358,91 @@ if (test('formatTable handles an empty report without throwing', () => {
   const report = buildReport({ logPath: missingPath });
   const table = formatTable(report);
   assert.ok(table.includes('no matching recall hits'));
+})) passed++; else failed++;
+
+if (test('aggregateRecurrence reports repeated domains, constraint ids, and memory ids', () => {
+  const events = [
+    {
+      event_type: 'context_injection',
+      ts: '2026-07-17T00:00:00.000Z',
+      payload: { domain: 'domain_hooks', constraint_ids: ['constraint-a', 'constraint-b'], memory_ids: ['memory-a'] },
+    },
+    {
+      event_type: 'context_injection',
+      ts: '2026-07-17T01:00:00.000Z',
+      payload: { domain: 'domain_hooks', constraint_ids: ['constraint-a'], memory_ids: ['memory-a', 'memory-b'] },
+    },
+    {
+      event_type: 'context_injection',
+      ts: '2026-07-17T02:00:00.000Z',
+      payload: { domain: 'domain_session', constraint_ids: ['constraint-b'], memory_ids: ['memory-b'] },
+    },
+  ];
+
+  const report = aggregateRecurrence(events);
+  assert.strictEqual(report.byDomain[0].key, 'domain_hooks');
+  assert.strictEqual(report.byDomain[0].occurrences, 2);
+  assert.strictEqual(report.byDomain[0].recurrenceRate, 50);
+  assert.strictEqual(report.byConstraint.find(item => item.key === 'constraint-a').occurrences, 2);
+  assert.strictEqual(report.byConstraint.find(item => item.key === 'constraint-b').occurrences, 2);
+  assert.strictEqual(report.byMemoryId.find(item => item.key === 'memory-a').occurrences, 2);
+  assert.strictEqual(report.byMemoryId.find(item => item.key === 'memory-b').occurrences, 2);
+  assert.strictEqual(report.byDomain.find(item => item.key === 'domain_session').recurrenceRate, null);
+  assert.strictEqual(report.byDomain.find(item => item.key === 'domain_session').insufficientSample, true);
+})) passed++; else failed++;
+
+if (test('aggregateInjectionOutcomes classifies final episode outcomes and preserves duplicate semantics', () => {
+  const events = [
+    { event_type: 'context_injection', ts: '2026-07-17T00:00:00.000Z', episode_id: 'success', payload: { domain: 'domain_a' } },
+    { event_type: 'task_outcome', ts: '2026-07-17T00:00:01.000Z', episode_id: 'success', payload: { outcome: 'failure' } },
+    { event_type: 'task_outcome', ts: '2026-07-17T00:00:02.000Z', episode_id: 'success', payload: { outcome: 'success', recall_used: true } },
+    { event_type: 'context_injection', ts: '2026-07-17T00:00:03.000Z', episode_id: 'failed', payload: { domain: 'domain_a' } },
+    { event_type: 'task_outcome', ts: '2026-07-17T00:00:04.000Z', episode_id: 'failed', payload: { outcome: 'failure', recall_used: true } },
+    { event_type: 'context_injection', ts: '2026-07-17T00:00:05.000Z', episode_id: 'unused', payload: { domain: 'domain_a' } },
+    { event_type: 'task_outcome', ts: '2026-07-17T00:00:06.000Z', episode_id: 'unused', payload: { outcome: 'success', recall_used: false } },
+    { event_type: 'context_injection', ts: '2026-07-17T00:00:07.000Z', episode_id: 'no-final', payload: { domain: 'domain_a' } },
+    { event_type: 'task_outcome', ts: '2026-07-17T00:00:08.000Z', episode_id: 'no-injection', payload: { outcome: 'success' } },
+  ];
+
+  const report = aggregateInjectionOutcomes(events);
+  assert.strictEqual(report.totalEpisodes, 5);
+  assert.strictEqual(report.categories.noInjection, 1);
+  assert.strictEqual(report.categories.injectedButUnused, 2);
+  assert.strictEqual(report.categories.injectedAndSuccessful, 1);
+  assert.strictEqual(report.categories.injectedAndFailed, 1);
+  assert.strictEqual(report.duplicateOutcomeEpisodes, 1);
+  assert.strictEqual(report.rates.injectedAndSuccessful, 20);
+})) passed++; else failed++;
+
+if (test('does not let episode-less outcomes inflate usefulness episodes', () => {
+  const report = aggregateInjectionOutcomes([
+    { event_type: 'task_outcome', ts: '2026-07-17T00:00:00.000Z', payload: { outcome: 'success' } },
+    { event_type: 'context_injection', ts: '2026-07-17T00:00:01.000Z', episode_id: '__outcome_0', payload: { domain: 'domain_a' } },
+    { event_type: 'task_outcome', ts: '2026-07-17T00:00:02.000Z', episode_id: '__outcome_0', payload: { outcome: 'success' } },
+  ]);
+  assert.strictEqual(report.totalEpisodes, 1);
+  assert.strictEqual(report.categories.injectedAndSuccessful, 1);
+  assert.strictEqual(report.unattributedOutcomes, 1);
+})) passed++; else failed++;
+
+if (test('buildReport exposes recurrence/usefulness metrics and human-readable labels', () => {
+  const { dir, logPath } = makeTempLog([
+    JSON.stringify({ schema_version: 1, event_type: 'context_injection', ts: '2026-07-17T00:00:00.000Z', source: 'test', episode_id: 'e1', payload: { domain: 'domain_hooks', constraint_ids: ['c1'], memory_ids: ['m1'] } }),
+    JSON.stringify({ schema_version: 1, event_type: 'task_outcome', ts: '2026-07-17T00:00:01.000Z', source: 'test', episode_id: 'e1', payload: { outcome: 'success', recall_used: true } }),
+    JSON.stringify({ schema_version: 1, event_type: 'task_outcome', ts: '2026-07-17T00:00:02.000Z', source: 'test', episode_id: 'e2', payload: { outcome: 'success' } }),
+  ]);
+  try {
+    const report = buildReport({ logPath, now: Date.parse('2026-07-17T01:00:00.000Z') });
+    assert.ok(report.recurrence.byDomain);
+    assert.ok(report.recallUsefulness.categories);
+    assert.strictEqual(report.recallUsefulness.insufficientSample, true);
+    const table = formatTable(report);
+    assert.ok(table.includes('Recurrence'));
+    assert.ok(table.includes('injected-and-successful'));
+    assert.ok(table.includes('insufficient sample'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 })) passed++; else failed++;
 
 console.log(`\n  ${passed} passed, ${failed} failed\n`);

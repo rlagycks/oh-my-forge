@@ -18,6 +18,16 @@ const {
 
 const SINCE_UNIT_MS = { s: 1000, m: 60 * 1000, h: 60 * 60 * 1000, d: 24 * 60 * 60 * 1000 };
 const SINCE_PATTERN = /^(\d+)([smhd])$/;
+const UTC_ISO_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+function compareTimestamps(left, right) {
+  if (UTC_ISO_TIMESTAMP_PATTERN.test(left) && UTC_ISO_TIMESTAMP_PATTERN.test(right)) {
+    return left < right ? -1 : (left > right ? 1 : 0);
+  }
+  return Date.parse(left) - Date.parse(right);
+}
+const MIN_RECURRENCE_SAMPLE_SIZE = 2;
+const MIN_USEFULNESS_SAMPLE_SIZE = 3;
 
 function getDefaultRecallLogPath() {
   return getDefaultEventLogPath();
@@ -116,10 +126,216 @@ function aggregateByDomain(records) {
   return [...byDomain.values()].sort((a, b) => b.hits - a.hits);
 }
 
+function percent(numerator, denominator) {
+  return denominator > 0 ? Number(((numerator / denominator) * 100).toFixed(1)) : null;
+}
+
+function metadataIds(value) {
+  const values = Array.isArray(value) ? value : [value];
+  return [...new Set(values.filter(id => typeof id === 'string' && id.trim() !== ''))];
+}
+
+function eventMetadataIds(payload, pluralKey, singularKey) {
+  return [...new Set([
+    ...metadataIds(payload?.[pluralKey]),
+    ...metadataIds(payload?.[singularKey]),
+  ])];
+}
+
+function recurrenceRows(observations) {
+  const groups = new Map();
+  for (const observation of observations) {
+    const current = groups.get(observation.key) || {
+      key: observation.key,
+      occurrences: 0,
+      uniqueEpisodes: new Set(),
+      firstSeen: observation.ts,
+      lastSeen: observation.ts,
+    };
+    current.occurrences += 1;
+    if (observation.episodeId) current.uniqueEpisodes.add(observation.episodeId);
+    if (compareTimestamps(observation.ts, current.firstSeen) < 0) current.firstSeen = observation.ts;
+    if (compareTimestamps(observation.ts, current.lastSeen) > 0) current.lastSeen = observation.ts;
+    groups.set(observation.key, current);
+  }
+
+  return [...groups.values()]
+    .map(group => {
+      const repeatOccurrences = Math.max(group.occurrences - 1, 0);
+      return {
+        key: group.key,
+        occurrences: group.occurrences,
+        uniqueEpisodes: group.uniqueEpisodes.size,
+        repeatOccurrences,
+        recurrenceRate: group.occurrences >= MIN_RECURRENCE_SAMPLE_SIZE
+          ? percent(repeatOccurrences, group.occurrences)
+          : null,
+        insufficientSample: group.occurrences < MIN_RECURRENCE_SAMPLE_SIZE,
+        sampleSize: group.occurrences,
+        minimumSampleSize: MIN_RECURRENCE_SAMPLE_SIZE,
+        firstSeen: group.firstSeen,
+        lastSeen: group.lastSeen,
+      };
+    })
+    .sort((a, b) => b.occurrences - a.occurrences || a.key.localeCompare(b.key));
+}
+
+/**
+ * Calculate repeat-observation rates from metadata only. The first observation
+ * of a key is its baseline; subsequent observations are repeats, so
+ * recurrenceRate = repeatOccurrences / occurrences. Raw prompts and context
+ * are intentionally not inputs to this calculation.
+ */
+function aggregateRecurrence(events) {
+  const injections = events.filter(event => event.event_type === EVENT_TYPES.CONTEXT_INJECTION);
+  const observations = {
+    domain: [],
+    constraint: [],
+    memoryId: [],
+  };
+
+  for (const event of injections) {
+    const payload = event.payload || {};
+    if (typeof payload.domain === 'string' && payload.domain.trim() !== '') {
+      observations.domain.push({ key: payload.domain, episodeId: event.episode_id, ts: event.ts });
+    }
+    for (const key of eventMetadataIds(payload, 'constraint_ids', 'constraint_id')) {
+      observations.constraint.push({ key, episodeId: event.episode_id, ts: event.ts });
+    }
+    for (const key of eventMetadataIds(payload, 'memory_ids', 'memory_id')) {
+      observations.memoryId.push({ key, episodeId: event.episode_id, ts: event.ts });
+    }
+  }
+
+  const makeSummary = rows => {
+    const occurrences = rows.reduce((sum, row) => sum + row.occurrences, 0);
+    const repeatOccurrences = rows.reduce((sum, row) => sum + row.repeatOccurrences, 0);
+    return {
+      observations: occurrences,
+      uniqueKeys: rows.length,
+      repeatOccurrences,
+      recurrenceRate: occurrences >= MIN_RECURRENCE_SAMPLE_SIZE
+        ? percent(repeatOccurrences, occurrences)
+        : null,
+      insufficientSample: occurrences < MIN_RECURRENCE_SAMPLE_SIZE,
+      sampleSize: occurrences,
+      minimumSampleSize: MIN_RECURRENCE_SAMPLE_SIZE,
+    };
+  };
+
+  const byDomain = recurrenceRows(observations.domain);
+  const byConstraint = recurrenceRows(observations.constraint);
+  const byMemoryId = recurrenceRows(observations.memoryId);
+  return {
+    byDomain,
+    byConstraint,
+    byMemoryId,
+    summary: {
+      domain: makeSummary(byDomain),
+      constraint: makeSummary(byConstraint),
+      memoryId: makeSummary(byMemoryId),
+    },
+    minimumSampleSize: MIN_RECURRENCE_SAMPLE_SIZE,
+  };
+}
+
+function finalOutcomes(events) {
+  const outcomes = new Map();
+  const duplicateEpisodeIds = new Set();
+  const unattributedOutcomes = [];
+
+  events.forEach(event => {
+    if (event.event_type !== EVENT_TYPES.TASK_OUTCOME) return;
+    if (!event.episode_id) {
+      unattributedOutcomes.push(event);
+      return;
+    }
+    if (outcomes.has(event.episode_id)) duplicateEpisodeIds.add(event.episode_id);
+    const current = outcomes.get(event.episode_id);
+    if (!current || compareTimestamps(event.ts, current.ts) >= 0) outcomes.set(event.episode_id, event);
+  });
+
+  return { outcomes, duplicateEpisodeIds, unattributedOutcomes };
+}
+
+function explicitRecallUsed(outcome) {
+  if (typeof outcome?.payload?.recall_used === 'boolean') return outcome.payload.recall_used;
+  return null;
+}
+
+/**
+ * Classify final episode outcomes without claiming causal impact. A linked
+ * success/failure is a usefulness proxy when no explicit recall_used flag is
+ * present; unknown outcomes and explicit false evidence remain unused.
+ */
+function aggregateInjectionOutcomes(events) {
+  const injectionEpisodes = new Set(
+    events
+      .filter(event => event.event_type === EVENT_TYPES.CONTEXT_INJECTION && event.episode_id)
+      .map(event => event.episode_id)
+  );
+  const { outcomes, duplicateEpisodeIds, unattributedOutcomes } = finalOutcomes(events);
+  const episodes = new Set([...injectionEpisodes, ...outcomes.keys()]);
+  const categories = {
+    noInjection: 0,
+    injectedButUnused: 0,
+    injectedAndSuccessful: 0,
+    injectedAndFailed: 0,
+  };
+  let unattributedInjections = 0;
+
+  for (const event of events) {
+    if (event.event_type === EVENT_TYPES.CONTEXT_INJECTION && !event.episode_id) unattributedInjections += 1;
+  }
+
+  for (const episodeId of episodes) {
+    const outcome = outcomes.get(episodeId);
+    const injected = injectionEpisodes.has(episodeId);
+    if (!injected) {
+      categories.noInjection += 1;
+      continue;
+    }
+    const used = explicitRecallUsed(outcome);
+    if (!outcome || used === false || outcome.payload?.outcome === 'unknown') {
+      categories.injectedButUnused += 1;
+    } else if (outcome.payload?.outcome === 'success') {
+      categories.injectedAndSuccessful += 1;
+    } else if (outcome.payload?.outcome === 'failure') {
+      categories.injectedAndFailed += 1;
+    } else {
+      categories.injectedButUnused += 1;
+    }
+  }
+
+  const totalEpisodes = Object.values(categories).reduce((sum, count) => sum + count, 0);
+  const rates = Object.fromEntries(Object.entries(categories).map(([key, count]) => [
+    key,
+    totalEpisodes >= MIN_USEFULNESS_SAMPLE_SIZE ? percent(count, totalEpisodes) : null,
+  ]));
+  return {
+    totalEpisodes,
+    episodesWithInjection: [...injectionEpisodes].filter(id => outcomes.has(id)).length,
+    categories,
+    rates,
+    insufficientSample: totalEpisodes < MIN_USEFULNESS_SAMPLE_SIZE,
+    sampleSize: totalEpisodes,
+    minimumSampleSize: MIN_USEFULNESS_SAMPLE_SIZE,
+    duplicateOutcomeEpisodes: duplicateEpisodeIds.size,
+    unattributedInjections,
+    unattributedOutcomes: unattributedOutcomes.length,
+  };
+}
+
 function aggregateOutcomes(events) {
-  const outcomes = events.filter(event => event.event_type === EVENT_TYPES.TASK_OUTCOME);
+  const { outcomes: final, duplicateEpisodeIds, unattributedOutcomes } = finalOutcomes(events);
+  const rawOutcomes = events.filter(event => event.event_type === EVENT_TYPES.TASK_OUTCOME);
+  const rawTotal = rawOutcomes.length;
   const result = {
-    total: outcomes.length,
+    // Keep the original contract: total is the number of recorded outcome events.
+    // finalTotal exposes the deduplicated episode count used by the rates below.
+    total: rawTotal,
+    rawTotal,
+    finalTotal: final.size + unattributedOutcomes.length,
     successCount: 0,
     failureCount: 0,
     unknownCount: 0,
@@ -127,13 +343,19 @@ function aggregateOutcomes(events) {
     inputTokens: 0,
     outputTokens: 0,
     toolCalls: 0,
+    duplicateOutcomeEpisodes: duplicateEpisodeIds.size,
   };
 
-  for (const event of outcomes) {
+  for (const event of [...final.values(), ...unattributedOutcomes]) {
     const outcome = event.payload?.outcome;
     if (outcome === 'success') result.successCount += 1;
     else if (outcome === 'failure') result.failureCount += 1;
     else result.unknownCount += 1;
+  }
+
+  // Token/tool counts describe provider consumption, so retries remain part of
+  // the cost totals even when outcome rates use the final episode view.
+  for (const event of rawOutcomes) {
     result.inputTokens += Number(event.payload?.input_tokens) || 0;
     result.outputTokens += Number(event.payload?.output_tokens) || 0;
     result.toolCalls += Number(event.payload?.tool_calls) || 0;
@@ -146,17 +368,7 @@ function aggregateOutcomes(events) {
 
 function aggregateLinkedInjections(events) {
   const injections = events.filter(event => event.event_type === EVENT_TYPES.CONTEXT_INJECTION);
-  const outcomesByEpisode = new Map();
-  const duplicateOutcomeEpisodes = new Set();
-  for (const event of events) {
-    if (event.event_type === EVENT_TYPES.TASK_OUTCOME && event.episode_id) {
-      if (outcomesByEpisode.has(event.episode_id)) duplicateOutcomeEpisodes.add(event.episode_id);
-      const current = outcomesByEpisode.get(event.episode_id);
-      if (!current || Date.parse(event.ts) >= Date.parse(current.ts)) {
-        outcomesByEpisode.set(event.episode_id, event);
-      }
-    }
-  }
+  const { outcomes: outcomesByEpisode, duplicateEpisodeIds } = finalOutcomes(events);
 
   const result = {
     total: injections.length,
@@ -165,7 +377,7 @@ function aggregateLinkedInjections(events) {
     failureCount: 0,
     unknownCount: 0,
     successRate: null,
-    duplicateOutcomeEpisodes: duplicateOutcomeEpisodes.size,
+    duplicateOutcomeEpisodes: duplicateEpisodeIds.size,
   };
 
   for (const injection of injections) {
@@ -233,6 +445,8 @@ function buildReport({ logPath, since, now, maxBytes, maxEvents } = {}) {
     byDomain,
     outcomes: aggregateOutcomes(filteredEvents),
     linkedInjections: aggregateLinkedInjections(filteredEvents),
+    recurrence: aggregateRecurrence(filteredEvents),
+    recallUsefulness: aggregateInjectionOutcomes(filteredEvents),
   };
 }
 
@@ -259,6 +473,21 @@ function formatTable(report) {
   lines.push(
     `Events: ${report.totalEvents}  Outcomes: ${report.outcomes.total}  `
       + `Outcome success rate: ${report.outcomes.successRate === null ? 'n/a' : `${report.outcomes.successRate}%`}`
+  );
+  const recurrenceRate = report.recurrence.summary.domain.recurrenceRate;
+  lines.push(
+    `Recurrence (domain): ${recurrenceRate === null ? 'n/a (insufficient sample)' : `${recurrenceRate}%`}  `
+      + `constraints=${report.recurrence.summary.constraint.recurrenceRate === null ? 'n/a' : `${report.recurrence.summary.constraint.recurrenceRate}%`}  `
+      + `memory IDs=${report.recurrence.summary.memoryId.recurrenceRate === null ? 'n/a' : `${report.recurrence.summary.memoryId.recurrenceRate}%`}`
+  );
+  const categories = report.recallUsefulness.categories;
+  lines.push(
+    `Recall usefulness (episodes=${report.recallUsefulness.totalEpisodes}): `
+      + `no-injection=${categories.noInjection} `
+      + `injected-but-unused=${categories.injectedButUnused} `
+      + `injected-and-successful=${categories.injectedAndSuccessful} `
+      + `injected-and-failed=${categories.injectedAndFailed}`
+      + (report.recallUsefulness.insufficientSample ? ' (insufficient sample)' : '')
   );
   lines.push('');
 
@@ -292,6 +521,9 @@ module.exports = {
   parseSince,
   filterSince,
   aggregateByDomain,
+  aggregateRecurrence,
+  aggregateInjectionOutcomes,
+  finalOutcomes,
   aggregateOutcomes,
   aggregateLinkedInjections,
   buildReport,
