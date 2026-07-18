@@ -75,6 +75,7 @@
     "scripts/record-harness-event.js",
     "scripts/recall-report.js",
     "scripts/run-golden-task.js",
+    "scripts/run-paired-benchmark.js",
     "scripts/install-apply.js",
     "scripts/install-plan.js",
     "scripts/list-installed.js",

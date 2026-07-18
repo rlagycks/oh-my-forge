@@ -141,15 +141,22 @@ function executeVerification(task, { cwd = process.cwd(), timeoutMs = DEFAULT_TI
   };
 }
 
-function recordVerificationOutcome(result, { episodeId, logPath, metadata = {} } = {}) {
+function recordVerificationOutcome(result, {
+  episodeId,
+  sessionId,
+  logPath,
+  source = 'run-golden-task',
+  metadata = {},
+} = {}) {
   if (typeof episodeId !== 'string' || episodeId.trim() === '') {
     throw new Error('episodeId must be a non-empty string');
   }
 
   const event = createEvent({
     eventType: EVENT_TYPES.TASK_OUTCOME,
-    source: 'run-golden-task',
+    source,
     episodeId,
+    sessionId,
     payload: {
       ...metadata,
       taskId: result.taskId,

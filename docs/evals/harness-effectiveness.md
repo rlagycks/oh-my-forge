@@ -102,9 +102,57 @@ node scripts/run-golden-task.js \
 The runner appends the run timestamp to `--episode-prefix`, so reusing a
 prefix across repeated runs still produces distinct episode ids.
 
-The runner is a verification and outcome-recording layer, not a model
-provider or harness on/off orchestrator. Provider adapters, cost controls,
-randomized paired execution, and statistical analysis remain later work.
+## Paired benchmark runner
+
+P2-1 adds a provider-neutral paired runner. It requires an adapter module so
+provider selection and network execution remain outside OMF. An adapter can
+export a function or `{ run(request) }` and receives the same task and snapshot
+reference for both conditions:
+
+```js
+module.exports = async function run({ task, snapshot, harnessEnabled, signal }) {
+  // Execute the provider with task.prompt and the requested harness setting.
+  // Honor signal and return metadata only; do not return raw content to OMF.
+  return {
+    provider: 'example-provider',
+    model: 'example-model',
+    config: { temperature: 0 },
+    inputTokens: 1200,
+    outputTokens: 300,
+    toolCalls: 5,
+    durationMs: 8000,
+    costUsd: 0.02,
+  };
+};
+```
+
+Run repeated randomized pairs:
+
+```bash
+node scripts/run-paired-benchmark.js \
+  --adapter ./benchmarks/my-provider-adapter.js \
+  --suite docs/evals/golden-tasks.json \
+  --snapshot-id repo-main-2026-07-18 \
+  --snapshot-hash sha256:... \
+  --repetitions 3 \
+  --seed 42 \
+  --max-cost-usd 2.50 \
+  --log /tmp/omf-paired-events.jsonl
+```
+
+Use `--json` for the machine-readable report described by
+`schemas/paired-benchmark-report.schema.json`; without it the command prints a
+human-readable on/off comparison table. Each attempted condition receives a
+distinct episode id and appends the existing `task_outcome` event shape.
+The report records the seed, randomized execution order, task hash, snapshot
+id/hash, provider/model/config, token/tool-call counts, duration, and cost when
+the adapter supplies them. Timeout and cumulative reported-cost limits stop
+adapter execution safely; skipped pairs are marked incomplete.
+
+The runner never writes prompts, source, context payloads, model output, or
+adapter request/response objects. Snapshot restoration and provider-specific
+execution belong to the adapter; the runner passes the same opaque snapshot
+reference to each member of a pair.
 
 An episode is expected to have one final `task_outcome`. If retries or
 intermediate outcomes are recorded, the report uses the latest outcome by
@@ -113,7 +161,9 @@ duplicates as `linkedInjections.duplicateOutcomeEpisodes`.
 
 ## 현재 범위와 한계
 
-현재는 이벤트 계약·기록·집계 기반만 제공한다. 실제 Claude/Codex 실행을 자동화하는 benchmark runner, 모델별 토큰 tokenizer, 통계적 유의성 검정, 장기 실행 환경의 로그 rotation/streaming은 후속 작업이다.
+현재 paired runner는 provider adapter가 제공하는 토큰·도구·비용 메타데이터를
+집계한다. 모델별 tokenizer, 통계적 유의성 검정, 장기 실행 환경의 로그
+rotation/streaming은 범위 밖이다.
 
 `golden-tasks.json`의 verification은 실행 가능한 argv 메타데이터이며, 신뢰할 수 없는 외부 입력을 shell 문자열로 실행해서는 안 된다.
 

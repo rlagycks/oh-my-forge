@@ -55,7 +55,22 @@
               "expected_exit_code": { "type": "integer" },
               "timed_out": { "type": "boolean" },
               "error_code": { "type": ["string", "null"] },
-              "recall_used": { "type": "boolean" }
+              "recall_used": { "type": "boolean" },
+              "condition": { "enum": ["on", "off"] },
+              "harness_enabled": { "type": "boolean" },
+              "repetition": { "type": "integer", "minimum": 1 },
+              "seed": { "type": "integer", "minimum": 0 },
+              "run_id": { "type": "string", "minLength": 1 },
+              "task_hash": { "type": "string", "minLength": 1 },
+              "snapshot_id": { "type": ["string", "null"] },
+              "snapshot_hash": { "type": ["string", "null"] },
+              "provider": { "type": "string", "minLength": 1 },
+              "model": { "type": "string", "minLength": 1 },
+              "config": { "type": "object" },
+              "total_tokens": { "type": "integer", "minimum": 0 },
+              "provider_duration_ms": { "type": "number", "minimum": 0 },
+              "verification_duration_ms": { "type": "number", "minimum": 0 },
+              "cost_usd": { "type": "number", "minimum": 0 }
             }
           }
         }
