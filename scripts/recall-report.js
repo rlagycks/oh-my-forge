@@ -2,6 +2,7 @@
 'use strict';
 
 const { buildReport, formatTable } = require('./lib/recall-report');
+const { parseInteger } = require('./lib/cli-args');
 
 function showHelp() {
   console.log(`
@@ -15,6 +16,8 @@ Options:
   --log <path>      Override recall-hits.jsonl path
                      (default: ~/.claude/logs/recall-hits.jsonl)
   --since <window>  Only include hits within this window, e.g. 30m, 24h, 7d
+  --max-bytes <n>   Bound the logical JSONL read (default: configured read limit)
+  --max-events <n>  Bound the number of parsed events
   --json            Emit machine-readable JSON instead of a text table
   --help            Show this help text
 `);
@@ -56,6 +59,18 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--max-bytes') {
+      options.maxBytes = parseInteger(requireValue(argv, index, '--max-bytes'), arg, { minimum: 1 });
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--max-events') {
+      options.maxEvents = parseInteger(requireValue(argv, index, '--max-events'), arg, { minimum: 1 });
+      index += 1;
+      continue;
+    }
+
     throw new Error(`Unknown option: ${arg}`);
   }
 
@@ -70,7 +85,12 @@ function main() {
     return;
   }
 
-  const report = buildReport({ logPath: options.logPath, since: options.since });
+  const report = buildReport({
+    logPath: options.logPath,
+    since: options.since,
+    maxBytes: options.maxBytes,
+    maxEvents: options.maxEvents,
+  });
 
   if (options.json) {
     console.log(JSON.stringify(report, null, 2));
