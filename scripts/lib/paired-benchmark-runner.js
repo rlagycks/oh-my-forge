@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const path = require('path');
 
 const {
   DEFAULT_TIMEOUT_MS,
@@ -15,7 +16,7 @@ const DEFAULT_REPETITIONS = 1;
 const MAX_REPETITIONS = 100;
 const MAX_SEED = 0xffffffff;
 const CONDITIONS = Object.freeze(['on', 'off']);
-const SENSITIVE_KEY_PATTERN = /prompt|source|context|payload|message|content|raw|output|input|code|stdout|stderr|transcript|response|request/i;
+const SENSITIVE_KEY_PATTERN = /prompt|source|context|payload|message|content|raw|output|input|code|stdout|stderr|transcript|response|request|secret|password|token|authorization|credential|cookie|header|api[_-]?key|access[_-]?key|private[_-]?key/i;
 const ADAPTER_METADATA_FIELDS = Object.freeze([
   'provider',
   'model',
@@ -449,7 +450,7 @@ async function runPairedBenchmark(options = {}) {
     benchmark: 'paired',
     runId,
     suite: suite.suite || null,
-    suitePath: suite.suite_path,
+    suitePath: path.basename(suite.suite_path),
     repetitions,
     seed,
     snapshot,

@@ -87,6 +87,10 @@ async function run() {
               maxTokens: 100,
               prompt: 'private prompt in adapter output',
               contextPayload: 'private context in adapter output',
+              apiKey: 'private api key in adapter output',
+              token: 'private token in adapter output',
+              password: 'private password in adapter output',
+              headers: 'private headers in adapter output',
             },
             inputTokens: 10,
             outputTokens: 5,
@@ -128,6 +132,10 @@ async function run() {
       assert.ok(!eventText.includes('private source'));
       assert.ok(!eventText.includes('private context'));
       assert.ok(!eventText.includes('private output'));
+      assert.ok(!eventText.includes('private api key'));
+      assert.ok(!eventText.includes('private token'));
+      assert.ok(!eventText.includes('private password'));
+      assert.ok(!eventText.includes('private headers'));
       const { events } = readEvents(fixture.logPath);
       assert.strictEqual(events.length, 8);
       assert.ok(events.every(event => event.event_type === 'task_outcome'));
@@ -135,6 +143,8 @@ async function run() {
       assert.strictEqual(events[0].payload.provider, 'test-provider');
       assert.strictEqual(events[0].payload.input_tokens, 10);
       assert.strictEqual(events[0].payload.cost_usd, 0.01);
+      assert.strictEqual(report.suitePath, 'suite.json');
+      assert.ok(!report.suitePath.includes('/'));
     } finally {
       fs.rmSync(fixture.dir, { recursive: true, force: true });
     }
