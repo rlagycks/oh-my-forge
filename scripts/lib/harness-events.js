@@ -186,6 +186,47 @@ function releaseRotationLock(lock) {
   if (unlinkError) throw unlinkError;
 }
 
+async function acquireRotationLockAsync(logPath) {
+  const lockPath = `${logPath}.lock`;
+  try {
+    const handle = await fs.promises.open(lockPath, 'wx');
+    return { handle, lockPath };
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    try {
+      const stat = await fs.promises.stat(lockPath);
+      if (Date.now() - stat.mtimeMs > 30 * 1000) {
+        await fs.promises.unlink(lockPath).catch(unlinkError => {
+          if (unlinkError.code !== 'ENOENT') throw unlinkError;
+        });
+        const handle = await fs.promises.open(lockPath, 'wx');
+        return { handle, lockPath };
+      }
+    } catch (staleLockError) {
+      if (staleLockError.code !== 'EEXIST') throw staleLockError;
+    }
+    return null;
+  }
+}
+
+async function releaseRotationLockAsync(lock) {
+  if (!lock) return;
+  let closeError = null;
+  let unlinkError = null;
+  try {
+    await lock.handle.close();
+  } catch (error) {
+    closeError = error;
+  }
+  try {
+    await fs.promises.unlink(lock.lockPath);
+  } catch (error) {
+    if (error.code !== 'ENOENT') unlinkError = error;
+  }
+  if (closeError) throw closeError;
+  if (unlinkError) throw unlinkError;
+}
+
 function rotateEventLogSync(logPath, incomingBytes, options = {}) {
   const { maxBytes, retention } = getEventLogConfig(options);
   if (!maxBytes || retention < 1 || !fs.existsSync(logPath)) return false;
@@ -205,6 +246,33 @@ function rotateEventLogSync(logPath, incomingBytes, options = {}) {
     }
   }
   fs.renameSync(logPath, getRotatedLogPath(logPath, 1));
+  return true;
+}
+
+async function rotateEventLogAsync(logPath, incomingBytes, options = {}) {
+  const { maxBytes, retention } = getEventLogConfig(options);
+  let current;
+  try {
+    current = await fs.promises.stat(logPath);
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+  if (!maxBytes || retention < 1 || current.size === 0 || current.size + incomingBytes <= maxBytes) return false;
+
+  for (let generation = retention - 1; generation >= 1; generation -= 1) {
+    const olderPath = getRotatedLogPath(logPath, generation);
+    const newerPath = getRotatedLogPath(logPath, generation + 1);
+    try {
+      await fs.promises.rename(olderPath, newerPath);
+    } catch (error) {
+      if (error.code === 'ENOENT') continue;
+      if (error.code !== 'EEXIST') throw error;
+      await fs.promises.unlink(newerPath);
+      await fs.promises.rename(olderPath, newerPath);
+    }
+  }
+  await fs.promises.rename(logPath, getRotatedLogPath(logPath, 1));
   return true;
 }
 
@@ -228,19 +296,27 @@ function appendEventSync(event, logPath = getDefaultEventLogPath(), options = {}
 }
 
 function appendEventAsync(event, logPath = getDefaultEventLogPath(), options = {}) {
-  try {
-    assertValidEvent(event);
-    fs.mkdir(path.dirname(path.resolve(logPath)), { recursive: true }, error => {
-      if (error) return;
+  return (async () => {
+    try {
+      assertValidEvent(event);
+      const resolvedPath = path.resolve(logPath);
+      const line = `${JSON.stringify(event)}\n`;
+      await fs.promises.mkdir(path.dirname(resolvedPath), { recursive: true });
+      const config = getEventLogConfig(options);
+      const lock = await acquireRotationLockAsync(resolvedPath);
+      let rotated = false;
       try {
-        appendEventSync(event, logPath, options);
-      } catch {
-        // Instrumentation must never affect the hook path.
+        if (lock) rotated = await rotateEventLogAsync(resolvedPath, Buffer.byteLength(line), config);
+        await fs.promises.appendFile(resolvedPath, line, { encoding: 'utf8', flag: 'a' });
+      } finally {
+        await releaseRotationLockAsync(lock);
       }
-    });
-  } catch {
-    // Instrumentation must never affect the hook path.
-  }
+      return { logPath: resolvedPath, rotated, rotationSkipped: !lock && Boolean(config.maxBytes) };
+    } catch {
+      // Instrumentation must never affect the hook path.
+      return undefined;
+    }
+  })();
 }
 
 function normalizeLegacyRecallRecord(record) {
@@ -365,7 +441,12 @@ function scanSegmentSync(segment, selection, state) {
   let pending = '';
   let lineNumber = 0;
   let offset = start;
-  let skippedPartialLine = false;
+  const startsMidRecord = start > 0 && (() => {
+    const previousByte = Buffer.alloc(1);
+    fs.readSync(fd, previousByte, 0, 1, start - 1);
+    return previousByte[0] !== 0x0a;
+  })();
+  let skippedPartialLine = !startsMidRecord;
   try {
     while (offset < fileSize) {
       const remaining = selection.maxBytes === null
@@ -382,7 +463,7 @@ function scanSegmentSync(segment, selection, state) {
         const line = pending.slice(0, newlineIndex).replace(/\r$/, '');
         pending = pending.slice(newlineIndex + 1);
         lineNumber += 1;
-        if (start > 0 && !skippedPartialLine) {
+        if (startsMidRecord && !skippedPartialLine) {
           skippedPartialLine = true;
           addDiagnostic(state, 'read_limit', segment, lineNumber, { detail: 'partial_record_skipped' });
         } else {
@@ -403,7 +484,7 @@ function scanSegmentSync(segment, selection, state) {
       addDiagnostic(state, 'read_limit', segment, lineNumber, { detail: 'max_bytes' });
       return;
     }
-    if (pending && !(start > 0 && !skippedPartialLine)) {
+    if (pending && !(startsMidRecord && !skippedPartialLine)) {
       lineNumber += 1;
       processEventLine(pending.replace(/\r$/, ''), segment, lineNumber, state, false);
     }

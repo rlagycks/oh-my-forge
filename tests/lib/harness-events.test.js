@@ -182,6 +182,27 @@ test('reads bounded JSONL data and reports that the read was truncated', () => {
   }
 });
 
+test('keeps the first event when a bounded read starts on a line boundary', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-events-boundary-'));
+  const logPath = path.join(dir, 'events.jsonl');
+  try {
+    const lines = [1, 2, 3].map((index) => JSON.stringify(createEvent({
+      eventType: EVENT_TYPES.TASK_OUTCOME,
+      source: 'test',
+      episodeId: `episode-${index}`,
+      payload: { outcome: 'success', taskId: `task-${index}` },
+    })));
+    fs.writeFileSync(logPath, `${lines.join('\n')}\n`, 'utf8');
+
+    const lastTwoBytes = Buffer.byteLength(`${lines[1]}\n${lines[2]}\n`);
+    const result = readEvents(logPath, { maxBytes: lastTwoBytes });
+    assert.deepStrictEqual(result.events.map(event => event.episode_id), ['episode-2', 'episode-3']);
+    assert.strictEqual(result.diagnostics.some(diagnostic => diagnostic.detail === 'partial_record_skipped'), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('distinguishes malformed JSONL from a truncated final record', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-events-diagnostics-'));
   const logPath = path.join(dir, 'events.jsonl');
