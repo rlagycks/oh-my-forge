@@ -18,6 +18,14 @@ const {
 
 const SINCE_UNIT_MS = { s: 1000, m: 60 * 1000, h: 60 * 60 * 1000, d: 24 * 60 * 60 * 1000 };
 const SINCE_PATTERN = /^(\d+)([smhd])$/;
+const UTC_ISO_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+function compareTimestamps(left, right) {
+  if (UTC_ISO_TIMESTAMP_PATTERN.test(left) && UTC_ISO_TIMESTAMP_PATTERN.test(right)) {
+    return left < right ? -1 : (left > right ? 1 : 0);
+  }
+  return Date.parse(left) - Date.parse(right);
+}
 const MIN_RECURRENCE_SAMPLE_SIZE = 2;
 const MIN_USEFULNESS_SAMPLE_SIZE = 3;
 
@@ -145,8 +153,8 @@ function recurrenceRows(observations) {
     };
     current.occurrences += 1;
     if (observation.episodeId) current.uniqueEpisodes.add(observation.episodeId);
-    if (Date.parse(observation.ts) < Date.parse(current.firstSeen)) current.firstSeen = observation.ts;
-    if (Date.parse(observation.ts) > Date.parse(current.lastSeen)) current.lastSeen = observation.ts;
+    if (compareTimestamps(observation.ts, current.firstSeen) < 0) current.firstSeen = observation.ts;
+    if (compareTimestamps(observation.ts, current.lastSeen) > 0) current.lastSeen = observation.ts;
     groups.set(observation.key, current);
   }
 
@@ -233,26 +241,24 @@ function aggregateRecurrence(events) {
 function finalOutcomes(events) {
   const outcomes = new Map();
   const duplicateEpisodeIds = new Set();
-  let noEpisodeCount = 0;
+  const unattributedOutcomes = [];
 
-  events.forEach((event, index) => {
+  events.forEach(event => {
     if (event.event_type !== EVENT_TYPES.TASK_OUTCOME) return;
     if (!event.episode_id) {
-      noEpisodeCount += 1;
-      outcomes.set(`__outcome_${index}`, event);
+      unattributedOutcomes.push(event);
       return;
     }
     if (outcomes.has(event.episode_id)) duplicateEpisodeIds.add(event.episode_id);
     const current = outcomes.get(event.episode_id);
-    if (!current || Date.parse(event.ts) >= Date.parse(current.ts)) outcomes.set(event.episode_id, event);
+    if (!current || compareTimestamps(event.ts, current.ts) >= 0) outcomes.set(event.episode_id, event);
   });
 
-  return { outcomes, duplicateEpisodeIds, noEpisodeCount };
+  return { outcomes, duplicateEpisodeIds, unattributedOutcomes };
 }
 
 function explicitRecallUsed(outcome) {
   if (typeof outcome?.payload?.recall_used === 'boolean') return outcome.payload.recall_used;
-  if (typeof outcome?.payload?.injection_used === 'boolean') return outcome.payload.injection_used;
   return null;
 }
 
@@ -267,7 +273,7 @@ function aggregateInjectionOutcomes(events) {
       .filter(event => event.event_type === EVENT_TYPES.CONTEXT_INJECTION && event.episode_id)
       .map(event => event.episode_id)
   );
-  const { outcomes, duplicateEpisodeIds } = finalOutcomes(events);
+  const { outcomes, duplicateEpisodeIds, unattributedOutcomes } = finalOutcomes(events);
   const episodes = new Set([...injectionEpisodes, ...outcomes.keys()]);
   const categories = {
     noInjection: 0,
@@ -315,18 +321,20 @@ function aggregateInjectionOutcomes(events) {
     minimumSampleSize: MIN_USEFULNESS_SAMPLE_SIZE,
     duplicateOutcomeEpisodes: duplicateEpisodeIds.size,
     unattributedInjections,
+    unattributedOutcomes: unattributedOutcomes.length,
   };
 }
 
 function aggregateOutcomes(events) {
-  const { outcomes: final, duplicateEpisodeIds } = finalOutcomes(events);
-  const rawTotal = events.filter(event => event.event_type === EVENT_TYPES.TASK_OUTCOME).length;
+  const { outcomes: final, duplicateEpisodeIds, unattributedOutcomes } = finalOutcomes(events);
+  const rawOutcomes = events.filter(event => event.event_type === EVENT_TYPES.TASK_OUTCOME);
+  const rawTotal = rawOutcomes.length;
   const result = {
     // Keep the original contract: total is the number of recorded outcome events.
     // finalTotal exposes the deduplicated episode count used by the rates below.
     total: rawTotal,
     rawTotal,
-    finalTotal: final.size,
+    finalTotal: final.size + unattributedOutcomes.length,
     successCount: 0,
     failureCount: 0,
     unknownCount: 0,
@@ -337,11 +345,16 @@ function aggregateOutcomes(events) {
     duplicateOutcomeEpisodes: duplicateEpisodeIds.size,
   };
 
-  for (const event of final.values()) {
+  for (const event of [...final.values(), ...unattributedOutcomes]) {
     const outcome = event.payload?.outcome;
     if (outcome === 'success') result.successCount += 1;
     else if (outcome === 'failure') result.failureCount += 1;
     else result.unknownCount += 1;
+  }
+
+  // Token/tool counts describe provider consumption, so retries remain part of
+  // the cost totals even when outcome rates use the final episode view.
+  for (const event of rawOutcomes) {
     result.inputTokens += Number(event.payload?.input_tokens) || 0;
     result.outputTokens += Number(event.payload?.output_tokens) || 0;
     result.toolCalls += Number(event.payload?.tool_calls) || 0;

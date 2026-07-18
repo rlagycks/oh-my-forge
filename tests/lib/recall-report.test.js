@@ -149,7 +149,7 @@ if (test('links duplicate episode outcomes by latest timestamp and reports dupli
       ts: '2026-07-17T00:00:02.000Z',
       source: 'test',
       episode_id: 'episode-retry',
-      payload: { outcome: 'failure' },
+      payload: { outcome: 'failure', input_tokens: 10, output_tokens: 20, tool_calls: 1 },
     },
     {
       schema_version: 1,
@@ -157,7 +157,7 @@ if (test('links duplicate episode outcomes by latest timestamp and reports dupli
       ts: '2026-07-17T00:00:01.000Z',
       source: 'test',
       episode_id: 'episode-retry',
-      payload: { outcome: 'success' },
+      payload: { outcome: 'success', input_tokens: 30, output_tokens: 40, tool_calls: 2 },
     },
   ];
   const linked = aggregateLinkedInjections(events);
@@ -169,6 +169,9 @@ if (test('links duplicate episode outcomes by latest timestamp and reports dupli
   assert.strictEqual(outcomes.total, 2);
   assert.strictEqual(outcomes.rawTotal, 2);
   assert.strictEqual(outcomes.finalTotal, 1);
+  assert.strictEqual(outcomes.inputTokens, 40);
+  assert.strictEqual(outcomes.outputTokens, 60);
+  assert.strictEqual(outcomes.toolCalls, 3);
 })) passed++; else failed++;
 
 if (test('getDefaultRecallLogPath resolves under ~/.claude/logs/recall-hits.jsonl', () => {
@@ -390,6 +393,17 @@ if (test('aggregateInjectionOutcomes classifies final episode outcomes and prese
   assert.strictEqual(report.categories.injectedAndFailed, 1);
   assert.strictEqual(report.duplicateOutcomeEpisodes, 1);
   assert.strictEqual(report.rates.injectedAndSuccessful, 20);
+})) passed++; else failed++;
+
+if (test('does not let episode-less outcomes inflate usefulness episodes', () => {
+  const report = aggregateInjectionOutcomes([
+    { event_type: 'task_outcome', ts: '2026-07-17T00:00:00.000Z', payload: { outcome: 'success' } },
+    { event_type: 'context_injection', ts: '2026-07-17T00:00:01.000Z', episode_id: '__outcome_0', payload: { domain: 'domain_a' } },
+    { event_type: 'task_outcome', ts: '2026-07-17T00:00:02.000Z', episode_id: '__outcome_0', payload: { outcome: 'success' } },
+  ]);
+  assert.strictEqual(report.totalEpisodes, 1);
+  assert.strictEqual(report.categories.injectedAndSuccessful, 1);
+  assert.strictEqual(report.unattributedOutcomes, 1);
 })) passed++; else failed++;
 
 if (test('buildReport exposes recurrence/usefulness metrics and human-readable labels', () => {
