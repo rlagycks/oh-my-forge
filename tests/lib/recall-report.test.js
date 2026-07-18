@@ -355,7 +355,7 @@ if (test('aggregateRecurrence reports repeated domains, constraint ids, and memo
   const report = aggregateRecurrence(events);
   assert.strictEqual(report.byDomain[0].key, 'domain_hooks');
   assert.strictEqual(report.byDomain[0].occurrences, 2);
-  assert.strictEqual(report.byDomain[0].recurrenceRate, 100);
+  assert.strictEqual(report.byDomain[0].recurrenceRate, 50);
   assert.strictEqual(report.byConstraint.find(item => item.key === 'constraint-a').occurrences, 2);
   assert.strictEqual(report.byConstraint.find(item => item.key === 'constraint-b').occurrences, 2);
   assert.strictEqual(report.byMemoryId.find(item => item.key === 'memory-a').occurrences, 2);

@@ -26,7 +26,11 @@
             "required": ["domain", "item_counts"],
             "properties": {
               "domain": { "type": "string", "minLength": 1 },
-              "item_counts": { "type": "object" }
+              "item_counts": { "type": "object" },
+              "constraint_ids": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+              "memory_ids": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+              "constraint_id": { "type": "string", "minLength": 1 },
+              "memory_id": { "type": "string", "minLength": 1 }
             }
           }
         }
@@ -50,7 +54,8 @@
               "verification_exit_code": { "type": ["integer", "null"] },
               "expected_exit_code": { "type": "integer" },
               "timed_out": { "type": "boolean" },
-              "error_code": { "type": ["string", "null"] }
+              "error_code": { "type": ["string", "null"] },
+              "recall_used": { "type": "boolean" }
             }
           }
         }
