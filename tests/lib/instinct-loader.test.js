@@ -434,5 +434,26 @@ run('selectRelevantInstincts: uses task terms, verified evidence, and a hard con
   assert.ok(selected.every(instinct => instinct.renderedLength <= 110));
 });
 
+run('selectRelevantInstincts: excludes domain-only matches and supports path and Korean task terms', () => {
+  const now = new Date('2026-07-19T00:00:00.000Z');
+  const validated = {
+    status: 'validated', evidenceCount: 2, evidenceIds: ['replay-a', 'replay-b'],
+    lastValidated: '2026-07-18T00:00:00.000Z', linkedDomain: 'domain_hooks', confidence: 0.8,
+  };
+  const selected = selectRelevantInstincts([
+    { ...validated, id: 'path-relevant', trigger: 'repair error-tracker hook behavior', title: 'Hook failure' },
+    { ...validated, id: 'korean-relevant', trigger: '실패 오류 추적을 안전하게 처리', title: '오류 처리' },
+    { ...validated, id: 'domain-only', trigger: 'format markdown table', title: 'Docs' },
+    { ...validated, id: 'null-fields', trigger: null, title: null },
+  ], {
+    query: 'domain_hooks scripts/hooks/error-tracker.js 오류 추적',
+    cap: 4,
+    now,
+    requireVerified: true,
+  });
+
+  assert.deepStrictEqual(selected.map(instinct => instinct.id).sort(), ['korean-relevant', 'path-relevant']);
+});
+
 console.log(`\n${passed + failed} tests: ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

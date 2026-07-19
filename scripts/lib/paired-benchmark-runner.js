@@ -59,7 +59,10 @@ function sanitizeConfig(config, options = {}) {
   const sanitized = {};
   for (const [key, value] of Object.entries(config)) {
     const normalizedKey = key.replace(/[-_]/g, '').toLowerCase();
-    if (SENSITIVE_KEY_PATTERN.test(key)) continue;
+    if (SENSITIVE_KEY_PATTERN.test(key)) {
+      if (options.strict === true) throw new Error(`config contains sensitive comparison key: ${key}`);
+      continue;
+    }
     if (!SAFE_CONFIG_KEYS.has(normalizedKey)) {
       if (options.strict === true) throw new Error(`config contains unsupported comparison key: ${key}`);
       continue;
@@ -108,9 +111,14 @@ function sanitizeAdapterMetadata(metadata = {}, options = {}) {
 }
 
 function stableStringify(value) {
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (value === undefined) return undefined;
+  if (Array.isArray(value)) return `[${value.map(item => stableStringify(item) ?? 'null').join(',')}]`;
   if (isPlainObject(value)) {
-    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+    const fields = Object.keys(value).sort().flatMap(key => {
+      const serialized = stableStringify(value[key]);
+      return serialized === undefined ? [] : [`${JSON.stringify(key)}:${serialized}`];
+    });
+    return `{${fields.join(',')}}`;
   }
   return JSON.stringify(value);
 }
@@ -171,31 +179,37 @@ async function prepareIsolatedEpisode({
   if (prepared.restoredSnapshotHash !== snapshot.hash) {
     throw new Error('adapter.prepareRun did not restore the requested snapshot hash');
   }
-  if (usedStateRoots.has(prepared.stateRoot)) {
-    throw new Error('adapter.prepareRun must allocate a distinct stateRoot for every isolated preparation');
-  }
   let canonicalCwd;
+  let canonicalStateRoot;
   try {
     canonicalCwd = fs.realpathSync(prepared.cwd);
   } catch {
     throw new Error('adapter.prepareRun cwd must resolve to an existing directory');
   }
+  try {
+    canonicalStateRoot = fs.realpathSync(prepared.stateRoot);
+  } catch {
+    throw new Error('adapter.prepareRun stateRoot must resolve to an existing directory');
+  }
+  if (usedStateRoots.has(canonicalStateRoot)) {
+    throw new Error('adapter.prepareRun must allocate a distinct stateRoot for every isolated preparation');
+  }
   if (usedWorkingDirectories.has(canonicalCwd)) {
     throw new Error('adapter.prepareRun must allocate a distinct cwd for every isolated preparation');
   }
-  usedStateRoots.add(prepared.stateRoot);
+  usedStateRoots.add(canonicalStateRoot);
   usedWorkingDirectories.add(canonicalCwd);
   return {
     verificationCwd: canonicalCwd,
     isolation: {
       attested: false,
       restoredSnapshotHash: prepared.restoredSnapshotHash,
-      stateRoot: prepared.stateRoot,
+      stateRoot: canonicalStateRoot,
     },
     adapterRequest: {
       ...request,
       cwd: canonicalCwd,
-      stateRoot: prepared.stateRoot,
+      stateRoot: canonicalStateRoot,
       restoredSnapshotHash: prepared.restoredSnapshotHash,
     },
   };
@@ -565,6 +579,11 @@ async function runPairedBenchmark(options = {}) {
       let metadata = {};
       let baseResult;
       if (adapterRun.error) {
+        if (requireComparable) {
+          const error = new Error('adapter run did not provide comparable execution metadata');
+          error.code = 'COMPARISON_CONFIG_MISMATCH';
+          throw error;
+        }
         baseResult = createAdapterFailureResult(task, adapterRun.error, adapterRun.timedOut, Date.now() - startedAt);
       } else {
         try {
@@ -599,7 +618,7 @@ async function runPairedBenchmark(options = {}) {
             verificationDurationMs: verification.durationMs,
           };
         } catch (error) {
-          if (requireComparable || error.code === 'COMPARISON_CONFIG_MISMATCH') throw error;
+          if (error.code === 'COMPARISON_CONFIG_MISMATCH') throw error;
           baseResult = createAdapterFailureResult(task, error, false, Date.now() - startedAt);
           baseResult.errorCode = 'ADAPTER_METADATA_ERROR';
         }

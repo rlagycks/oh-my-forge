@@ -164,13 +164,16 @@ function isVerifiedExperience(instinct, now = new Date()) {
 }
 
 function normalizeTerms(value) {
-  return [...new Set(String(value || '').toLowerCase().match(/[a-z0-9_/-]{3,}/g) || [])];
+  const tokens = String(value ?? '').toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) || [];
+  return [...new Set(tokens.filter(token => (
+    [...token].some(character => character.codePointAt(0) > 0x7f) ? token.length >= 2 : token.length >= 3
+  )))];
 }
 
 function relevanceScore(instinct, query) {
   const queryTerms = normalizeTerms(query);
   if (queryTerms.length === 0) return 0;
-  const haystack = new Set(normalizeTerms(`${instinct.trigger} ${instinct.title} ${instinct.linkedDomain}`));
+  const haystack = new Set(normalizeTerms(`${instinct?.trigger ?? ''} ${instinct?.title ?? ''}`));
   return queryTerms.reduce((score, term) => score + (haystack.has(term) ? 1 : 0), 0);
 }
 

@@ -194,6 +194,9 @@ async function run() {
     });
     assert.throws(() => sanitizeAdapterMetadata({ inputTokens: -1 }), /inputTokens/);
     assert.throws(() => sanitizeAdapterMetadata({ costUsd: -1 }), /costUsd/);
+    assert.throws(() => sanitizeAdapterMetadata({
+      config: { apiKey: 'do-not-keep' },
+    }, { strictConfig: true }), /sensitive comparison key/);
   });
 
   await test('records adapter timeouts and stops before the next pair when cost limit is exhausted', async () => {
@@ -270,10 +273,12 @@ async function run() {
         async prepareRun(request) {
           prepared.push(request.episodeId);
           const episodeDir = path.join(fixture.dir, request.episodeId);
+          const stateRoot = path.join(fixture.dir, `${request.episodeId}-state`);
           fs.mkdirSync(episodeDir, { recursive: true });
+          fs.mkdirSync(stateRoot, { recursive: true });
           return {
             cwd: episodeDir,
-            stateRoot: path.join(fixture.dir, request.episodeId),
+            stateRoot,
             restoredSnapshotHash: request.snapshot.hash,
           };
         },
@@ -316,9 +321,11 @@ async function run() {
         requireIsolation: true,
         adapter: {
           async prepareRun(request) {
+            const stateRoot = path.join(fixture.dir, `${request.episodeId}-state`);
+            fs.mkdirSync(stateRoot, { recursive: true });
             return {
               cwd: fixture.dir,
-              stateRoot: path.join(fixture.dir, request.episodeId),
+              stateRoot,
               restoredSnapshotHash: request.snapshot.hash,
             };
           },
@@ -326,6 +333,32 @@ async function run() {
           async run() { return { provider: 'isolated', model: 'stable', config: { temperature: 0 } }; },
         },
       }), /distinct cwd/);
+
+      const sharedStateRoot = path.join(fixture.dir, 'shared-state-root');
+      const stateRootAlias = path.join(fixture.dir, 'shared-state-root-alias');
+      fs.mkdirSync(sharedStateRoot, { recursive: true });
+      fs.symlinkSync(sharedStateRoot, stateRootAlias, 'dir');
+      let preparations = 0;
+      await assert.rejects(() => runPairedBenchmark({
+        suitePath: fixture.suitePath,
+        logPath: fixture.logPath,
+        snapshot: { id: 'aliased-state-root', hash: 'sha256:clean' },
+        requireIsolation: true,
+        adapter: {
+          async prepareRun(request) {
+            preparations += 1;
+            const cwd = path.join(fixture.dir, `aliased-cwd-${request.episodeId}`);
+            fs.mkdirSync(cwd, { recursive: true });
+            return {
+              cwd,
+              stateRoot: preparations === 1 ? sharedStateRoot : stateRootAlias,
+              restoredSnapshotHash: request.snapshot.hash,
+            };
+          },
+          async verifySnapshot(request) { return request.snapshot.hash; },
+          async run() { return { provider: 'isolated', model: 'stable', config: { temperature: 0 } }; },
+        },
+      }), /distinct stateRoot/);
     } finally {
       fs.rmSync(fixture.dir, { recursive: true, force: true });
     }
@@ -344,14 +377,16 @@ async function run() {
             fixture.dir,
             `${request.episodeId}-${request.baselineAttempt || 'provider'}`
           );
+          const stateRoot = path.join(
+            fixture.dir,
+            `${request.episodeId}-${request.baselineAttempt || 'provider'}-state`
+          );
           fs.mkdirSync(episodeDir, { recursive: true });
+          fs.mkdirSync(stateRoot, { recursive: true });
           fs.rmSync(path.join(episodeDir, 'repaired'), { force: true });
           return {
             cwd: episodeDir,
-            stateRoot: path.join(
-              fixture.dir,
-              `${request.episodeId}-${request.baselineAttempt || 'provider'}-state`
-            ),
+            stateRoot,
             restoredSnapshotHash: request.snapshot.hash,
           };
         },
@@ -412,6 +447,7 @@ async function run() {
       });
       assert.ok(report.results.every(result => result.baseline?.outcome === 'failure'));
       assert.ok(report.results.every(result => result.baseline?.attempts.length === 2));
+      assert.doesNotThrow(() => JSON.parse(report.results[0].baseline.signature));
       assert.ok(report.results.every(result => result.outcome === 'success'));
       assert.deepStrictEqual(report.guards, {
         isolation: true,
@@ -492,6 +528,19 @@ async function run() {
           async run() { throw new Error('must not run'); },
         },
       }), /unsupported comparison key: tool_choice/);
+
+      await assert.rejects(() => runPairedBenchmark({
+        suitePath: fixture.suitePath,
+        snapshot: { id: 'comparison-run-error' },
+        requireComparable: true,
+        adapter: {
+          measurementMetadata: {
+            provider: 'provider', model: 'model', config: { temperature: 0 },
+            comparisonFingerprint: `sha256:${'e'.repeat(64)}`,
+          },
+          async run() { throw new Error('provider unavailable'); },
+        },
+      }), /did not provide comparable execution metadata/);
     } finally {
       fs.rmSync(fixture.dir, { recursive: true, force: true });
     }

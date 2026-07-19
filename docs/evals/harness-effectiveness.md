@@ -194,8 +194,10 @@ module.exports = {
     };
   },
   async verifySnapshot({ snapshot }) {
-    // Return the post-run hash. It must equal snapshot.hash.
-    return snapshot.hash;
+    // Independently verify the immutable source snapshot artifact used to
+    // create this worktree/container. Do not echo the requested hash or hash
+    // the post-run working tree, which is expected to contain the repair.
+    return readImmutableSnapshotManifest().hash;
   },
 };
 ```
@@ -205,7 +207,8 @@ provider/model/configuration fingerprint and a preflight metadata contract.
 It also requires an adapter to restore the requested snapshot and use a fresh
 per-episode state root. Its `environmentIntegrity: "adapter_attested"` value
 means the adapter has attested to that restoration; it is not an independent
-isolation proof. Its report adds paired wins/losses/ties, environment integrity, and
+isolation proof. `verifySnapshot` must attest to the immutable source snapshot
+artifact, not the changed post-run worktree. Its report adds paired wins/losses/ties, environment integrity, and
 cost per successful task; raw total cost alone is not a decision metric.
 
 `--require-failing-baseline` requires both isolation and comparable provider
