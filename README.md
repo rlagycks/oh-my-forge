@@ -185,6 +185,27 @@ session mistake
           → /ontology-sync → domain constraints[]
 ```
 
+### 5. Evidence-gated JIT Recall & Evaluation
+
+Domain context injection can recall a small, task-relevant lesson at the moment
+an ontology-tracked file is touched. This is deliberately not an automatic
+promotion path: a new failure instinct starts as a `candidate` and is excluded
+from JIT recall. It becomes eligible only after it is `validated` with at least
+two distinct evidence IDs, a validation timestamp, and no expiry.
+
+Eligible recall is local, lexical, and bounded: OMF matches task/file terms
+against the lesson title and trigger, injects at most two lessons, and reserves
+about 80 estimated tokens for them. It records memory IDs and selection metadata
+instead of raw prompts, source, or injected context.
+
+The same event log supports outcome-linked evaluation. Use the deterministic
+golden-task runner for replay checks, then use the paired runner to compare
+harness-on and harness-off runs in randomized order. A release or product claim
+needs the measurement-grade adapter contract: isolated workspaces, a verified
+failing baseline, and identical provider/model/non-secret configuration evidence.
+See [the evaluation guide](docs/evals/harness-effectiveness.md) for the adapter
+contract and interpretation limits.
+
 ---
 
 ## Project Structure
@@ -358,6 +379,11 @@ node scripts/record-harness-event.js \
 node scripts/recall-report.js --json
 ```
 
+The report links injections to the latest outcome for the same episode. Without
+an explicit `--recall-used true` outcome signal, those links are useful
+observational evidence—not proof that recall caused the result. Percentages are
+suppressed when the sample is too small.
+
 Set `OMF_HARNESS_EVENT_LOG=/path/to/events.jsonl` to use an isolated event
 log in CI or local experiments. The explicit `--log` option takes precedence
 over this environment variable.
@@ -373,6 +399,30 @@ node scripts/run-golden-task.js \
   --episode episode-123 \
   --json
 ```
+
+For a provider-neutral harness-on/off experiment, supply an adapter that owns
+provider execution and returns only safe measurement metadata:
+
+```bash
+node scripts/run-paired-benchmark.js \
+  --adapter ./benchmarks/my-provider-adapter.js \
+  --suite docs/evals/golden-tasks.json \
+  --snapshot-hash sha256:<immutable-source-snapshot> \
+  --repetitions 3 \
+  --seed 42 \
+  --require-isolation \
+  --require-comparable \
+  --require-failing-baseline \
+  --json
+```
+
+This measurement-grade mode requires the adapter to prepare a fresh workspace
+and state root for every attempt, attest to the immutable source snapshot, and
+prove a consistent provider/model/configuration fingerprint. OMF treats that
+snapshot check as `adapter_attested`, not independent isolation proof. Reports
+contain paired success outcomes plus token, tool-call, duration, and cost data
+when the adapter supplies them; they never persist prompts, source, context, or
+model output.
 
 ---
 
