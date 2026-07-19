@@ -24,6 +24,17 @@
     "results": { "type": "array" },
     "executionOrder": { "type": "array", "items": { "type": "string" } },
     "providers": { "type": "array", "items": { "type": "string" } },
+    "environmentIntegrity": { "enum": ["adapter_attested", "unverified"] },
+    "guards": {
+      "type": "object",
+      "properties": {
+        "isolation": { "type": "boolean" },
+        "comparable": { "type": "boolean" },
+        "failingBaseline": { "type": "boolean" }
+      },
+      "required": ["isolation", "comparable", "failingBaseline"],
+      "additionalProperties": false
+    },
     "comparison": {
       "type": "object",
       "required": ["pairs", "on", "off"],
@@ -32,6 +43,16 @@
         "on": { "$ref": "#/$defs/conditionSummary" },
         "off": { "$ref": "#/$defs/conditionSummary" },
         "successRateDelta": { "type": ["number", "null"] }
+        ,"pairedOutcomes": {
+          "type": "object",
+          "required": ["onWins", "offWins", "ties"],
+          "properties": {
+            "onWins": { "type": "integer", "minimum": 0 },
+            "offWins": { "type": "integer", "minimum": 0 },
+            "ties": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": true
     },
@@ -62,6 +83,7 @@
         "toolCalls": { "type": "number", "minimum": 0 },
         "durationMs": { "type": "number", "minimum": 0 },
         "costUsd": { "type": "number", "minimum": 0 }
+        ,"costPerSuccessfulTaskUsd": { "type": ["number", "null"], "minimum": 0 }
       },
       "additionalProperties": true
     }

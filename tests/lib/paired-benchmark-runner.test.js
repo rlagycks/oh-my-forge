@@ -7,6 +7,7 @@ const os = require('os');
 const path = require('path');
 
 const {
+  buildComparison,
   runPairedBenchmark,
   sanitizeAdapterMetadata,
 } = require('../../scripts/lib/paired-benchmark-runner');
@@ -250,6 +251,247 @@ async function run() {
         adapter: async () => ({ provider: 'unused' }),
         timeoutMs: 0,
       }), /timeoutMs must be from 1/);
+    } finally {
+      fs.rmSync(fixture.dir, { recursive: true, force: true });
+    }
+  });
+
+  await test('requires adapter-proven clean snapshots when isolation is enabled', async () => {
+    const fixture = makeFixture();
+    const prepared = [];
+    const verified = [];
+    const executed = [];
+    try {
+      const adapter = {
+        measurementMetadata: {
+          provider: 'isolated', model: 'stable', config: { temperature: 0 },
+          comparisonFingerprint: `sha256:${'a'.repeat(64)}`,
+        },
+        async prepareRun(request) {
+          prepared.push(request.episodeId);
+          const episodeDir = path.join(fixture.dir, request.episodeId);
+          fs.mkdirSync(episodeDir, { recursive: true });
+          return {
+            cwd: episodeDir,
+            stateRoot: path.join(fixture.dir, request.episodeId),
+            restoredSnapshotHash: request.snapshot.hash,
+          };
+        },
+        async verifySnapshot(request) {
+          verified.push(request.episodeId);
+          return request.snapshot.hash;
+        },
+        async run(request) {
+          executed.push(request.cwd);
+          return {
+            provider: 'isolated', model: 'stable', config: { temperature: 0 }, costUsd: 0.01,
+            comparisonFingerprint: `sha256:${'a'.repeat(64)}`,
+          };
+        },
+      };
+      const report = await runPairedBenchmark({
+        suitePath: fixture.suitePath,
+        logPath: fixture.logPath,
+        snapshot: { id: 'isolated', hash: 'sha256:clean' },
+        requireIsolation: true,
+        adapter,
+      });
+      assert.strictEqual(report.environmentIntegrity, 'adapter_attested');
+      assert.strictEqual(prepared.length, 4);
+      assert.strictEqual(verified.length, 4);
+      assert.strictEqual(new Set(executed).size, 4);
+      assert.ok(report.results.every(result => result.isolation?.attested === true));
+
+      await assert.rejects(() => runPairedBenchmark({
+        suitePath: fixture.suitePath,
+        snapshot: { id: 'missing-contract', hash: 'sha256:clean' },
+        requireIsolation: true,
+        adapter: async () => ({ provider: 'missing' }),
+      }), /prepareRun/);
+
+      await assert.rejects(() => runPairedBenchmark({
+        suitePath: fixture.suitePath,
+        logPath: fixture.logPath,
+        snapshot: { id: 'reused-cwd', hash: 'sha256:clean' },
+        requireIsolation: true,
+        adapter: {
+          async prepareRun(request) {
+            return {
+              cwd: fixture.dir,
+              stateRoot: path.join(fixture.dir, request.episodeId),
+              restoredSnapshotHash: request.snapshot.hash,
+            };
+          },
+          async verifySnapshot(request) { return request.snapshot.hash; },
+          async run() { return { provider: 'isolated', model: 'stable', config: { temperature: 0 } }; },
+        },
+      }), /distinct cwd/);
+    } finally {
+      fs.rmSync(fixture.dir, { recursive: true, force: true });
+    }
+  });
+
+  await test('rejects clean baselines and records a deterministic failing baseline before provider execution', async () => {
+    const fixture = makeFixture();
+    try {
+      const isolatedAdapter = {
+        measurementMetadata: {
+          provider: 'baseline', model: 'model', config: { temperature: 0 },
+          comparisonFingerprint: `sha256:${'d'.repeat(64)}`,
+        },
+        async prepareRun(request) {
+          const episodeDir = path.join(
+            fixture.dir,
+            `${request.episodeId}-${request.baselineAttempt || 'provider'}`
+          );
+          fs.mkdirSync(episodeDir, { recursive: true });
+          fs.rmSync(path.join(episodeDir, 'repaired'), { force: true });
+          return {
+            cwd: episodeDir,
+            stateRoot: path.join(
+              fixture.dir,
+              `${request.episodeId}-${request.baselineAttempt || 'provider'}-state`
+            ),
+            restoredSnapshotHash: request.snapshot.hash,
+          };
+        },
+        async verifySnapshot(request) {
+          return request.snapshot.hash;
+        },
+        async run() {
+          return {
+            provider: 'baseline', model: 'model', config: { temperature: 0 },
+            comparisonFingerprint: `sha256:${'d'.repeat(64)}`,
+          };
+        },
+      };
+      await assert.rejects(() => runPairedBenchmark({
+        suitePath: fixture.suitePath,
+        logPath: fixture.logPath,
+        snapshot: { id: 'clean-baseline', hash: 'sha256:clean' },
+        requireIsolation: true,
+        requireFailingBaseline: true,
+        requireComparable: true,
+        adapter: isolatedAdapter,
+      }), /baseline verification must fail/);
+
+      const failingSuitePath = path.join(fixture.dir, 'failing-baseline-suite.json');
+      fs.writeFileSync(failingSuitePath, JSON.stringify({
+        suite: 'failing-baseline-suite',
+        tasks: [{
+          id: 'repair-required',
+          prompt: 'repair fixture',
+          provenance: { source: 'fixture', incident: 'repair baseline' },
+          tags: ['paired'],
+          difficulty: 'easy',
+          success_criteria: ['verification starts failing and ends passing'],
+          verification: {
+            argv: ['node', '-e', "process.exit(require('fs').existsSync('repaired') ? 0 : 1)"],
+            expected_exit_code: 0,
+          },
+        }],
+      }), 'utf8');
+      const repairedAdapter = {
+        ...isolatedAdapter,
+        async run(request) {
+          fs.writeFileSync(path.join(request.cwd, 'repaired'), 'ok');
+          return {
+            provider: 'baseline', model: 'model', config: { temperature: 0 },
+            comparisonFingerprint: `sha256:${'d'.repeat(64)}`,
+          };
+        },
+      };
+      const report = await runPairedBenchmark({
+        suitePath: failingSuitePath,
+        logPath: fixture.logPath,
+        snapshot: { id: 'failing-baseline', hash: 'sha256:repair' },
+        requireIsolation: true,
+        requireFailingBaseline: true,
+        requireComparable: true,
+        adapter: repairedAdapter,
+      });
+      assert.ok(report.results.every(result => result.baseline?.outcome === 'failure'));
+      assert.ok(report.results.every(result => result.baseline?.attempts.length === 2));
+      assert.ok(report.results.every(result => result.outcome === 'success'));
+      assert.deepStrictEqual(report.guards, {
+        isolation: true,
+        comparable: true,
+        failingBaseline: true,
+      });
+    } finally {
+      fs.rmSync(fixture.dir, { recursive: true, force: true });
+    }
+  });
+
+  await test('reports paired wins and success-adjusted cost instead of raw cost alone', async () => {
+    const comparison = buildComparison([
+      { complete: true, conditions: {
+        on: { outcome: 'success', costUsd: 0.30 },
+        off: { outcome: 'failure', costUsd: 0.10 },
+      } },
+      { complete: true, conditions: {
+        on: { outcome: 'failure', costUsd: 0.10 },
+        off: { outcome: 'success', costUsd: 0.20 },
+      } },
+      { complete: true, conditions: {
+        on: { outcome: 'success', costUsd: 0.10 },
+        off: { outcome: 'success', costUsd: 0.40 },
+      } },
+    ]);
+    assert.deepStrictEqual(comparison.pairedOutcomes, { onWins: 1, offWins: 1, ties: 1 });
+    assert.strictEqual(comparison.on.costPerSuccessfulTaskUsd, 0.25);
+    assert.strictEqual(comparison.off.costPerSuccessfulTaskUsd, 0.35);
+  });
+
+  await test('rejects a comparison when provider, model, or generation config drift', async () => {
+    const fixture = makeFixture();
+    try {
+      await assert.rejects(() => runPairedBenchmark({
+        suitePath: fixture.suitePath,
+        logPath: fixture.logPath,
+        snapshot: { id: 'comparison-config' },
+        requireComparable: true,
+        adapter: {
+          measurementMetadata: {
+            provider: 'same-provider', model: 'same-model', config: { temperature: 0 },
+            comparisonFingerprint: `sha256:${'b'.repeat(64)}`,
+          },
+          async run({ condition }) {
+            return {
+              provider: 'same-provider', model: 'same-model',
+              config: { temperature: condition === 'on' ? 0 : 1 },
+              comparisonFingerprint: `sha256:${'b'.repeat(64)}`,
+            };
+          },
+        },
+      }), /metadata differs from its measurementMetadata preflight|configuration differs from the first condition/);
+    } finally {
+      fs.rmSync(fixture.dir, { recursive: true, force: true });
+    }
+  });
+
+  await test('rejects unallowlisted settings and requires comparison metadata before execution', async () => {
+    const fixture = makeFixture();
+    try {
+      await assert.rejects(() => runPairedBenchmark({
+        suitePath: fixture.suitePath,
+        snapshot: { id: 'comparison-metadata' },
+        requireComparable: true,
+        adapter: async () => ({ provider: 'provider' }),
+      }), /measurementMetadata/);
+
+      await assert.rejects(() => runPairedBenchmark({
+        suitePath: fixture.suitePath,
+        snapshot: { id: 'comparison-unknown-key' },
+        requireComparable: true,
+        adapter: {
+          measurementMetadata: {
+            provider: 'provider', model: 'model', config: { tool_choice: 'auto' },
+            comparisonFingerprint: `sha256:${'c'.repeat(64)}`,
+          },
+          async run() { throw new Error('must not run'); },
+        },
+      }), /unsupported comparison key: tool_choice/);
     } finally {
       fs.rmSync(fixture.dir, { recursive: true, force: true });
     }

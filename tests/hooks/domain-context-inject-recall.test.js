@@ -69,6 +69,11 @@ function makeFixture({ withInstincts = true } = {}) {
       'confidence: 0.8',
       'outcome: failure',
       'linked_domain: domain_a',
+      'status: validated',
+      'evidence_count: 2',
+      'evidence_ids: replay-a-failure-1,replay-a-failure-2',
+      'last_validated: 2026-07-18T00:00:00.000Z',
+      'expires_at: 2026-08-01T00:00:00.000Z',
     ], '\n# Watch the failure case\n');
     writeInstinct(path.join(personalDir, 'a-second.yaml'), [
       'id: inst-a-second',
@@ -76,6 +81,10 @@ function makeFixture({ withInstincts = true } = {}) {
       'confidence: 0.95',
       'outcome: success',
       'linked_domain: domain_a',
+      'status: validated',
+      'evidence_count: 3',
+      'evidence_ids: replay-a-second-1,replay-a-second-2,replay-a-second-3',
+      'last_validated: 2026-07-18T00:00:00.000Z',
     ]);
     writeInstinct(path.join(personalDir, 'a-third.yaml'), [
       'id: inst-a-third',
@@ -83,6 +92,8 @@ function makeFixture({ withInstincts = true } = {}) {
       'confidence: 0.85',
       'outcome: success',
       'linked_domain: domain_a',
+      'status: candidate',
+      'evidence_count: 0',
     ]);
     writeInstinct(path.join(personalDir, 'b-only.yaml'), [
       'id: inst-b-only',
@@ -90,6 +101,10 @@ function makeFixture({ withInstincts = true } = {}) {
       'confidence: 0.99',
       'outcome: failure',
       'linked_domain: domain_b',
+      'status: validated',
+      'evidence_count: 2',
+      'evidence_ids: replay-b-only-1,replay-b-only-2',
+      'last_validated: 2026-07-18T00:00:00.000Z',
     ]);
   }
 
@@ -231,6 +246,8 @@ setTimeout(() => {
     assert.strictEqual(hit.kinds.constraints, 1);
     assert.strictEqual(hit.kinds.decisions, 0);
     assert.strictEqual(hit.kinds.instincts, 2);
+    assert.deepStrictEqual(hit.payload.memory_ids.sort(), ['inst-a-failure', 'inst-a-second']);
+    assert.ok(!JSON.stringify(hit).includes('editing domain_a'), 'experience text must not be persisted');
     assert.strictEqual(hit.chars, logStderr.length, 'chars should equal the injected block length');
   })) passed++; else failed++;
 

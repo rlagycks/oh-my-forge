@@ -76,6 +76,10 @@ Creates/updates instincts in the **project-scoped** instincts directory:
 id: use-react-hooks-pattern
 trigger: "when creating React components"
 confidence: 0.65
+status: candidate
+evidence_count: 1
+evidence_ids: "<observation-id>"
+last_validated: ""
 domain: "code-style"
 source: "session-observation"
 scope: project

@@ -37,6 +37,9 @@ Options:
   --seed <n>                  Recorded deterministic shuffle seed
   --timeout-ms <n>            Adapter and verification timeout, 1-${MAX_TIMEOUT_MS} ms (default: ${DEFAULT_TIMEOUT_MS})
   --max-cost-usd <n>          Stop before additional pairs after this reported cost
+  --require-isolation          Require adapter prepare/verify snapshot proof for every condition
+  --require-comparable         Require identical provider, model, and generation config for every condition
+  --require-failing-baseline   Require every isolated episode to start with a deterministic verification failure
   --cwd <path>                Verification working directory
   --log <path>                Harness event log path
   --json                      Emit machine-readable JSON
@@ -58,6 +61,9 @@ function parseArgs(argv) {
     else if (arg === '--seed') options.seed = parseInteger(requireValue(argv, index++, arg), arg, { minimum: 0, maximum: 0xffffffff });
     else if (arg === '--timeout-ms') options.timeoutMs = parseInteger(requireValue(argv, index++, arg), arg, { minimum: 1, maximum: MAX_TIMEOUT_MS });
     else if (arg === '--max-cost-usd') options.maxCostUsd = parseNumber(requireValue(argv, index++, arg), arg);
+    else if (arg === '--require-isolation') options.requireIsolation = true;
+    else if (arg === '--require-comparable') options.requireComparable = true;
+    else if (arg === '--require-failing-baseline') options.requireFailingBaseline = true;
     else if (arg === '--cwd') options.cwd = requireValue(argv, index++, arg);
     else if (arg === '--log') options.logPath = requireValue(argv, index++, arg);
     else if (arg === '--json') options.json = true;

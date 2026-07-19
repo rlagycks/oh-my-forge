@@ -31,6 +31,12 @@ module.exports = async function adapter() {
 `, 'utf8');
 
 try {
+  const helpResult = spawnSync(process.execPath, [cliPath, '--help'], { encoding: 'utf8' });
+  assert.strictEqual(helpResult.status, 0, helpResult.stderr);
+  assert.ok(helpResult.stdout.includes('--require-isolation'));
+  assert.ok(helpResult.stdout.includes('--require-comparable'));
+  assert.ok(helpResult.stdout.includes('--require-failing-baseline'));
+
   const jsonResult = spawnSync(process.execPath, [
     cliPath,
     '--suite', suitePath,

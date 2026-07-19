@@ -137,6 +137,8 @@ node scripts/run-paired-benchmark.js \
   --repetitions 3 \
   --seed 42 \
   --max-cost-usd 2.50 \
+  --require-isolation \
+  --require-comparable \
   --log /tmp/omf-paired-events.jsonl
 ```
 
@@ -160,10 +162,62 @@ adapter request/response objects. Snapshot restoration and provider-specific
 execution belong to the adapter; the runner passes the same opaque snapshot
 reference to each member of a pair.
 
+### Measurement-grade adapter contract
+
+Use `--require-isolation --require-comparable --require-failing-baseline` for any result intended to
+support a product or release decision. In this mode the adapter must export an
+object with `run`, `prepareRun`, and `verifySnapshot` methods:
+
+```js
+module.exports = {
+  measurementMetadata: {
+    provider: 'example-provider', model: 'exact-model-revision',
+    config: { temperature: 0 },
+    // Hash every non-secret generation/tool/runtime setting the provider will use.
+    comparisonFingerprint: 'sha256:<64-lowercase-hex-characters>',
+  },
+  async prepareRun({ snapshot, episodeId, baselineAttempt }) {
+    // Restore a clean worktree/container and allocate new hook/cache state.
+    return {
+      cwd: `/isolated/worktree/${episodeId}-${baselineAttempt || 'provider'}`,
+      stateRoot: `/isolated/state/${episodeId}-${baselineAttempt || 'provider'}`,
+      restoredSnapshotHash: snapshot.hash,
+    };
+  },
+  async run(request) {
+    // Run the provider in the cwd prepared for this exact condition.
+    return {
+      provider: 'example-provider', model: 'exact-model-revision',
+      config: { temperature: 0, seed: request.seed },
+      comparisonFingerprint: 'sha256:<same-non-secret-settings-hash>',
+      inputTokens: 1200, outputTokens: 300, toolCalls: 5, costUsd: 0.02,
+    };
+  },
+  async verifySnapshot({ snapshot }) {
+    // Return the post-run hash. It must equal snapshot.hash.
+    return snapshot.hash;
+  },
+};
+```
+
+The runner rejects a measurement-grade run unless every condition has the same
+provider/model/configuration fingerprint and a preflight metadata contract.
+It also requires an adapter to restore the requested snapshot and use a fresh
+per-episode state root. Its `environmentIntegrity: "adapter_attested"` value
+means the adapter has attested to that restoration; it is not an independent
+isolation proof. Its report adds paired wins/losses/ties, environment integrity, and
+cost per successful task; raw total cost alone is not a decision metric.
+
+`--require-failing-baseline` requires both isolation and comparable provider
+metadata, then prepares two independent baseline workspaces and runs verification
+once in each before the provider starts. It rejects an episode unless both
+attempts fail with the same signature. This prevents a clean snapshot
+whose pre-existing tests already pass from being reported as an agent success.
+
 Adapter `config` metadata uses a small allowlist of scalar generation/runtime
-settings. Provider credentials, auth objects, URLs with sensitive query
-parameters, and unknown config keys are dropped before reports or events are
-written.
+settings. Provider credentials, auth objects, and URLs with sensitive query
+parameters are never written. In measurement-grade mode, unknown non-secret
+configuration keys are rejected rather than silently omitted.
 
 An episode is expected to have one final `task_outcome`. If retries or
 intermediate outcomes are recorded, the report uses the latest outcome by
@@ -174,7 +228,8 @@ duplicates as `linkedInjections.duplicateOutcomeEpisodes`.
 
 현재 paired runner는 provider adapter가 제공하는 토큰·도구·비용 메타데이터를
 집계한다. 모델별 tokenizer, 통계적 유의성 검정, 장기 실행 환경의 로그
-rotation/streaming은 범위 밖이다.
+rotation/streaming은 범위 밖이다. `--require-isolation`을 생략한 결과는
+`environmentIntegrity: "unverified"`이므로 제품 성능 주장에 사용하면 안 된다.
 
 `golden-tasks.json`의 verification은 실행 가능한 argv 메타데이터이며, 신뢰할 수 없는 외부 입력을 shell 문자열로 실행해서는 안 된다.
 
