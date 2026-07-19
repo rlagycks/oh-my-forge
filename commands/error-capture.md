@@ -101,6 +101,11 @@ domain: "<관련 영역: hooks|testing|git|workflow|security 등>"
 source: "error-capture"
 outcome: "failure"
 linked_domain: "<domain_*가 있으면 기입, 없으면 생략>"
+status: "candidate"
+evidence_count: 1
+evidence_ids: "<first-replay-or-observation-id>"
+last_validated: ""
+expires_at: "<UTC ISO-8601, 기본 90일 후>"
 ---
 
 # <실수 제목>
@@ -122,6 +127,22 @@ python3 "${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-$(cat "$HOME/.claude/.omf-ro
 ```
 
 `outcome: failure` instinct가 constraint 후보로 분류됐는지 확인하고 결과를 출력한다.
+
+**2b-3. JIT recall 승격은 별도 검증 후에만 수행**
+
+새 failure instinct는 `candidate`로 저장되며 자동 주입하지 않는다. 서로 독립적인
+두 번째 재현/수정 성공이 있고 결정적 검증(테스트·lint·build 중 해당되는 것)이
+통과한 뒤에만 같은 파일의 frontmatter를 다음처럼 갱신한다.
+
+```yaml
+status: "validated"
+evidence_count: 2
+evidence_ids: "<first-replay-id>,<second-independent-replay-id>"
+last_validated: "<현재 UTC ISO-8601>"
+```
+
+검증 증거가 하나뿐이거나 실패 원인이 불명확하면 `candidate` 상태를 유지한다.
+만료된 항목은 갱신 또는 폐기하기 전까지 domain JIT recall에 주입되지 않는다.
 
 ---
 

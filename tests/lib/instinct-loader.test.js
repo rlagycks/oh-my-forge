@@ -14,6 +14,8 @@ const {
   buildInstinctsContext,
   collectInstinctContext,
   loadInstinctsForDomain,
+  isVerifiedExperience,
+  selectRelevantInstincts,
 } = require('../../scripts/lib/instinct-loader');
 
 function mkdirp(dirPath) {
@@ -385,6 +387,72 @@ run('loadInstinctsForDomain: composes with selectTopInstincts for the injection 
     os.homedir = originalHomedir;
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
+});
+
+run('isVerifiedExperience: requires two evidence records, validation, and a non-expired lifetime', () => {
+  const now = new Date('2026-07-19T00:00:00.000Z');
+  assert.strictEqual(isVerifiedExperience({
+    id: 'verified', status: 'validated', evidenceCount: 2, evidenceIds: ['replay-a', 'replay-b'], lastValidated: '2026-07-18T00:00:00.000Z',
+    expiresAt: '2026-08-01T00:00:00.000Z',
+  }, now), true);
+  assert.strictEqual(isVerifiedExperience({
+    id: 'single-proof', status: 'validated', evidenceCount: 1, evidenceIds: ['replay-a'], lastValidated: '2026-07-18T00:00:00.000Z',
+  }, now), false);
+  assert.strictEqual(isVerifiedExperience({
+    id: 'duplicate-proof', status: 'validated', evidenceCount: 2, evidenceIds: ['replay-a', 'replay-a'], lastValidated: '2026-07-18T00:00:00.000Z',
+  }, now), false);
+  assert.strictEqual(isVerifiedExperience({
+    id: 'expired', status: 'validated', evidenceCount: 3, evidenceIds: ['replay-a', 'replay-b', 'replay-c'], lastValidated: '2026-07-18T00:00:00.000Z',
+    expiresAt: '2026-07-18T23:59:59.000Z',
+  }, now), false);
+});
+
+run('selectRelevantInstincts: uses task terms, verified evidence, and a hard context budget', () => {
+  const now = new Date('2026-07-19T00:00:00.000Z');
+  const selected = selectRelevantInstincts([
+    {
+      id: 'auth-verified', trigger: 'validate authentication token before API request', title: 'Auth boundary',
+      confidence: 0.72, status: 'validated', evidenceCount: 2, evidenceIds: ['replay-a', 'replay-b'], lastValidated: '2026-07-18T00:00:00.000Z',
+    },
+    {
+      id: 'unverified-high-confidence', trigger: 'authentication API shortcut', title: 'Unsafe candidate',
+      confidence: 0.99, status: 'candidate', evidenceCount: 0,
+    },
+    {
+      id: 'unrelated', trigger: 'format markdown table', title: 'Docs',
+      confidence: 0.95, status: 'validated', evidenceCount: 3, evidenceIds: ['replay-a', 'replay-b', 'replay-c'], lastValidated: '2026-07-18T00:00:00.000Z',
+    },
+  ], {
+    query: 'fix API authentication request',
+    cap: 2,
+    maxChars: 110,
+    now,
+    requireVerified: true,
+  });
+
+  assert.deepStrictEqual(selected.map(instinct => instinct.id), ['auth-verified']);
+  assert.ok(selected.every(instinct => instinct.renderedLength <= 110));
+});
+
+run('selectRelevantInstincts: excludes domain-only matches and supports path and Korean task terms', () => {
+  const now = new Date('2026-07-19T00:00:00.000Z');
+  const validated = {
+    status: 'validated', evidenceCount: 2, evidenceIds: ['replay-a', 'replay-b'],
+    lastValidated: '2026-07-18T00:00:00.000Z', linkedDomain: 'domain_hooks', confidence: 0.8,
+  };
+  const selected = selectRelevantInstincts([
+    { ...validated, id: 'path-relevant', trigger: 'repair error-tracker hook behavior', title: 'Hook failure' },
+    { ...validated, id: 'korean-relevant', trigger: '실패 오류 추적을 안전하게 처리', title: '오류 처리' },
+    { ...validated, id: 'domain-only', trigger: 'format markdown table', title: 'Docs' },
+    { ...validated, id: 'null-fields', trigger: null, title: null },
+  ], {
+    query: 'domain_hooks scripts/hooks/error-tracker.js 오류 추적',
+    cap: 4,
+    now,
+    requireVerified: true,
+  });
+
+  assert.deepStrictEqual(selected.map(instinct => instinct.id).sort(), ['korean-relevant', 'path-relevant']);
 });
 
 console.log(`\n${passed + failed} tests: ${passed} passed, ${failed} failed\n`);

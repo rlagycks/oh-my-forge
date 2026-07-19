@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const fs = require('fs');
 const path = require('path');
 
 const {
@@ -35,6 +36,7 @@ const ADAPTER_METADATA_FIELDS = Object.freeze([
   'durationMs',
   'costUsd',
   'humanIntervention',
+  'comparisonFingerprint',
 ]);
 
 function isPlainObject(value) {
@@ -50,14 +52,21 @@ function validateNonNegativeNumber(value, field, integer = false) {
   return value;
 }
 
-function sanitizeConfig(config) {
+function sanitizeConfig(config, options = {}) {
   if (config === undefined) return undefined;
   if (!isPlainObject(config)) throw new Error('config must be an object');
 
   const sanitized = {};
   for (const [key, value] of Object.entries(config)) {
     const normalizedKey = key.replace(/[-_]/g, '').toLowerCase();
-    if (SENSITIVE_KEY_PATTERN.test(key) || !SAFE_CONFIG_KEYS.has(normalizedKey)) continue;
+    if (SENSITIVE_KEY_PATTERN.test(key)) {
+      if (options.strict === true) throw new Error(`config contains sensitive comparison key: ${key}`);
+      continue;
+    }
+    if (!SAFE_CONFIG_KEYS.has(normalizedKey)) {
+      if (options.strict === true) throw new Error(`config contains unsupported comparison key: ${key}`);
+      continue;
+    }
     if (typeof value === 'string' && SENSITIVE_URL_VALUE_PATTERN.test(value)) continue;
     if (value === null || typeof value === 'string' || typeof value === 'boolean') {
       sanitized[key] = value;
@@ -73,7 +82,7 @@ function sanitizeConfig(config) {
   return sanitized;
 }
 
-function sanitizeAdapterMetadata(metadata = {}) {
+function sanitizeAdapterMetadata(metadata = {}, options = {}) {
   if (!isPlainObject(metadata)) throw new Error('Adapter result must be an object');
   const sanitized = {};
 
@@ -84,7 +93,12 @@ function sanitizeAdapterMetadata(metadata = {}) {
       if (typeof value !== 'string' || value.trim() === '') throw new Error(`${field} must be a non-empty string`);
       sanitized[field] = value;
     } else if (field === 'config') {
-      sanitized.config = sanitizeConfig(value);
+      sanitized.config = sanitizeConfig(value, { strict: options.strictConfig === true });
+    } else if (field === 'comparisonFingerprint') {
+      if (typeof value !== 'string' || !/^sha256:[a-f0-9]{64}$/i.test(value)) {
+        throw new Error('comparisonFingerprint must be a sha256 fingerprint');
+      }
+      sanitized.comparisonFingerprint = value.toLowerCase();
     } else if (field === 'humanIntervention') {
       if (typeof value !== 'boolean') throw new Error(`${field} must be a boolean`);
       sanitized[field] = value;
@@ -94,6 +108,111 @@ function sanitizeAdapterMetadata(metadata = {}) {
   }
 
   return sanitized;
+}
+
+function stableStringify(value) {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value)) return `[${value.map(item => stableStringify(item) ?? 'null').join(',')}]`;
+  if (isPlainObject(value)) {
+    const fields = Object.keys(value).sort().flatMap(key => {
+      const serialized = stableStringify(value[key]);
+      return serialized === undefined ? [] : [`${JSON.stringify(key)}:${serialized}`];
+    });
+    return `{${fields.join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function comparableConfiguration(metadata) {
+  if (!metadata.provider || !metadata.model || !metadata.config || !metadata.comparisonFingerprint) {
+    throw new Error('comparison needs provider, model, config, and comparisonFingerprint metadata');
+  }
+  return stableStringify({
+    provider: metadata.provider,
+    model: metadata.model,
+    config: metadata.config,
+    comparisonFingerprint: metadata.comparisonFingerprint,
+  });
+}
+
+function summarizeBaselineAttempt(result) {
+  return {
+    outcome: result.outcome,
+    exitCode: result.exitCode,
+    expectedExitCode: result.expectedExitCode,
+    timedOut: result.timedOut,
+    errorCode: result.errorCode,
+  };
+}
+
+function verifyDeterministicFailingBaseline(attempts) {
+  if (!Array.isArray(attempts) || attempts.length !== 2) {
+    throw new Error('baseline verification requires two isolated attempts');
+  }
+  const summaries = attempts.map(summarizeBaselineAttempt);
+  const signature = stableStringify(summaries[0]);
+  const deterministic = summaries.every(summary => stableStringify(summary) === signature);
+  const validFailure = summaries.every(summary => (
+    summary.outcome === 'failure' && !summary.timedOut && !summary.errorCode
+  ));
+  if (!deterministic || !validFailure) {
+    throw new Error('baseline verification must fail deterministically before provider execution');
+  }
+  return { outcome: 'failure', signature, attempts: summaries };
+}
+
+async function prepareIsolatedEpisode({
+  rawAdapter,
+  request,
+  snapshot,
+  timeoutMs,
+  usedStateRoots,
+  usedWorkingDirectories,
+}) {
+  const prepare = await runAdapter(rawAdapter.prepareRun.bind(rawAdapter), request, timeoutMs);
+  if (prepare.error) throw prepare.error;
+  const prepared = prepare.result;
+  if (!isPlainObject(prepared) || typeof prepared.cwd !== 'string' || prepared.cwd.trim() === ''
+      || typeof prepared.stateRoot !== 'string' || prepared.stateRoot.trim() === '') {
+    throw new Error('adapter.prepareRun must return non-empty cwd and stateRoot values');
+  }
+  if (prepared.restoredSnapshotHash !== snapshot.hash) {
+    throw new Error('adapter.prepareRun did not restore the requested snapshot hash');
+  }
+  let canonicalCwd;
+  let canonicalStateRoot;
+  try {
+    canonicalCwd = fs.realpathSync(prepared.cwd);
+  } catch {
+    throw new Error('adapter.prepareRun cwd must resolve to an existing directory');
+  }
+  try {
+    canonicalStateRoot = fs.realpathSync(prepared.stateRoot);
+  } catch {
+    throw new Error('adapter.prepareRun stateRoot must resolve to an existing directory');
+  }
+  if (usedStateRoots.has(canonicalStateRoot)) {
+    throw new Error('adapter.prepareRun must allocate a distinct stateRoot for every isolated preparation');
+  }
+  if (usedWorkingDirectories.has(canonicalCwd)) {
+    throw new Error('adapter.prepareRun must allocate a distinct cwd for every isolated preparation');
+  }
+  usedStateRoots.add(canonicalStateRoot);
+  usedWorkingDirectories.add(canonicalCwd);
+  return {
+    verificationCwd: canonicalCwd,
+    isolation: {
+      attested: false,
+      restoredSnapshotHash: prepared.restoredSnapshotHash,
+      stateRoot: canonicalStateRoot,
+    },
+    adapterRequest: {
+      ...request,
+      cwd: canonicalCwd,
+      stateRoot: canonicalStateRoot,
+      restoredSnapshotHash: prepared.restoredSnapshotHash,
+    },
+  };
 }
 
 function cloneValue(value) {
@@ -254,6 +373,7 @@ function addNumeric(total, value) {
 
 function summarizeCondition(results) {
   const passed = results.filter(result => result.outcome === 'success').length;
+  const costUsd = Number(results.reduce((total, result) => addNumeric(total, result.costUsd), 0).toFixed(6));
   return {
     attempted: results.length,
     passed,
@@ -263,7 +383,8 @@ function summarizeCondition(results) {
     outputTokens: results.reduce((total, result) => addNumeric(total, result.outputTokens), 0),
     toolCalls: results.reduce((total, result) => addNumeric(total, result.toolCalls), 0),
     durationMs: results.reduce((total, result) => addNumeric(total, result.durationMs), 0),
-    costUsd: Number(results.reduce((total, result) => addNumeric(total, result.costUsd), 0).toFixed(6)),
+    costUsd,
+    costPerSuccessfulTaskUsd: passed > 0 ? Number((costUsd / passed).toFixed(6)) : null,
   };
 }
 
@@ -274,6 +395,14 @@ function buildComparison(pairs) {
     .filter(Boolean);
   const on = summarizeCondition(conditionResults('on'));
   const off = summarizeCondition(conditionResults('off'));
+  const pairedOutcomes = completePairs.reduce((totals, pair) => {
+    const onSuccess = pair.conditions.on?.outcome === 'success';
+    const offSuccess = pair.conditions.off?.outcome === 'success';
+    if (onSuccess === offSuccess) totals.ties += 1;
+    else if (onSuccess) totals.onWins += 1;
+    else totals.offWins += 1;
+    return totals;
+  }, { onWins: 0, offWins: 0, ties: 0 });
   return {
     pairs: completePairs.length,
     on,
@@ -281,6 +410,7 @@ function buildComparison(pairs) {
     successRateDelta: completePairs.length > 0
       ? Number((on.successRate - off.successRate).toFixed(1))
       : null,
+    pairedOutcomes,
   };
 }
 
@@ -333,12 +463,46 @@ async function runPairedBenchmark(options = {}) {
   const seed = createSeed(options.seed);
   const snapshot = normalizeSnapshot(options.snapshot, options.snapshotId, options.snapshotHash);
   const adapter = getAdapterRunner(options.adapter);
+  const rawAdapter = options.adapter;
+  const requireIsolation = options.requireIsolation === true;
+  const requireComparable = options.requireComparable === true;
+  const requireFailingBaseline = options.requireFailingBaseline === true;
+  let requiredConfiguration = null;
+  if (requireIsolation) {
+    if (!snapshot?.hash) throw new Error('requireIsolation needs a snapshot hash');
+    if (typeof rawAdapter?.prepareRun !== 'function') {
+      throw new Error('requireIsolation needs an adapter.prepareRun function');
+    }
+    if (typeof rawAdapter?.verifySnapshot !== 'function') {
+      throw new Error('requireIsolation needs an adapter.verifySnapshot function');
+    }
+  }
+  if (requireFailingBaseline && (!requireIsolation || !requireComparable)) {
+    throw new Error('requireFailingBaseline needs requireIsolation and requireComparable');
+  }
+  if (requireComparable) {
+    if (!isPlainObject(rawAdapter?.measurementMetadata)) {
+      throw new Error('requireComparable needs adapter.measurementMetadata');
+    }
+    try {
+      requiredConfiguration = comparableConfiguration(sanitizeAdapterMetadata(
+        rawAdapter.measurementMetadata,
+        { strictConfig: true }
+      ));
+    } catch (error) {
+      error.code = 'COMPARISON_CONFIG_MISMATCH';
+      throw error;
+    }
+  }
   const runId = options.runId || createRunId(seed);
   const random = createRandom(seed);
   const pairs = createPairPlan(tasks, repetitions, random, runId);
   const results = [];
   let costUsd = 0;
   let costExceeded = false;
+  let baselineConfiguration = null;
+  const usedStateRoots = new Set();
+  const usedWorkingDirectories = new Set();
 
   for (const pair of pairs) {
     if (costExceeded) {
@@ -366,16 +530,86 @@ async function runPairedBenchmark(options = {}) {
         timeoutMs,
         remainingCostUsd: maxCostUsd === null ? null : Math.max(0, maxCostUsd - costUsd),
       };
-      const adapterRun = await runAdapter(adapter, request, timeoutMs);
+      let isolation = { attested: false };
+      let verificationCwd = options.cwd;
+      let adapterRequest = request;
+      let baseline = null;
+      if (requireIsolation) {
+        if (requireFailingBaseline) {
+          const baselineAttempts = [];
+          for (let baselineAttempt = 1; baselineAttempt <= 2; baselineAttempt += 1) {
+            const preparedBaseline = await prepareIsolatedEpisode({
+              rawAdapter,
+              request: { ...request, baselineAttempt },
+              snapshot,
+              timeoutMs,
+              usedStateRoots,
+              usedWorkingDirectories,
+            });
+            const baselineResult = executeVerification(task, {
+              cwd: preparedBaseline.verificationCwd,
+              timeoutMs,
+            });
+            const baselineSnapshot = await runAdapter(
+              rawAdapter.verifySnapshot.bind(rawAdapter),
+              preparedBaseline.adapterRequest,
+              timeoutMs
+            );
+            if (baselineSnapshot.error) throw baselineSnapshot.error;
+            if (baselineSnapshot.result !== snapshot.hash) {
+              throw new Error('adapter.verifySnapshot does not match the requested snapshot hash');
+            }
+            baselineAttempts.push(baselineResult);
+          }
+          baseline = verifyDeterministicFailingBaseline(baselineAttempts);
+        }
+        const preparedRun = await prepareIsolatedEpisode({
+          rawAdapter,
+          request,
+          snapshot,
+          timeoutMs,
+          usedStateRoots,
+          usedWorkingDirectories,
+        });
+        verificationCwd = preparedRun.verificationCwd;
+        isolation = preparedRun.isolation;
+        adapterRequest = preparedRun.adapterRequest;
+      }
+      const adapterRun = await runAdapter(adapter, adapterRequest, timeoutMs);
       let metadata = {};
       let baseResult;
       if (adapterRun.error) {
+        if (requireComparable) {
+          const error = new Error('adapter run did not provide comparable execution metadata');
+          error.code = 'COMPARISON_CONFIG_MISMATCH';
+          throw error;
+        }
         baseResult = createAdapterFailureResult(task, adapterRun.error, adapterRun.timedOut, Date.now() - startedAt);
       } else {
         try {
-          metadata = sanitizeAdapterMetadata(adapterRun.result);
+          metadata = sanitizeAdapterMetadata(adapterRun.result, { strictConfig: requireComparable });
+          if (requireComparable) {
+            let configuration;
+            try {
+              configuration = comparableConfiguration(metadata);
+            } catch (error) {
+              error.code = 'COMPARISON_CONFIG_MISMATCH';
+              throw error;
+            }
+            if (configuration !== requiredConfiguration) {
+              const error = new Error('adapter result metadata differs from its measurementMetadata preflight');
+              error.code = 'COMPARISON_CONFIG_MISMATCH';
+              throw error;
+            }
+            if (baselineConfiguration === null) baselineConfiguration = configuration;
+            else if (configuration !== baselineConfiguration) {
+              const error = new Error('comparison configuration differs from the first condition');
+              error.code = 'COMPARISON_CONFIG_MISMATCH';
+              throw error;
+            }
+          }
           const verification = executeVerification(task, {
-            cwd: options.cwd,
+            cwd: verificationCwd,
             timeoutMs,
           });
           baseResult = {
@@ -384,9 +618,19 @@ async function runPairedBenchmark(options = {}) {
             verificationDurationMs: verification.durationMs,
           };
         } catch (error) {
+          if (error.code === 'COMPARISON_CONFIG_MISMATCH') throw error;
           baseResult = createAdapterFailureResult(task, error, false, Date.now() - startedAt);
           baseResult.errorCode = 'ADAPTER_METADATA_ERROR';
         }
+      }
+
+      if (requireIsolation) {
+        const snapshotCheck = await runAdapter(rawAdapter.verifySnapshot.bind(rawAdapter), adapterRequest, timeoutMs);
+        if (snapshotCheck.error) throw snapshotCheck.error;
+        if (snapshotCheck.result !== snapshot.hash) {
+          throw new Error('adapter.verifySnapshot does not match the requested snapshot hash');
+        }
+        isolation = { ...isolation, attested: true, finalSnapshotHash: snapshotCheck.result };
       }
 
       let builtMetadata;
@@ -436,6 +680,8 @@ async function runPairedBenchmark(options = {}) {
         taskHash: pair.taskHash,
         snapshotId: snapshot?.id || null,
         snapshotHash: snapshot?.hash || null,
+        baseline,
+        isolation,
         ...builtMetadata.reportMetadata,
       };
       if (result.durationMs === undefined) result.durationMs = Date.now() - startedAt;
@@ -471,6 +717,14 @@ async function runPairedBenchmark(options = {}) {
     executionOrder,
     providers,
     comparison: buildComparison(pairs),
+    environmentIntegrity: requireIsolation && results.every(result => result.isolation?.attested)
+      ? 'adapter_attested'
+      : 'unverified',
+    guards: {
+      isolation: requireIsolation,
+      comparable: requireComparable,
+      failingBaseline: requireFailingBaseline,
+    },
     limits: {
       timeoutMs,
       maxCostUsd,
@@ -487,6 +741,9 @@ module.exports = {
   DEFAULT_REPETITIONS,
   MAX_REPETITIONS,
   formatComparison,
+  buildComparison,
   runPairedBenchmark,
   sanitizeAdapterMetadata,
+  comparableConfiguration,
+  verifyDeterministicFailingBaseline,
 };

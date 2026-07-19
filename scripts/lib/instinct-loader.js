@@ -20,6 +20,7 @@ const INSTINCT_CONFIDENCE_THRESHOLD = 0.7;
 const INSTINCT_CAP = 5;
 const INSTINCT_CONTEXT_CHAR_CAP = 600;
 const INSTINCT_EXTENSIONS = ['*.yaml', '*.yml'];
+const MIN_VERIFIED_EVIDENCE_COUNT = 2;
 
 /**
  * Resolve a filesystem path to its canonical (real) form.
@@ -126,6 +127,11 @@ function loadInstinctsFromDir(dir) {
       confidence,
       outcome: parsed.outcome || '',
       title: parsed.title || '',
+      status: parsed.status || 'legacy',
+      evidenceCount: Number(parsed.evidence_count) || 0,
+      evidenceIds: String(parsed.evidence_ids || '').split(',').map(value => value.trim()).filter(Boolean),
+      lastValidated: parsed.last_validated || '',
+      expiresAt: parsed.expires_at || '',
       // linked_domain is written by /error-capture (see skills/continuous-learning-v2)
       // and consumed here for domain-scoped recall (loadInstinctsForDomain below).
       linkedDomain: parsed.linked_domain || ''
@@ -133,6 +139,89 @@ function loadInstinctsFromDir(dir) {
   }
 
   return instincts;
+}
+
+function isFutureOrUnset(value, now) {
+  if (!value) return true;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && timestamp > now.getTime();
+}
+
+/**
+ * A memory is safe for automatic JIT recall only when it is explicitly
+ * validated with independent evidence and has not expired. Legacy instincts
+ * remain available to the backward-compatible session-start path, but cannot
+ * silently become domain-level working memory.
+ */
+function isVerifiedExperience(instinct, now = new Date()) {
+  if (!instinct || instinct.status !== 'validated') return false;
+  if (!Number.isSafeInteger(instinct.evidenceCount)
+      || instinct.evidenceCount < MIN_VERIFIED_EVIDENCE_COUNT) return false;
+  const evidenceIds = Array.isArray(instinct.evidenceIds) ? instinct.evidenceIds : [];
+  if (new Set(evidenceIds).size < MIN_VERIFIED_EVIDENCE_COUNT) return false;
+  if (!instinct.lastValidated || !Number.isFinite(Date.parse(instinct.lastValidated))) return false;
+  return isFutureOrUnset(instinct.expiresAt, now);
+}
+
+function normalizeTerms(value) {
+  const tokens = String(value ?? '').toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) || [];
+  return [...new Set(tokens.filter(token => (
+    [...token].some(character => character.codePointAt(0) > 0x7f) ? token.length >= 2 : token.length >= 3
+  )))];
+}
+
+function relevanceScore(instinct, query) {
+  const queryTerms = normalizeTerms(query);
+  if (queryTerms.length === 0) return 0;
+  const haystack = new Set(normalizeTerms(`${instinct?.trigger ?? ''} ${instinct?.title ?? ''}`));
+  return queryTerms.reduce((score, term) => score + (haystack.has(term) ? 1 : 0), 0);
+}
+
+function renderedExperienceLength(instinct) {
+  const label = instinct.outcome || 'general';
+  const name = instinct.title || instinct.id;
+  return `  - [${label}] ${instinct.trigger}: ${name}`.length + 1;
+}
+
+/**
+ * Select a compact, task-relevant experience slice. This stays intentionally
+ * lexical and dependency-free so the hook does not require network calls or a
+ * model just to decide which local lessons to expose.
+ */
+function selectRelevantInstincts(instincts, options = {}) {
+  const cap = options.cap ?? INSTINCT_CAP;
+  const maxChars = options.maxChars ?? INSTINCT_CONTEXT_CHAR_CAP;
+  const now = options.now ?? new Date();
+  const requireVerified = options.requireVerified ?? false;
+  const query = options.query || '';
+  const minimumRelevance = options.minimumRelevance
+    ?? (normalizeTerms(query).length > 0 ? 1 : 0);
+  const candidates = instincts
+    .filter(instinct => isFutureOrUnset(instinct.expiresAt, now))
+    .filter(instinct => !requireVerified || isVerifiedExperience(instinct, now))
+    .map(instinct => ({
+      ...instinct,
+      relevance: relevanceScore(instinct, query),
+      renderedLength: renderedExperienceLength(instinct),
+    }))
+    .filter(instinct => instinct.relevance >= minimumRelevance)
+    .sort((a, b) => {
+      if (a.relevance !== b.relevance) return b.relevance - a.relevance;
+      const aIsFailure = a.outcome === 'failure' ? 0 : 1;
+      const bIsFailure = b.outcome === 'failure' ? 0 : 1;
+      if (aIsFailure !== bIsFailure) return aIsFailure - bIsFailure;
+      return b.confidence - a.confidence;
+    });
+
+  const selected = [];
+  let usedChars = 0;
+  for (const instinct of candidates) {
+    if (selected.length >= cap) break;
+    if (usedChars + instinct.renderedLength > maxChars) continue;
+    selected.push(instinct);
+    usedChars += instinct.renderedLength;
+  }
+  return selected;
 }
 
 /**
@@ -202,17 +291,10 @@ function mergeInstincts(globalInstincts, projectInstincts) {
  */
 function selectTopInstincts(instincts, options = {}) {
   const minConfidence = options.minConfidence ?? INSTINCT_CONFIDENCE_THRESHOLD;
-  const cap = options.cap ?? INSTINCT_CAP;
-
-  return instincts
-    .filter(instinct => instinct.confidence >= minConfidence)
-    .sort((a, b) => {
-      const aIsFailure = a.outcome === 'failure' ? 0 : 1;
-      const bIsFailure = b.outcome === 'failure' ? 0 : 1;
-      if (aIsFailure !== bIsFailure) return aIsFailure - bIsFailure;
-      return b.confidence - a.confidence;
-    })
-    .slice(0, cap);
+  return selectRelevantInstincts(
+    instincts.filter(instinct => instinct.confidence >= minConfidence),
+    options
+  );
 }
 
 /**
@@ -298,6 +380,7 @@ module.exports = {
   INSTINCT_CAP,
   INSTINCT_CONTEXT_CHAR_CAP,
   INSTINCT_EXTENSIONS,
+  MIN_VERIFIED_EVIDENCE_COUNT,
   normalizePath,
   parseInstinctFrontmatter,
   loadInstinctsFromDir,
@@ -307,4 +390,6 @@ module.exports = {
   buildInstinctsContext,
   collectInstinctContext,
   loadInstinctsForDomain,
+  isVerifiedExperience,
+  selectRelevantInstincts,
 };

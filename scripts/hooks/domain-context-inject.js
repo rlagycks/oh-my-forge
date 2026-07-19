@@ -47,7 +47,7 @@ const {
 } = require('../lib/ontology-routing');
 const { buildDomainPacket } = require('../lib/ontology-packet');
 const { traverseDependsOn } = require('../lib/ontology-blast-radius');
-const { loadInstinctsForDomain, selectTopInstincts } = require('../lib/instinct-loader');
+const { loadInstinctsForDomain, selectRelevantInstincts } = require('../lib/instinct-loader');
 const { loadInjected, saveInjected } = require('../lib/inject-dedup');
 const {
   EVENT_TYPES,
@@ -58,6 +58,8 @@ const {
 
 const RECALL_LOG_PATH = getDefaultEventLogPath();
 const DOMAIN_INSTINCT_CAP = 2;
+const DOMAIN_INSTINCT_TOKEN_BUDGET = 80;
+const DOMAIN_INSTINCT_CHAR_BUDGET = DOMAIN_INSTINCT_TOKEN_BUDGET * 4;
 
 function sourceDocEntries(sourceDocs = {}) {
   return Object.entries(normalizeSourceDocs(sourceDocs));
@@ -104,6 +106,7 @@ function selectRecentDecisions(entry, max = 3) {
  * @param {number} hit.decisions
  * @param {number} hit.instincts
  * @param {number} hit.chars
+ * @param {string[]} hit.memoryIds
  * @param {object} input - Hook input, used only for episode/session linkage
  * @param {number} latencyMs - Time spent building the injection packet
  */
@@ -122,6 +125,7 @@ function logRecallHit(hit, input, latencyMs) {
           decisions: hit.decisions,
           instincts: hit.instincts,
         },
+        memoryIds: hit.memoryIds,
         chars: hit.chars,
         tokenEstimate: Math.ceil(hit.chars / 4),
         latencyMs,
@@ -224,9 +228,14 @@ function run(rawInput) {
   }
 
   // Domain-linked instincts — at most 2, failure-outcome first (Change B1).
-  const domainInstincts = selectTopInstincts(
+  const domainInstincts = selectRelevantInstincts(
     loadInstinctsForDomain(entry.domainKey, process.cwd()),
-    { cap: DOMAIN_INSTINCT_CAP }
+    {
+      cap: DOMAIN_INSTINCT_CAP,
+      maxChars: DOMAIN_INSTINCT_CHAR_BUDGET,
+      query: `${entry.domainKey} ${filePath}`,
+      requireVerified: true,
+    }
   );
   if (domainInstincts.length > 0) {
     lines.push('Instincts:');
@@ -293,6 +302,7 @@ function run(rawInput) {
     decisions: recentDecisions.length,
     instincts: domainInstincts.length,
     chars: injectedText.length,
+    memoryIds: domainInstincts.map(instinct => instinct.id),
   }, input, Date.now() - startedAt);
 
   // Mark primary domain (and shown dep domains) as injected

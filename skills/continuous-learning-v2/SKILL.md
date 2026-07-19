@@ -58,6 +58,11 @@ source: "session-observation"
 scope: project
 project_id: "a1b2c3d4e5f6"
 project_name: "my-react-app"
+status: candidate
+evidence_count: 1
+evidence_ids: "<first observation or replay id>"
+last_validated: ""
+expires_at: "2026-10-17T00:00:00Z"
 ---
 
 # Prefer Functional Style
@@ -76,6 +81,19 @@ Use functional patterns over classes when appropriate.
 - **Domain-tagged** -- code-style, testing, git, debugging, workflow, etc.
 - **Evidence-backed** -- tracks what observations created it
 - **Scope-aware** -- `project` (default) or `global`
+
+### Evidence-gated JIT recall
+
+Newly observed instincts start as `status: candidate`; they are stored for
+review but are not injected by the domain JIT recall hook. Set
+`status: validated`, `evidence_count: 2` or higher, two distinct `evidence_ids`, and a valid
+`last_validated` timestamp only after independent deterministic evidence
+(for example, two clean task replays or an approved review). `expires_at` is
+optional, but an expired item is never injected. This makes a one-off model
+reflection a candidate, not a durable operating rule.
+
+Legacy instincts remain available to the SessionStart compatibility path. To
+use an instinct as domain-level working memory, migrate it to the above fields.
 
 ## How It Works
 
