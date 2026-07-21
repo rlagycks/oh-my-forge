@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const os = require('os');
 const path = require('path');
 const { StringDecoder } = require('string_decoder');
+const { validateVerificationReceipt } = require('./evidence-contract');
 
 const EVENT_SCHEMA_VERSION = 1;
 const DEFAULT_EVENT_LOG_MAX_BYTES = 10 * 1024 * 1024;
@@ -17,6 +18,7 @@ const ROTATION_LOCK_STALE_MS = 30 * 1000;
 const EVENT_TYPES = Object.freeze({
   CONTEXT_INJECTION: 'context_injection',
   TASK_OUTCOME: 'task_outcome',
+  VERIFICATION_RECEIPT: 'verification_receipt',
 });
 const OUTCOMES = new Set(['success', 'failure', 'unknown']);
 
@@ -101,7 +103,7 @@ function createEvent({ eventType, source, episodeId = null, sessionId = null, pa
   };
 }
 
-function validateEvent(event) {
+function validateEvent(event, options = {}) {
   const errors = [];
   if (!event || typeof event !== 'object' || Array.isArray(event)) {
     return { valid: false, errors: ['event must be an object'] };
@@ -161,11 +163,22 @@ function validateEvent(event) {
     }
   }
 
+  if (event.event_type === EVENT_TYPES.VERIFICATION_RECEIPT) {
+    const payloadKeys = Object.keys(event.payload || {});
+    if (payloadKeys.length !== 1 || payloadKeys[0] !== 'verification_receipt') {
+      errors.push('verification_receipt payload may contain only verification_receipt');
+    }
+    const receiptResult = validateVerificationReceipt(event.payload?.verification_receipt, options);
+    if (!receiptResult.valid) {
+      errors.push(...receiptResult.errors.map(error => `verification_receipt ${error}`));
+    }
+  }
+
   return { valid: errors.length === 0, errors };
 }
 
 function assertValidEvent(event) {
-  const result = validateEvent(event);
+  const result = validateEvent(event, { verifySignature: true });
   if (!result.valid) {
     throw new Error(`Invalid harness event: ${result.errors.join('; ')}`);
   }
@@ -574,7 +587,7 @@ function processEventLine(line, segment, lineNumber, state, terminated) {
   }
 
   const event = normalizeLegacyRecallRecord(parsed);
-  if (!event || !validateEvent(event).valid) {
+  if (!event || !validateEvent(event, { verifySignature: state.verifySignature }).valid) {
     state.skipped += 1;
     state.invalidRecords += 1;
     addDiagnostic(state, 'invalid_event', segment, lineNumber);
@@ -664,6 +677,7 @@ function scanEventsSync(logPath = getDefaultEventLogPath(), options = {}) {
     truncated: false,
     diagnostics: [],
     maxEvents,
+    verifySignature: options.verifySignature === true,
     onEvent: typeof options.onEvent === 'function' ? options.onEvent : () => {},
   };
   if (!fs.existsSync(resolvedPath)) {

@@ -18,6 +18,10 @@ Claude의 도메인 라우팅 인덱스. 각 `domain_*` 키는 `.claude/ontology
 | `domain_codex` | Codex CLI 통합 및 하이브리드 에이전트 설정 | [codex.md](codex.md) | platform |
 | `domain_qa` | QA 지식 계층 (버그 히스토리, RCA, qa-context-inject) | [qa-knowledge-layer.md](qa-knowledge-layer.md) | oh-my-forge |
 
+## 교차 기능 계약
+
+- P0 런타임 상태와 검증 증거의 경계: [evidence-contract.md](evidence-contract.md)
+
 ## 라우팅 규칙
 
 Claude가 태스크를 받았을 때 아래 기준으로 처리 방식을 결정한다.

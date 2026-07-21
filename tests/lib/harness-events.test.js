@@ -14,6 +14,7 @@ const eventSchema = JSON.parse(fs.readFileSync(
 const {
   EVENT_TYPES,
   appendEventSync,
+  assertValidEvent,
   createEvent,
   getDefaultEventLogPath,
   getEventLogConfig,
@@ -21,9 +22,50 @@ const {
   readEvents,
   validateEvent,
 } = require('../../scripts/lib/harness-events');
+const {
+  persistVerificationArtifact,
+  createVerificationReceipt,
+} = require('../../scripts/lib/evidence-contract');
+
+process.env.OMF_EVIDENCE_ATTESTATION_SECRET = 'unit-test-attestation-secret-that-is-at-least-32-bytes';
+const evidenceStore = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-events-evidence-store-'));
+process.env.OMF_EVIDENCE_STORE = evidenceStore;
+let receiptSequence = 0;
 
 let passed = 0;
 let failed = 0;
+
+function createVerifiedReceipt(overrides = {}) {
+  const sequence = receiptSequence += 1;
+  const executionId = `run-harness-events-${sequence}`;
+  const persisted = persistVerificationArtifact({
+    verifierId: 'node-test',
+    subject: 'tests/lib/harness-events.test.js',
+    executionId,
+    exitCode: 0,
+    timedOut: false,
+    signal: null,
+    startedAt: '2026-07-21T00:00:00.000Z',
+    endedAt: '2026-07-21T00:00:01.000Z',
+    artifactId: `snapshot-${sequence}`,
+    persistedAt: '2026-07-21T00:00:00.000Z',
+    artifact: 'harness-events-fixture',
+  });
+  const snapshotHash = persisted.snapshotHash;
+  return createVerificationReceipt({
+    verifierId: 'node-test',
+    subject: 'tests/lib/harness-events.test.js',
+    executionId,
+    exitCode: 0,
+    timedOut: false,
+    signal: null,
+    startedAt: '2026-07-21T00:00:00.000Z',
+    endedAt: '2026-07-21T00:00:01.000Z',
+    snapshotHash,
+    persistenceAttestation: persisted.persistenceAttestation,
+    ...overrides,
+  });
+}
 
 function test(name, fn) {
   try {
@@ -81,6 +123,123 @@ test('creates a valid task outcome event with measurable fields', () => {
   assert.strictEqual(event.payload.outcome, 'success');
   assert.strictEqual(event.payload.input_tokens, 1000);
   assert.strictEqual(event.payload.tests_passed, true);
+});
+
+test('creates a valid verification receipt event with a durable receipt', () => {
+  const receipt = createVerifiedReceipt();
+  const event = createEvent({
+    eventType: EVENT_TYPES.VERIFICATION_RECEIPT,
+    source: 'test',
+    episodeId: 'episode-1',
+    payload: { verificationReceipt: receipt },
+    ts: '2026-07-17T00:00:02.000Z',
+  });
+
+  assert.strictEqual(validateEvent(event).valid, true);
+  assert.deepStrictEqual(event.payload.verification_receipt, receipt);
+});
+
+test('rejects verification receipt events with raw durable evidence fields through the core contract', () => {
+  const receipt = createVerifiedReceipt();
+  const event = createEvent({
+    eventType: EVENT_TYPES.VERIFICATION_RECEIPT,
+    source: 'test',
+    payload: { verificationReceipt: { ...receipt, prompt: 'npm test', rawOutput: 'secret output' } },
+  });
+
+  const result = validateEvent(event);
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some(error => error.includes('prompt is not allowed in a durable verification receipt')));
+  assert.ok(result.errors.some(error => error.includes('rawOutput is not allowed in a durable verification receipt')));
+});
+
+test('rejects sibling raw evidence fields from verification receipt payloads', () => {
+  const event = createEvent({
+    eventType: EVENT_TYPES.VERIFICATION_RECEIPT,
+    source: 'test',
+    payload: {
+      verificationReceipt: createVerifiedReceipt(),
+      rawOutput: 'do not persist',
+    },
+  });
+
+  const ajv = new Ajv({ allErrors: true, strict: false, validateFormats: false });
+  const validateSchema = ajv.compile(eventSchema);
+
+  assert.strictEqual(validateEvent(event).valid, false);
+  assert.strictEqual(validateSchema(event), false);
+});
+
+test('keeps structural validation separate from authenticated persistence', () => {
+  const forgedReceipt = {
+    ...createVerifiedReceipt(),
+    persistenceAttestation: {
+      ...createVerifiedReceipt().persistenceAttestation,
+      signature: 'hmac-sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    },
+  };
+  const event = createEvent({
+    eventType: EVENT_TYPES.VERIFICATION_RECEIPT,
+    source: 'test',
+    payload: { verificationReceipt: forgedReceipt },
+  });
+  const ajv = new Ajv({ allErrors: true, strict: false, validateFormats: false });
+  const validateSchema = ajv.compile(eventSchema);
+
+  assert.strictEqual(validateEvent(event).valid, true);
+  assert.strictEqual(validateSchema(event), true);
+  assert.throws(() => assertValidEvent(event), /signature must bind/);
+});
+
+test('offline readers retain signed receipts without the attestation secret', () => {
+  const event = createEvent({
+    eventType: EVENT_TYPES.VERIFICATION_RECEIPT,
+    source: 'test',
+    payload: { verificationReceipt: createVerifiedReceipt() },
+  });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-events-offline-'));
+  const logPath = path.join(dir, 'events.jsonl');
+  const secret = process.env.OMF_EVIDENCE_ATTESTATION_SECRET;
+
+  try {
+    fs.writeFileSync(logPath, `${JSON.stringify(event)}\n`, 'utf8');
+    delete process.env.OMF_EVIDENCE_ATTESTATION_SECRET;
+    const result = readEvents(logPath);
+    assert.strictEqual(result.events.length, 1);
+    assert.strictEqual(result.skipped, 0);
+  } finally {
+    process.env.OMF_EVIDENCE_ATTESTATION_SECRET = secret;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('authenticated readers skip receipts with forged signatures', () => {
+  const receipt = createVerifiedReceipt();
+  const forgedEvent = createEvent({
+    eventType: EVENT_TYPES.VERIFICATION_RECEIPT,
+    source: 'test',
+    payload: {
+      verificationReceipt: {
+        ...receipt,
+        persistenceAttestation: {
+          ...receipt.persistenceAttestation,
+          signature: 'hmac-sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        },
+      },
+    },
+  });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-events-authenticated-'));
+  const logPath = path.join(dir, 'events.jsonl');
+
+  try {
+    fs.writeFileSync(logPath, `${JSON.stringify(forgedEvent)}\n`, 'utf8');
+    assert.strictEqual(readEvents(logPath).events.length, 1);
+    const authenticated = readEvents(logPath, { verifySignature: true });
+    assert.strictEqual(authenticated.events.length, 0);
+    assert.strictEqual(authenticated.invalidRecords, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('rejects unknown event types and invalid outcome values', () => {
@@ -289,11 +448,11 @@ test('ships a machine-readable event schema with the runtime contract', () => {
   assert.strictEqual(eventSchema.properties.schema_version.const, 1);
   assert.deepStrictEqual(
     eventSchema.properties.event_type.enum.sort(),
-    ['context_injection', 'task_outcome']
+    ['context_injection', 'task_outcome', 'verification_receipt']
   );
 });
 
-test('validates both generated event types against the shipped JSON schema', () => {
+test('validates all generated event types against the shipped JSON schema', () => {
   const ajv = new Ajv({ allErrors: true, strict: false, validateFormats: false });
   const validateSchema = ajv.compile(eventSchema);
   const events = [
@@ -307,6 +466,13 @@ test('validates both generated event types against the shipped JSON schema', () 
       source: 'test',
       payload: { outcome: 'success', inputTokens: 10 },
     }),
+    createEvent({
+      eventType: EVENT_TYPES.VERIFICATION_RECEIPT,
+      source: 'test',
+      payload: {
+        verificationReceipt: createVerifiedReceipt(),
+      },
+    }),
   ];
 
   for (const event of events) {
@@ -314,5 +480,90 @@ test('validates both generated event types against the shipped JSON schema', () 
   }
 });
 
+test('the shipped JSON schema rejects raw durable evidence fields in verification receipts', () => {
+  const ajv = new Ajv({ allErrors: true, strict: false, validateFormats: false });
+  const validateSchema = ajv.compile(eventSchema);
+  const event = createEvent({
+    eventType: EVENT_TYPES.VERIFICATION_RECEIPT,
+    source: 'test',
+    payload: {
+      verificationReceipt: {
+        ...createVerifiedReceipt(),
+        sourceCode: 'console.log("do not persist")',
+      },
+    },
+  });
+
+  assert.strictEqual(validateSchema(event), false);
+});
+
+test('keeps receipt identifier and attestation structure aligned between schema and runtime', () => {
+  const ajv = new Ajv({ allErrors: true, strict: false, validateFormats: false });
+  const validateSchema = ajv.compile(eventSchema);
+  const receipt = {
+    ...createVerifiedReceipt(),
+    subject: 'tests/',
+    persistenceAttestation: {
+      artifactId: 'snapshot-main',
+      persistedAt: '2026-07-21T00:00:00.000Z',
+      signature: 'hmac-sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      snapshotHash: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    },
+  };
+  const event = createEvent({
+    eventType: EVENT_TYPES.VERIFICATION_RECEIPT,
+    source: 'test',
+    payload: { verificationReceipt: receipt },
+  });
+
+  assert.strictEqual(validateEvent(event).valid, false);
+  assert.strictEqual(validateSchema(event), false);
+});
+
+test('keeps verification receipt outcome validation aligned between runtime and schema', () => {
+  const ajv = new Ajv({ allErrors: true, strict: false, validateFormats: false });
+  const validateSchema = ajv.compile(eventSchema);
+  const receipts = [
+    createVerifiedReceipt(),
+    createVerificationReceipt({
+      verifierId: 'node-test',
+      subject: 'tests/lib/harness-events.test.js',
+      exitCode: 1,
+    }),
+    createVerificationReceipt({
+      verifierId: 'node-test',
+      subject: 'tests/lib/harness-events.test.js',
+      exitCode: 0,
+      timedOut: true,
+    }),
+    createVerificationReceipt({
+      verifierId: 'node-test',
+      subject: 'tests/lib/harness-events.test.js',
+      exitCode: 0,
+      signal: 'SIGTERM',
+    }),
+    createVerificationReceipt({
+      verifierId: 'node-test',
+      subject: 'tests/lib/harness-events.test.js',
+    }),
+    createVerificationReceipt({
+      verifierId: 'node-test',
+      subject: 'tests/lib/harness-events.test.js',
+      exitCode: 0,
+    }),
+  ];
+
+  for (const receipt of receipts) {
+    const event = createEvent({
+      eventType: EVENT_TYPES.VERIFICATION_RECEIPT,
+      source: 'test',
+      payload: { verificationReceipt: receipt },
+    });
+    assert.strictEqual(validateEvent(event).valid, true);
+    assert.strictEqual(validateSchema(event), true, ajv.errorsText(validateSchema.errors));
+  }
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
+fs.rmSync(evidenceStore, { recursive: true, force: true });
 if (failed > 0) process.exitCode = 1;
