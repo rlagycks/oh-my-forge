@@ -93,28 +93,34 @@
     }
   ],
   "definitions": {
+    "portableIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?!\\s)(?!.*\\s$)(?!.*[\\u0000-\\u001F\\u007F])(?!.*\\\\)(?!.*://)(?![A-Za-z]:)(?!/)(?!.*/$)(?!.*//)(?!.*(?:^|/)\\.(?:/|$))(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
     "verificationReceipt": {
       "type": "object",
       "x-omf-authenticity": "A verified receipt requires OMF runtime signature verification; JSON Schema performs structural validation only.",
       "required": ["verifierId", "subject", "exitCode", "timedOut", "signal", "state", "reason"],
       "properties": {
-        "verifierId": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!\\s)(?!.*\\s$)(?!.*[\\u0000-\\u001F\\u007F])(?!.*\\\\)(?!.*://)(?![A-Za-z]:)(?!/)(?!.*//)(?!.*(?:^|/)\\.(?:/|$))(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
-        "subject": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!\\s)(?!.*\\s$)(?!.*[\\u0000-\\u001F\\u007F])(?!.*\\\\)(?!.*://)(?![A-Za-z]:)(?!/)(?!.*//)(?!.*(?:^|/)\\.(?:/|$))(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
-        "executionId": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!\\s)(?!.*\\s$)(?!.*[\\u0000-\\u001F\\u007F])(?!.*\\\\)(?!.*://)(?![A-Za-z]:)(?!/)(?!.*//)(?!.*(?:^|/)\\.(?:/|$))(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
+        "verifierId": { "$ref": "#/definitions/portableIdentifier" },
+        "subject": { "$ref": "#/definitions/portableIdentifier" },
+        "executionId": { "$ref": "#/definitions/portableIdentifier" },
         "exitCode": { "type": ["integer", "null"] },
         "timedOut": { "type": "boolean" },
         "signal": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$" },
         "snapshotHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
         "fileHashes": {
           "type": "object",
-          "propertyNames": { "minLength": 1, "maxLength": 256, "pattern": "^(?!\\s)(?!.*\\s$)(?!.*[\\u0000-\\u001F\\u007F])(?!.*\\\\)(?!.*://)(?![A-Za-z]:)(?!/)(?!.*//)(?!.*(?:^|/)\\.(?:/|$))(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
+          "propertyNames": { "$ref": "#/definitions/portableIdentifier" },
           "additionalProperties": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
         },
         "persistenceAttestation": {
           "type": "object",
           "required": ["artifactId", "persistedAt", "signature"],
           "properties": {
-            "artifactId": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!\\s)(?!.*\\s$)(?!.*[\\u0000-\\u001F\\u007F])(?!.*\\\\)(?!.*://)(?![A-Za-z]:)(?!/)(?!.*//)(?!.*(?:^|/)\\.(?:/|$))(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
+            "artifactId": { "$ref": "#/definitions/portableIdentifier" },
             "persistedAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
             "signature": { "type": "string", "pattern": "^hmac-sha256:[a-f0-9]{64}$" }
           },
@@ -201,11 +207,7 @@
                     "reason": { "const": "verified-receipt" }
                   }
                 },
-                {
-                  "anyOf": [
-                    { "required": ["executionId", "snapshotHash", "persistenceAttestation", "startedAt", "endedAt"] }
-                  ]
-                }
+                { "required": ["executionId", "snapshotHash", "persistenceAttestation", "startedAt", "endedAt"] }
               ]
             }
           ]

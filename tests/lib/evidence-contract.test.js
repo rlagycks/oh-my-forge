@@ -19,8 +19,10 @@ const SNAPSHOT_HASH = `sha256:${crypto.createHash('sha256').update(SNAPSHOT_ARTI
 process.env.OMF_EVIDENCE_ATTESTATION_SECRET = 'unit-test-attestation-secret-that-is-at-least-32-bytes';
 const evidenceStore = fs.mkdtempSync(path.join(os.tmpdir(), 'evidence-contract-store-'));
 process.env.OMF_EVIDENCE_STORE = evidenceStore;
+let artifactSequence = 0;
 
 function persistenceAttestation(overrides = {}) {
+  const artifactId = overrides.artifactId || `snapshot-${artifactSequence += 1}`;
   return persistVerificationArtifact({
     verifierId: 'targeted-test',
     subject: 'tests/lib/evidence-contract.test.js',
@@ -31,7 +33,7 @@ function persistenceAttestation(overrides = {}) {
     startedAt: '2026-07-21T00:00:00.000Z',
     endedAt: '2026-07-21T00:00:01.000Z',
     snapshotHash: SNAPSHOT_HASH,
-    artifactId: 'snapshot-main',
+    artifactId,
     persistedAt: '2026-07-21T00:00:01.000Z',
     artifact: SNAPSHOT_ARTIFACT,
     ...overrides,
@@ -144,6 +146,7 @@ test('rejects invalid receipt inputs instead of returning a misleading verified 
   for (const invalid of [
     { verifierId: '', subject: 'tests/a.js' },
     { verifierId: 'test', subject: '../secret.txt' },
+    { verifierId: 'test', subject: 'tests/a.js', executionId: '../outside-run' },
     { verifierId: 'test', subject: 'tests/a.js', fileHashes: { '../secret.txt': SNAPSHOT_HASH } },
     { verifierId: 'test', subject: 'tests/a.js', fileHashes: { 'tests/a.js': 'not-a-hash' } },
   ]) {
@@ -154,6 +157,43 @@ test('rejects invalid receipt inputs instead of returning a misleading verified 
       persistenceAttestation: persistenceAttestation(),
     }));
   }
+});
+
+test('validates receipt timestamps and returns a valid asserted receipt', () => {
+  const receipt = createVerificationReceipt({
+    verifierId: 'targeted-test',
+    subject: 'tests/lib/evidence-contract.test.js',
+    executionId: 'run-valid-assertion',
+    exitCode: 0,
+    timedOut: false,
+    signal: null,
+    startedAt: '2026-07-21T00:00:00.000Z',
+    endedAt: '2026-07-21T00:00:01.000Z',
+    snapshotHash: SNAPSHOT_HASH,
+  });
+
+  assert.throws(
+    () => createVerificationReceipt({ ...receipt, startedAt: 'not-a-timestamp' }),
+    /startedAt must be a strict UTC ISO-8601 timestamp/,
+  );
+  assert.throws(
+    () => createVerificationReceipt({
+      ...receipt,
+      startedAt: '2026-07-21T00:00:02.000Z',
+      endedAt: '2026-07-21T00:00:01.000Z',
+    }),
+    /endedAt must not be earlier than startedAt/,
+  );
+  assert.strictEqual(assertValidVerificationReceipt(receipt), receipt);
+});
+
+test('persists buffer artifacts', () => {
+  const attestation = persistenceAttestation({
+    artifact: Buffer.from(SNAPSHOT_ARTIFACT, 'utf8'),
+    artifactId: 'buffer-artifact',
+  });
+
+  assert.ok(attestation.signature.startsWith('hmac-sha256:'));
 });
 
 test('rejects malformed inputs, traversal paths, and ambiguous receipt timestamps', () => {
@@ -226,6 +266,7 @@ test('rejects an attestation replayed with a different execution result', () => 
 });
 
 test('rejects a signed receipt when its committed artifact is unavailable', () => {
+  const artifactId = 'missing-snapshot';
   const receipt = createVerificationReceipt({
     verifierId: 'targeted-test',
     subject: 'tests/lib/evidence-contract.test.js',
@@ -236,12 +277,18 @@ test('rejects a signed receipt when its committed artifact is unavailable', () =
     startedAt: '2026-07-21T00:00:00.000Z',
     endedAt: '2026-07-21T00:00:01.000Z',
     snapshotHash: SNAPSHOT_HASH,
-    persistenceAttestation: persistenceAttestation(),
+    persistenceAttestation: persistenceAttestation({ artifactId }),
   });
-  const artifactKey = crypto.createHash('sha256').update('snapshot-main', 'utf8').digest('hex');
+  const artifactKey = crypto.createHash('sha256').update(artifactId, 'utf8').digest('hex');
   fs.rmSync(path.join(evidenceStore, 'artifacts', artifactKey));
 
   assert.strictEqual(validateVerificationReceipt(receipt, { verifySignature: true }).valid, false);
+});
+
+test('refuses to overwrite an existing artifact identifier', () => {
+  const artifactId = 'immutable-artifact';
+  persistenceAttestation({ artifactId });
+  assert.throws(() => persistenceAttestation({ artifactId }), /refusing to overwrite existing persisted artifact/);
 });
 
 test('treats an invalid attestation signature as structurally valid but unauthentic', () => {

@@ -101,23 +101,39 @@ function getArtifactKey(artifactId) {
   return crypto.createHash('sha256').update(artifactId, 'utf8').digest('hex');
 }
 
-function writeFileDurably(filePath, content) {
-  const directory = path.dirname(filePath);
-  fs.mkdirSync(directory, { recursive: true });
-  const temporaryPath = `${filePath}.${process.pid}.${crypto.randomBytes(8).toString('hex')}.tmp`;
-  const descriptor = fs.openSync(temporaryPath, 'wx');
-  try {
-    fs.writeFileSync(descriptor, content);
-    fs.fsyncSync(descriptor);
-  } finally {
-    fs.closeSync(descriptor);
-  }
-  fs.renameSync(temporaryPath, filePath);
+function syncDirectory(directory) {
+  if (process.platform === 'win32') return;
   const directoryDescriptor = fs.openSync(directory, 'r');
   try {
     fs.fsyncSync(directoryDescriptor);
   } finally {
     fs.closeSync(directoryDescriptor);
+  }
+}
+
+function writeFileDurably(filePath, content) {
+  const directory = path.dirname(filePath);
+  fs.mkdirSync(directory, { recursive: true });
+  const temporaryPath = `${filePath}.${process.pid}.${crypto.randomBytes(8).toString('hex')}.tmp`;
+  try {
+    const descriptor = fs.openSync(temporaryPath, 'wx');
+    try {
+      fs.writeFileSync(descriptor, content);
+      fs.fsyncSync(descriptor);
+    } finally {
+      fs.closeSync(descriptor);
+    }
+    try {
+      fs.linkSync(temporaryPath, filePath);
+    } catch (error) {
+      if (error.code === 'EEXIST') {
+        throw new Error(`refusing to overwrite existing persisted artifact: ${path.basename(filePath)}`);
+      }
+      throw error;
+    }
+    syncDirectory(directory);
+  } finally {
+    try { fs.unlinkSync(temporaryPath); } catch (_error) { /* best effort cleanup */ }
   }
 }
 
@@ -177,8 +193,11 @@ function createAttestationSignature(fields, secret) {
 }
 
 function signaturesMatch(actual, expected) {
-  if (typeof actual !== 'string' || actual.length !== expected.length) return false;
-  return crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
+  if (typeof actual !== 'string' || typeof expected !== 'string') return false;
+  const actualBuffer = Buffer.from(actual, 'utf8');
+  const expectedBuffer = Buffer.from(expected, 'utf8');
+  if (actualBuffer.length !== expectedBuffer.length) return false;
+  return crypto.timingSafeEqual(actualBuffer, expectedBuffer);
 }
 
 function validatePersistenceAttestation(attestation, receipt, { verifySignature = false } = {}) {
@@ -281,8 +300,14 @@ function persistVerificationArtifact(options = {}) {
     persistedAt,
     signature,
   };
-  writeFileDurably(path.join(storePath, 'artifacts', artifactKey), artifactBuffer);
-  writeFileDurably(path.join(storePath, 'attestations', `${artifactKey}.json`), JSON.stringify(metadata));
+  const artifactPath = path.join(storePath, 'artifacts', artifactKey);
+  writeFileDurably(artifactPath, artifactBuffer);
+  try {
+    writeFileDurably(path.join(storePath, 'attestations', `${artifactKey}.json`), JSON.stringify(metadata));
+  } catch (error) {
+    try { fs.unlinkSync(artifactPath); } catch (_cleanupError) { /* preserve original error */ }
+    throw error;
+  }
   return { snapshotHash, persistenceAttestation: attestation };
 }
 

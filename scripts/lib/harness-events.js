@@ -587,7 +587,7 @@ function processEventLine(line, segment, lineNumber, state, terminated) {
   }
 
   const event = normalizeLegacyRecallRecord(parsed);
-  if (!event || !validateEvent(event).valid) {
+  if (!event || !validateEvent(event, { verifySignature: state.verifySignature }).valid) {
     state.skipped += 1;
     state.invalidRecords += 1;
     addDiagnostic(state, 'invalid_event', segment, lineNumber);
@@ -677,6 +677,7 @@ function scanEventsSync(logPath = getDefaultEventLogPath(), options = {}) {
     truncated: false,
     diagnostics: [],
     maxEvents,
+    verifySignature: options.verifySignature === true,
     onEvent: typeof options.onEvent === 'function' ? options.onEvent : () => {},
   };
   if (!fs.existsSync(resolvedPath)) {

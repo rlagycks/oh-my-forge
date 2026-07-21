@@ -44,7 +44,7 @@ Receipt는 다음 메타데이터만 durable하게 보존한다.
 
 따라서 깨끗한 종료 코드나 호출자가 제공한 hash만으로는 `verified`가 아니다. `record-harness-event.js` 같은 수동 CLI는 persistence attestation을 만들 수 없으므로 receipt를 `unknown`으로 기록한다. timeout이나 signal이 있으면 exit code가 0이고 hash가 있어도 `unknown`이며, non-zero exit는 artifact가 있어도 `failed`다.
 
-JSON Schema는 transport 구조만 검증한다. JSONL reader는 secret 없이도 구조적으로 유효한 receipt를 보존하지만, `verified`를 승인하거나 새 event를 기록하는 OMF runtime은 `OMF_EVIDENCE_ATTESTATION_SECRET`으로 HMAC 진위를 반드시 검증한다.
+JSON Schema는 transport 구조만 검증한다. JSONL reader는 secret 없이도 구조적으로 유효한 receipt를 보존한다. `readEvents(path, { verifySignature: true })` 또는 `scanEventsSync(path, { verifySignature: true })`를 쓰면 위조된 `verified` receipt를 skip한다. `verified`를 승인하거나 새 event를 기록하는 OMF runtime은 `OMF_EVIDENCE_ATTESTATION_SECRET`으로 HMAC 진위를 반드시 검증한다.
 
 ## P0 저장 경계와 데이터 흐름
 
@@ -68,7 +68,7 @@ JSON Schema는 transport 구조만 검증한다. JSONL reader는 secret 없이�
 
 - receipt는 strict allowlist를 사용한다. prompt, context 본문, command output, source code, 임의 metadata를 저장하지 않는다. 출력 전문이 필요하면 durable receipt의 범위를 벗어나므로 별도 보안 저장소 계약이 필요하다.
 - `subject`, `fileHashes`, persistence artifact id는 portable한 상대 식별자만 허용한다. 사용자 홈, 작업 디렉터리, 절대 경로, `.`/`..` traversal, backslash, URL, 제어 문자를 receipt에 넣지 않는다.
-- hash는 artifact의 존재·동일성을 확인하는 식별자이지 artifact 내용 자체가 아니다. persistence runtime은 `OMF_EVIDENCE_STORE`에 snapshot과 signed metadata를 atomic publish·fsync하고, 수용 시에는 저장된 artifact를 다시 hash해 상위 `snapshotHash`와 비교한다. `OMF_EVIDENCE_ATTESTATION_SECRET`는 verifier·subject·executionId·종료 결과·실행 시각·snapshot·artifact·시각을 HMAC 서명하며 persistence runtime에만 설정한다. runtime attestation 없이 hash만 있다고 실행이 성공했다거나 검증됐다고 추론하지 않는다.
+- hash는 artifact의 존재·동일성을 확인하는 식별자이지 artifact 내용 자체가 아니다. persistence runtime은 `OMF_EVIDENCE_STORE`에 snapshot과 signed metadata를 atomic publish·fsync하고, 기존 `artifactId`를 덮어쓰지 않는다. 수용 시에는 저장된 artifact를 다시 hash해 상위 `snapshotHash`와 비교한다. `OMF_EVIDENCE_ATTESTATION_SECRET`는 verifier·subject·executionId·종료 결과·실행 시각·snapshot·artifact·시각을 HMAC 서명하며 persistence runtime에만 설정한다. runtime attestation 없이 hash만 있다고 실행이 성공했다거나 검증됐다고 추론하지 않는다.
 - 로컬 telemetry는 hosted analytics service로 전송하지 않는다. JSONL 기본 경로는 `~/.claude/logs/recall-hits.jsonl`이며 `OMF_HARNESS_EVENT_LOG`로 격리 경로를 지정할 수 있다.
 
 ## 핵심 제약

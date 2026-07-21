@@ -30,21 +30,24 @@ const {
 process.env.OMF_EVIDENCE_ATTESTATION_SECRET = 'unit-test-attestation-secret-that-is-at-least-32-bytes';
 const evidenceStore = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-events-evidence-store-'));
 process.env.OMF_EVIDENCE_STORE = evidenceStore;
+let receiptSequence = 0;
 
 let passed = 0;
 let failed = 0;
 
 function createVerifiedReceipt(overrides = {}) {
+  const sequence = receiptSequence += 1;
+  const executionId = `run-harness-events-${sequence}`;
   const persisted = persistVerificationArtifact({
     verifierId: 'node-test',
     subject: 'tests/lib/harness-events.test.js',
-    executionId: 'run-harness-events',
+    executionId,
     exitCode: 0,
     timedOut: false,
     signal: null,
     startedAt: '2026-07-21T00:00:00.000Z',
     endedAt: '2026-07-21T00:00:01.000Z',
-    artifactId: 'snapshot-main',
+    artifactId: `snapshot-${sequence}`,
     persistedAt: '2026-07-21T00:00:00.000Z',
     artifact: 'harness-events-fixture',
   });
@@ -52,7 +55,7 @@ function createVerifiedReceipt(overrides = {}) {
   return createVerificationReceipt({
     verifierId: 'node-test',
     subject: 'tests/lib/harness-events.test.js',
-    executionId: 'run-harness-events',
+    executionId,
     exitCode: 0,
     timedOut: false,
     signal: null,
@@ -206,6 +209,35 @@ test('offline readers retain signed receipts without the attestation secret', ()
     assert.strictEqual(result.skipped, 0);
   } finally {
     process.env.OMF_EVIDENCE_ATTESTATION_SECRET = secret;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('authenticated readers skip receipts with forged signatures', () => {
+  const receipt = createVerifiedReceipt();
+  const forgedEvent = createEvent({
+    eventType: EVENT_TYPES.VERIFICATION_RECEIPT,
+    source: 'test',
+    payload: {
+      verificationReceipt: {
+        ...receipt,
+        persistenceAttestation: {
+          ...receipt.persistenceAttestation,
+          signature: 'hmac-sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        },
+      },
+    },
+  });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-events-authenticated-'));
+  const logPath = path.join(dir, 'events.jsonl');
+
+  try {
+    fs.writeFileSync(logPath, `${JSON.stringify(forgedEvent)}\n`, 'utf8');
+    assert.strictEqual(readEvents(logPath).events.length, 1);
+    const authenticated = readEvents(logPath, { verifySignature: true });
+    assert.strictEqual(authenticated.events.length, 0);
+    assert.strictEqual(authenticated.invalidRecords, 1);
+  } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -470,7 +502,7 @@ test('keeps receipt identifier and attestation structure aligned between schema 
   const validateSchema = ajv.compile(eventSchema);
   const receipt = {
     ...createVerifiedReceipt(),
-    subject: 'tests/../secret.js',
+    subject: 'tests/',
     persistenceAttestation: {
       artifactId: 'snapshot-main',
       persistedAt: '2026-07-21T00:00:00.000Z',
