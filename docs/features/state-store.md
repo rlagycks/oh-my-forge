@@ -1,5 +1,7 @@
 # State Store
 
+**Last Updated:** 2026-07-21
+
 ## 목적
 
 OMF 세션 데이터, 스킬 이력, 오케스트레이션 상태를 SQLite(sql.js WASM)로 영속화하는 시스템. `wrapSqlJsDatabase()`가 sql.js API를 better-sqlite3 호환 인터페이스로 래핑(어댑터 패턴)하여 상위 코드가 런타임을 의식하지 않게 한다. 트랜잭션 커밋 후까지 디스크 쓰기를 지연한다.
@@ -10,6 +12,20 @@ OMF 세션 데이터, 스킬 이력, 오케스트레이션 상태를 SQLite(sql.
 - `scripts/lib/state-store/schema.js` — 테이블 DDL 정의
 - `scripts/lib/state-store/queries.js` — 준비된 쿼리 (세션 CRUD, 스킬 이력 조회 등)
 - `scripts/lib/state-store/migrations.js` — `runMigrations(db)` 스키마 버전 관리
+
+## P0 런타임 상태 경계
+
+상태 저장소는 **변경 가능한 운영 상태(mutable operational state)** 의 소유자다. 세션, skill run, decision, install state, governance event처럼 현재 상태를 조회하고 갱신하는 레코드를 저장한다.
+
+```text
+[런타임/훅] --transaction--> [~/.claude/ecc/state.db]
+                                mutable operational state
+
+[하네스 실행] --append-------> [recall-hits.jsonl]
+                                append-only evidence
+```
+
+JSONL 하네스 이벤트는 state-store의 변경 이력이나 DB 백업이 아니다. 이벤트를 DB에 자동 복제하거나, DB 값을 근거로 JSONL 원본을 다시 쓰지 않는다. 두 저장소의 `episode_id`/`session_id` 연결자는 조회와 분석을 위한 연결 정보일 뿐 소유권을 합치지 않는다. 검증 결과의 판정 규칙은 [evidence-contract.md](evidence-contract.md)에 있다.
 
 ## 핵심 제약
 
@@ -22,7 +38,7 @@ OMF 세션 데이터, 스킬 이력, 오케스트레이션 상태를 SQLite(sql.
 
 하네스 이벤트 로그와 state-store는 서로 다른 운영 저장소다.
 
-- `~/.claude/logs/recall-hits.jsonl` (또는 `OMF_HARNESS_EVENT_LOG`)은 append-only 하네스 이벤트의 원본이다. `context_injection`과 `task_outcome` 같은 이벤트, episode/session 연결자와 집계용 수치만 저장하며 프롬프트·컨텍스트 본문은 저장하지 않는다. 기존의 레거시 recall 레코드도 읽을 때 구조화 이벤트로 정규화한다.
+- `~/.claude/logs/recall-hits.jsonl` (또는 `OMF_HARNESS_EVENT_LOG`)은 append-only 하네스 이벤트의 원본 증거다. `context_injection`, `task_outcome`, `verification_receipt` 이벤트와 episode/session 연결자, 집계용 수치만 저장하며 프롬프트·컨텍스트 본문·명령 출력은 저장하지 않는다. 기존의 레거시 recall 레코드도 읽을 때 구조화 이벤트로 정규화한다.
 - `~/.claude/ecc/state.db`는 세션, skill run, decision, install state, governance event처럼 조회·갱신되는 운영 상태를 소유한다. JSONL 이벤트를 자동으로 DB에 복제하거나 JSONL을 삭제하지 않는다.
 - 이벤트 로그의 기본 경로와 `recall-hits.jsonl` 파일명은 기존 설치 호환성을 위해 유지한다. 회전 파일은 `<log>.1`, `<log>.2`처럼 저장되며 숫자가 클수록 오래된 세그먼트다.
 - 이 변경에서는 JSONL→state-store 전체 통합·재생성 마이그레이션을 수행하지 않는다. 이벤트 인덱스/재생 및 복구 명령은 별도 후속 작업으로 남긴다.
@@ -33,6 +49,8 @@ OMF 세션 데이터, 스킬 이력, 오케스트레이션 상태를 SQLite(sql.
 - 일반 report 읽기는 메모리 상한을 갖는 chunk/line streaming reader를 사용한다. 기본 읽기 상한은 16 MiB와 100,000 events이며 `OMF_HARNESS_EVENT_LOG_READ_MAX_BYTES`, `OMF_HARNESS_EVENT_LOG_READ_MAX_EVENTS` 또는 `recall-report.js --max-bytes/--max-events`로 조정한다. 상한을 넘으면 최신 세그먼트 쪽을 우선 읽고 report의 `read.truncated`와 `read.diagnostics`에 표시한다.
 - 여러 프로세스의 append는 OS append semantics에 의존해 각 JSONL 레코드를 한 번에 쓴다. 회전 구간만 `<log>.lock`을 짧게 생성해 직렬화하며, 잠금이 이미 있으면 이벤트 유실을 피하기 위해 append는 계속하고 해당 회전은 건너뛴다. 30초 이상 남은 lock은 stale lock으로 간주해 다음 writer가 회수한다.
 - reader는 파일을 수정하지 않는다. JSON parse 실패, schema-invalid 레코드, EOF에서 끝난 불완전 레코드, read limit은 서로 다른 진단 코드(`malformed_json`, `invalid_event`, `truncated_record`, `read_limit`)로 반환한다. 진단에는 원문 이벤트나 컨텍스트를 포함하지 않는다.
+
+Append-only는 이벤트 레코드의 쓰기 방식에 대한 계약이다. 기존 레코드를 수정하거나 삭제해 결과를 정정하지 말고, 정정·재검증은 새 이벤트로 추가한다. 회전과 보존 정책은 파일 세그먼트 운영을 위한 예외적인 수명주기 관리이며, reader는 여전히 원본 세그먼트를 수정하지 않는다.
 
 ## State-store transaction/recovery 규칙
 

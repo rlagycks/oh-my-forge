@@ -6,7 +6,7 @@
   "required": ["schema_version", "event_type", "ts", "source", "payload"],
   "properties": {
     "schema_version": { "const": 1 },
-    "event_type": { "enum": ["context_injection", "task_outcome"] },
+    "event_type": { "enum": ["context_injection", "task_outcome", "verification_receipt"] },
     "ts": { "type": "string", "format": "date-time" },
     "source": { "type": "string", "minLength": 1 },
     "episode_id": { "type": ["string", "null"] },
@@ -75,7 +75,144 @@
           }
         }
       }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "verification_receipt" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["verification_receipt"],
+            "additionalProperties": false,
+            "properties": {
+              "verification_receipt": { "$ref": "#/definitions/verificationReceipt" }
+            }
+          }
+        }
+      }
     }
   ],
+  "definitions": {
+    "verificationReceipt": {
+      "type": "object",
+      "x-omf-authenticity": "A verified receipt requires OMF runtime signature verification; JSON Schema performs structural validation only.",
+      "required": ["verifierId", "subject", "exitCode", "timedOut", "signal", "state", "reason"],
+      "properties": {
+        "verifierId": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!\\s)(?!.*\\s$)(?!.*[\\u0000-\\u001F\\u007F])(?!.*\\\\)(?!.*://)(?![A-Za-z]:)(?!/)(?!.*//)(?!.*(?:^|/)\\.(?:/|$))(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
+        "subject": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!\\s)(?!.*\\s$)(?!.*[\\u0000-\\u001F\\u007F])(?!.*\\\\)(?!.*://)(?![A-Za-z]:)(?!/)(?!.*//)(?!.*(?:^|/)\\.(?:/|$))(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
+        "executionId": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!\\s)(?!.*\\s$)(?!.*[\\u0000-\\u001F\\u007F])(?!.*\\\\)(?!.*://)(?![A-Za-z]:)(?!/)(?!.*//)(?!.*(?:^|/)\\.(?:/|$))(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
+        "exitCode": { "type": ["integer", "null"] },
+        "timedOut": { "type": "boolean" },
+        "signal": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$" },
+        "snapshotHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "fileHashes": {
+          "type": "object",
+          "propertyNames": { "minLength": 1, "maxLength": 256, "pattern": "^(?!\\s)(?!.*\\s$)(?!.*[\\u0000-\\u001F\\u007F])(?!.*\\\\)(?!.*://)(?![A-Za-z]:)(?!/)(?!.*//)(?!.*(?:^|/)\\.(?:/|$))(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
+          "additionalProperties": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+        },
+        "persistenceAttestation": {
+          "type": "object",
+          "required": ["artifactId", "persistedAt", "signature"],
+          "properties": {
+            "artifactId": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!\\s)(?!.*\\s$)(?!.*[\\u0000-\\u001F\\u007F])(?!.*\\\\)(?!.*://)(?![A-Za-z]:)(?!/)(?!.*//)(?!.*(?:^|/)\\.(?:/|$))(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
+            "persistedAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+            "signature": { "type": "string", "pattern": "^hmac-sha256:[a-f0-9]{64}$" }
+          },
+          "additionalProperties": false
+        },
+        "startedAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+        "endedAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+        "state": { "enum": ["observed", "inferred", "verified", "stale", "superseded", "unknown", "failed"] },
+        "reason": { "type": "string", "pattern": ".*\\S.*" }
+      },
+      "allOf": [
+        {
+          "anyOf": [
+            {
+              "properties": {
+                "timedOut": { "const": true },
+                "state": { "const": "unknown" },
+                "reason": { "const": "timed-out" }
+              }
+            },
+            {
+              "properties": {
+                "timedOut": { "const": false },
+                "signal": { "type": "string", "pattern": ".*\\S.*" },
+                "state": { "const": "unknown" },
+                "reason": { "const": "signaled" }
+              }
+            },
+            {
+              "properties": {
+                "timedOut": { "const": false },
+                "signal": { "const": null },
+                "exitCode": { "const": null },
+                "state": { "const": "unknown" },
+                "reason": { "const": "missing-exit-code" }
+              }
+            },
+            {
+              "properties": {
+                "timedOut": { "const": false },
+                "signal": { "const": null },
+                "exitCode": { "type": "integer", "not": { "const": 0 } },
+                "state": { "const": "failed" },
+                "reason": { "const": "nonzero-exit" }
+              }
+            },
+            {
+              "allOf": [
+                {
+                  "properties": {
+                    "timedOut": { "const": false },
+                    "signal": { "const": null },
+                    "exitCode": { "const": 0 },
+                    "state": { "const": "unknown" },
+                    "reason": { "const": "missing-artifact" }
+                  }
+                },
+                { "not": { "required": ["snapshotHash"] } }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "properties": {
+                    "timedOut": { "const": false },
+                    "signal": { "const": null },
+                    "exitCode": { "const": 0 },
+                    "state": { "const": "unknown" },
+                    "reason": { "const": "missing-persistence-attestation" }
+                  }
+                },
+                { "required": ["snapshotHash"] },
+                { "not": { "required": ["persistenceAttestation"] } }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "properties": {
+                    "timedOut": { "const": false },
+                    "signal": { "const": null },
+                    "exitCode": { "const": 0 },
+                    "state": { "const": "verified" },
+                    "reason": { "const": "verified-receipt" }
+                  }
+                },
+                {
+                  "anyOf": [
+                    { "required": ["executionId", "snapshotHash", "persistenceAttestation", "startedAt", "endedAt"] }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "additionalProperties": false
+    }
+  },
   "additionalProperties": true
 }

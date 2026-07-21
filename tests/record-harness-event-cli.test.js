@@ -55,8 +55,41 @@ try {
   assert.strictEqual(afterReceipt.events.length, 2);
   assert.strictEqual(afterReceipt.events[1].event_type, 'verification_receipt');
   assert.strictEqual(afterReceipt.events[1].episode_id, 'receipt-cli');
-  assert.strictEqual(afterReceipt.events[1].payload.receipt.state, 'verified');
-  console.log('  ✓ records a verified receipt through the CLI');
+  assert.strictEqual(afterReceipt.events[1].payload.verification_receipt.state, 'unknown');
+  assert.strictEqual(afterReceipt.events[1].payload.verification_receipt.reason, 'missing-persistence-attestation');
+  console.log('  ✓ records an unverified receipt through the CLI without runtime attestation');
+
+  const timeoutResult = spawnSync(process.execPath, [
+    cliPath,
+    '--type', 'verification_receipt',
+    '--verifier', 'targeted-test',
+    '--subject', 'tests/record-harness-event-cli.test.js',
+    '--timed-out', 'true',
+    '--log', logPath,
+  ], { encoding: 'utf8' });
+
+  assert.strictEqual(timeoutResult.status, 0, timeoutResult.stderr);
+  const afterTimeout = eventLib.readEvents(logPath);
+  assert.strictEqual(afterTimeout.events.length, 3);
+  assert.strictEqual(afterTimeout.events[2].payload.verification_receipt.exitCode, null);
+  assert.strictEqual(afterTimeout.events[2].payload.verification_receipt.reason, 'timed-out');
+  console.log('  ✓ records a timed-out receipt without fabricating an exit code');
+
+  const signalResult = spawnSync(process.execPath, [
+    cliPath,
+    '--type', 'verification_receipt',
+    '--verifier', 'targeted-test',
+    '--subject', 'tests/record-harness-event-cli.test.js',
+    '--signal', 'SIGTERM',
+    '--log', logPath,
+  ], { encoding: 'utf8' });
+
+  assert.strictEqual(signalResult.status, 0, signalResult.stderr);
+  const afterSignal = eventLib.readEvents(logPath);
+  assert.strictEqual(afterSignal.events.length, 4);
+  assert.strictEqual(afterSignal.events[3].payload.verification_receipt.exitCode, null);
+  assert.strictEqual(afterSignal.events[3].payload.verification_receipt.reason, 'signaled');
+  console.log('  ✓ records a signaled receipt without fabricating an exit code');
 } finally {
   fs.rmSync(dir, { recursive: true, force: true });
 }
