@@ -1,6 +1,8 @@
 'use strict';
 
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 const EVIDENCE_STATES = Object.freeze({
   OBSERVED: 'observed',
@@ -90,6 +92,56 @@ function getAttestationSecret() {
   return typeof secret === 'string' && secret.length >= 32 ? secret : null;
 }
 
+function getEvidenceStorePath() {
+  const storePath = process.env.OMF_EVIDENCE_STORE;
+  return typeof storePath === 'string' && storePath.trim() !== '' ? path.resolve(storePath) : null;
+}
+
+function getArtifactKey(artifactId) {
+  return crypto.createHash('sha256').update(artifactId, 'utf8').digest('hex');
+}
+
+function writeFileDurably(filePath, content) {
+  const directory = path.dirname(filePath);
+  fs.mkdirSync(directory, { recursive: true });
+  const temporaryPath = `${filePath}.${process.pid}.${crypto.randomBytes(8).toString('hex')}.tmp`;
+  const descriptor = fs.openSync(temporaryPath, 'wx');
+  try {
+    fs.writeFileSync(descriptor, content);
+    fs.fsyncSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+  fs.renameSync(temporaryPath, filePath);
+  const directoryDescriptor = fs.openSync(directory, 'r');
+  try {
+    fs.fsyncSync(directoryDescriptor);
+  } finally {
+    fs.closeSync(directoryDescriptor);
+  }
+}
+
+function readCommittedArtifact(attestation, receipt) {
+  const storePath = getEvidenceStorePath();
+  if (!storePath) return ['OMF_EVIDENCE_STORE must be configured to verify persisted artifacts'];
+
+  const artifactKey = getArtifactKey(attestation.artifactId);
+  const metadataPath = path.join(storePath, 'attestations', `${artifactKey}.json`);
+  const artifactPath = path.join(storePath, 'artifacts', artifactKey);
+  try {
+    const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+    if (metadata.signature !== attestation.signature || metadata.snapshotHash !== receipt.snapshotHash
+      || metadata.verifierId !== receipt.verifierId || metadata.subject !== receipt.subject
+      || metadata.executionId !== receipt.executionId || metadata.artifactId !== attestation.artifactId) {
+      return ['persistenceAttestation does not match the committed artifact record'];
+    }
+    const artifactHash = `sha256:${crypto.createHash('sha256').update(fs.readFileSync(artifactPath)).digest('hex')}`;
+    return artifactHash === receipt.snapshotHash ? [] : ['committed artifact hash must match snapshotHash'];
+  } catch (_error) {
+    return ['committed artifact record must exist and be readable'];
+  }
+}
+
 function buildAttestationPayload({
   verifierId,
   subject,
@@ -167,6 +219,8 @@ function validatePersistenceAttestation(attestation, receipt, { verifySignature 
     }, secret);
     if (!signaturesMatch(attestation.signature, expected)) {
       errors.push('persistenceAttestation.signature must bind verifierId, subject, snapshotHash, artifactId, and persistedAt');
+    } else {
+      errors.push(...readCommittedArtifact(attestation, receipt));
     }
   }
   return errors;
@@ -183,28 +237,53 @@ function hasDurableArtifact(receipt, options = {}) {
   return validatePersistenceAttestation(receipt.persistenceAttestation, receipt, options).length === 0;
 }
 
-function createPersistenceAttestation(options = {}) {
+function persistVerificationArtifact(options = {}) {
   if (!isPlainObject(options)) throw new TypeError('persistence attestation options must be an object');
   const {
-    verifierId, subject, executionId, exitCode, timedOut, signal, startedAt, endedAt, snapshotHash, artifactId, persistedAt,
+    verifierId, subject, executionId, exitCode, timedOut, signal, startedAt, endedAt, artifactId, persistedAt, artifact,
   } = options;
   if (!isPortableIdentifier(verifierId) || !isPortableIdentifier(subject) || !isPortableIdentifier(executionId)
     || !Number.isInteger(exitCode) || typeof timedOut !== 'boolean'
     || (signal !== null && !isPortableIdentifier(signal))
     || !isStrictUtcTimestamp(startedAt) || !isStrictUtcTimestamp(endedAt)
     || Date.parse(endedAt) < Date.parse(startedAt)
-    || !isSha256(snapshotHash) || !isPortableIdentifier(artifactId) || !isStrictUtcTimestamp(persistedAt)) {
+    || !isPortableIdentifier(artifactId) || !isStrictUtcTimestamp(persistedAt)
+    || !(typeof artifact === 'string' || Buffer.isBuffer(artifact))) {
     throw new TypeError('persistence attestation fields must bind one complete execution to a verifier, subject, snapshot, artifact, and strict UTC timestamp');
   }
   const secret = getAttestationSecret();
   if (!secret) {
     throw new Error('OMF_EVIDENCE_ATTESTATION_SECRET must be configured to create persistence attestations');
   }
+  const storePath = getEvidenceStorePath();
+  if (!storePath) {
+    throw new Error('OMF_EVIDENCE_STORE must be configured to persist verification artifacts');
+  }
+  const artifactBuffer = Buffer.isBuffer(artifact) ? artifact : Buffer.from(artifact, 'utf8');
+  const snapshotHash = `sha256:${crypto.createHash('sha256').update(artifactBuffer).digest('hex')}`;
   const signature = createAttestationSignature(
     { verifierId, subject, executionId, exitCode, timedOut, signal, startedAt, endedAt, snapshotHash, artifactId, persistedAt },
     secret
   );
-  return { artifactId, persistedAt, signature };
+  const artifactKey = getArtifactKey(artifactId);
+  const attestation = { artifactId, persistedAt, signature };
+  const metadata = {
+    artifactId,
+    verifierId,
+    subject,
+    executionId,
+    exitCode,
+    timedOut,
+    signal,
+    startedAt,
+    endedAt,
+    snapshotHash,
+    persistedAt,
+    signature,
+  };
+  writeFileDurably(path.join(storePath, 'artifacts', artifactKey), artifactBuffer);
+  writeFileDurably(path.join(storePath, 'attestations', `${artifactKey}.json`), JSON.stringify(metadata));
+  return { snapshotHash, persistenceAttestation: attestation };
 }
 
 function deriveVerificationOutcome(input, options = {}) {
@@ -383,7 +462,7 @@ module.exports = {
   EVIDENCE_STATES,
   FORBIDDEN_RECEIPT_FIELDS,
   assertValidVerificationReceipt,
-  createPersistenceAttestation,
+  persistVerificationArtifact,
   createVerificationReceipt,
   deriveVerificationOutcome,
   hasDurableArtifact,

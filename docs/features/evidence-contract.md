@@ -26,7 +26,7 @@ Receipt는 다음 메타데이터만 durable하게 보존한다.
 | `signal` | 신호 종료 시 신호명. 없으면 `null` |
 | `snapshotHash` | 선택적 `sha256:<64 lowercase hex>` immutable snapshot hash |
 | `fileHashes` | 선택적 상대 경로→SHA-256 hash 맵 |
-| `persistenceAttestation` | runtime이 상위 `snapshotHash`와 함께 immutable snapshot을 보존했음을 기록한 artifact id, UTC 시각, 그리고 verifier·subject·executionId·종료 결과·snapshot에 결속된 HMAC 서명 |
+| `persistenceAttestation` | runtime이 immutable snapshot을 atomic publish·fsync한 뒤 기록한 artifact id, UTC 시각, 그리고 verifier·subject·executionId·종료 결과·snapshot에 결속된 HMAC 서명 |
 | `startedAt`, `endedAt` | 선택적 ISO-8601 실행 시각 |
 | `state`, `reason` | 위 필드에서 결정된 결과와 이유 |
 
@@ -68,7 +68,7 @@ JSON Schema는 transport 구조만 검증한다. JSONL reader는 secret 없이�
 
 - receipt는 strict allowlist를 사용한다. prompt, context 본문, command output, source code, 임의 metadata를 저장하지 않는다. 출력 전문이 필요하면 durable receipt의 범위를 벗어나므로 별도 보안 저장소 계약이 필요하다.
 - `subject`, `fileHashes`, persistence artifact id는 portable한 상대 식별자만 허용한다. 사용자 홈, 작업 디렉터리, 절대 경로, `.`/`..` traversal, backslash, URL, 제어 문자를 receipt에 넣지 않는다.
-- hash는 artifact의 존재·동일성을 확인하는 식별자이지 artifact 내용 자체가 아니다. persistence attestation은 별도 hash를 중복 저장하지 않고 상위 `snapshotHash`에 귀속되며, `OMF_EVIDENCE_ATTESTATION_SECRET`로 verifier·subject·executionId·종료 결과·실행 시각·snapshot·artifact·시각을 HMAC 서명한다. 이 secret은 persistence runtime에만 설정한다. runtime attestation 없이 hash만 있다고 실행이 성공했다거나 검증됐다고 추론하지 않는다.
+- hash는 artifact의 존재·동일성을 확인하는 식별자이지 artifact 내용 자체가 아니다. persistence runtime은 `OMF_EVIDENCE_STORE`에 snapshot과 signed metadata를 atomic publish·fsync하고, 수용 시에는 저장된 artifact를 다시 hash해 상위 `snapshotHash`와 비교한다. `OMF_EVIDENCE_ATTESTATION_SECRET`는 verifier·subject·executionId·종료 결과·실행 시각·snapshot·artifact·시각을 HMAC 서명하며 persistence runtime에만 설정한다. runtime attestation 없이 hash만 있다고 실행이 성공했다거나 검증됐다고 추론하지 않는다.
 - 로컬 telemetry는 hosted analytics service로 전송하지 않는다. JSONL 기본 경로는 `~/.claude/logs/recall-hits.jsonl`이며 `OMF_HARNESS_EVENT_LOG`로 격리 경로를 지정할 수 있다.
 
 ## 핵심 제약

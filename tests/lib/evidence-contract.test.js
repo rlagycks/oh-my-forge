@@ -1,20 +1,27 @@
 'use strict';
 
 const assert = require('assert');
+const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 const {
   EVIDENCE_STATES,
   assertValidVerificationReceipt,
-  createPersistenceAttestation,
+  persistVerificationArtifact,
   createVerificationReceipt,
   validateVerificationReceipt,
 } = require('../../scripts/lib/evidence-contract');
 
-const SNAPSHOT_HASH = 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const SNAPSHOT_ARTIFACT = 'evidence-contract-fixture';
+const SNAPSHOT_HASH = `sha256:${crypto.createHash('sha256').update(SNAPSHOT_ARTIFACT).digest('hex')}`;
 process.env.OMF_EVIDENCE_ATTESTATION_SECRET = 'unit-test-attestation-secret-that-is-at-least-32-bytes';
+const evidenceStore = fs.mkdtempSync(path.join(os.tmpdir(), 'evidence-contract-store-'));
+process.env.OMF_EVIDENCE_STORE = evidenceStore;
 
 function persistenceAttestation(overrides = {}) {
-  return createPersistenceAttestation({
+  return persistVerificationArtifact({
     verifierId: 'targeted-test',
     subject: 'tests/lib/evidence-contract.test.js',
     executionId: 'run-evidence-contract',
@@ -26,8 +33,9 @@ function persistenceAttestation(overrides = {}) {
     snapshotHash: SNAPSHOT_HASH,
     artifactId: 'snapshot-main',
     persistedAt: '2026-07-21T00:00:01.000Z',
+    artifact: SNAPSHOT_ARTIFACT,
     ...overrides,
-  });
+  }).persistenceAttestation;
 }
 
 let passed = 0;
@@ -217,6 +225,25 @@ test('rejects an attestation replayed with a different execution result', () => 
   }), /must bind verifierId/);
 });
 
+test('rejects a signed receipt when its committed artifact is unavailable', () => {
+  const receipt = createVerificationReceipt({
+    verifierId: 'targeted-test',
+    subject: 'tests/lib/evidence-contract.test.js',
+    executionId: 'run-evidence-contract',
+    exitCode: 0,
+    timedOut: false,
+    signal: null,
+    startedAt: '2026-07-21T00:00:00.000Z',
+    endedAt: '2026-07-21T00:00:01.000Z',
+    snapshotHash: SNAPSHOT_HASH,
+    persistenceAttestation: persistenceAttestation(),
+  });
+  const artifactKey = crypto.createHash('sha256').update('snapshot-main', 'utf8').digest('hex');
+  fs.rmSync(path.join(evidenceStore, 'artifacts', artifactKey));
+
+  assert.strictEqual(validateVerificationReceipt(receipt, { verifySignature: true }).valid, false);
+});
+
 test('treats an invalid attestation signature as structurally valid but unauthentic', () => {
   const forged = {
     verifierId: 'targeted-test',
@@ -267,4 +294,5 @@ test('rejects invalid optional receipt fields and enforces assertion failures', 
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
+fs.rmSync(evidenceStore, { recursive: true, force: true });
 if (failed > 0) process.exit(1);

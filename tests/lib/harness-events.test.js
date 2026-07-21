@@ -23,17 +23,32 @@ const {
   validateEvent,
 } = require('../../scripts/lib/harness-events');
 const {
-  createPersistenceAttestation,
+  persistVerificationArtifact,
   createVerificationReceipt,
 } = require('../../scripts/lib/evidence-contract');
 
 process.env.OMF_EVIDENCE_ATTESTATION_SECRET = 'unit-test-attestation-secret-that-is-at-least-32-bytes';
+const evidenceStore = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-events-evidence-store-'));
+process.env.OMF_EVIDENCE_STORE = evidenceStore;
 
 let passed = 0;
 let failed = 0;
 
 function createVerifiedReceipt(overrides = {}) {
-  const snapshotHash = overrides.snapshotHash || 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  const persisted = persistVerificationArtifact({
+    verifierId: 'node-test',
+    subject: 'tests/lib/harness-events.test.js',
+    executionId: 'run-harness-events',
+    exitCode: 0,
+    timedOut: false,
+    signal: null,
+    startedAt: '2026-07-21T00:00:00.000Z',
+    endedAt: '2026-07-21T00:00:01.000Z',
+    artifactId: 'snapshot-main',
+    persistedAt: '2026-07-21T00:00:00.000Z',
+    artifact: 'harness-events-fixture',
+  });
+  const snapshotHash = persisted.snapshotHash;
   return createVerificationReceipt({
     verifierId: 'node-test',
     subject: 'tests/lib/harness-events.test.js',
@@ -44,19 +59,7 @@ function createVerifiedReceipt(overrides = {}) {
     startedAt: '2026-07-21T00:00:00.000Z',
     endedAt: '2026-07-21T00:00:01.000Z',
     snapshotHash,
-    persistenceAttestation: createPersistenceAttestation({
-      verifierId: 'node-test',
-      subject: 'tests/lib/harness-events.test.js',
-      executionId: 'run-harness-events',
-      exitCode: 0,
-      timedOut: false,
-      signal: null,
-      startedAt: '2026-07-21T00:00:00.000Z',
-      endedAt: '2026-07-21T00:00:01.000Z',
-      snapshotHash,
-      artifactId: 'snapshot-main',
-      persistedAt: '2026-07-21T00:00:00.000Z',
-    }),
+    persistenceAttestation: persisted.persistenceAttestation,
     ...overrides,
   });
 }
@@ -530,4 +533,5 @@ test('keeps verification receipt outcome validation aligned between runtime and 
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
+fs.rmSync(evidenceStore, { recursive: true, force: true });
 if (failed > 0) process.exitCode = 1;
