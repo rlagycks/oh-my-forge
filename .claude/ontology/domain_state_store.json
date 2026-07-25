@@ -6,7 +6,8 @@
     "scripts/lib/state-store/schema.js",
     "scripts/lib/state-store/queries.js",
     "scripts/lib/state-store/migrations.js",
-    "scripts/lib/ontology-observation-drainer.js"
+    "scripts/lib/ontology-observation-drainer.js",
+    "scripts/hooks/ontology-maintenance.js"
   ],
   "summary": "sql.js(WASM) 기반 SQLite 영구 상태 저장소. Node.js 바이너리 의존성 없이 순수 JS로 실행. 세션 데이터, 훅 플래그, 비용 추적 등 런타임 상태 관리.",
   "models": [

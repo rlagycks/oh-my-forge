@@ -13,6 +13,7 @@ Claude Code 이벤트(PreToolUse, PostToolUse, Stop, SessionStart 등)에 반응
   오래된 decision/failure residue를 필터링하고 최신 active 신호를 우선 주입
 - `scripts/lib/ontology-routing.js` — routing 계열 훅의 공용 ontology helper. `project ontology root` 해석, `fileMap` 로딩, domain matching 담당
 - `scripts/hooks/ontology-observation-capture.js` — ontology 추적 파일의 변경 메타데이터만 append-only spool에 기록. 후보 생성이나 active ontology 수정은 수행하지 않음
+- `scripts/hooks/ontology-maintenance.js` — SessionEnd에서 spool을 단일 writer로 drain해 review-only candidate를 생성. `ECC_ONTOLOGY_MAINTENANCE=1` opt-in
 
 ## 핵심 제약
 
@@ -27,6 +28,7 @@ Claude Code 이벤트(PreToolUse, PostToolUse, Stop, SessionStart 등)에 반응
   `updatedAt`/`lastSeenAt`/`createdAt`/`date` 기준 최신 active 항목을 먼저 선택한 뒤
   profile limit을 적용한다
 - ontology observation capture는 `ECC_ONTOLOGY_OBSERVATION_CAPTURE=1`일 때만 실행한다. 원문·프롬프트·시크릿을 기록하지 않고 DB도 열지 않는다. 후속 single-writer drainer만 `pending_review` 후보를 만들며, 이 단계는 ontology·문서를 수정하지 않는다.
+- ontology maintenance는 비동기 SessionEnd 경계에서만 실행한다. `ECC_ONTOLOGY_MAINTENANCE=1`일 때 candidate를 자동 materialize하지만 source/ontology/docs 파일을 쓰지 않는다.
 
 ## 관련 도메인
 

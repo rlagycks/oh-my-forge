@@ -202,7 +202,8 @@
       "scripts/lib/state-store/schema.js",
       "scripts/lib/state-store/queries.js",
       "scripts/lib/state-store/migrations.js",
-      "scripts/lib/ontology-observation-drainer.js"
+      "scripts/lib/ontology-observation-drainer.js",
+      "scripts/hooks/ontology-maintenance.js"
     ],
     "spec": "docs/features/state-store.md",
     "detail": ".claude/ontology/domain_state_store.json",
