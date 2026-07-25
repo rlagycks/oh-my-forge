@@ -170,33 +170,45 @@ async function drainOntologyObservationSpool(options = {}) {
     return { status: 'locked', created: 0, updated: 0, duplicates: 0, rejected: 0, checkpointOffset: null };
   }
   try {
-    const stateStore = options.stateStore;
+    if (!fs.existsSync(logPath) || fs.statSync(logPath).size === 0) {
+      return { status: 'drained', created: 0, updated: 0, duplicates: 0, rejected: 0, checkpointOffset: 0 };
+    }
+    let stateStore = options.stateStore;
+    let ownsStateStore = false;
+    if (!stateStore && typeof options.createStateStore === 'function') {
+      stateStore = await options.createStateStore();
+      ownsStateStore = true;
+    }
     if (!stateStore || typeof stateStore.getOntologyObservationCursor !== 'function'
         || typeof stateStore.applyOntologyObservationDrain !== 'function') {
       throw new Error('stateStore must provide ontology observation drain APIs');
     }
-    const cursor = stateStore.getOntologyObservationCursor(logPath);
-    const slice = readOntologyObservationSpoolSlice(logPath, {
-      offset: cursor ? cursor.byteOffset : 0,
-      maxBytes: options.maxBytes,
-      maxRecords: options.maxRecords,
-    });
-    const entries = slice.entries
-      .filter(entry => validateObservationAgainstProject(entry.observation))
-      .map(entry => ({ ...entry, candidate: deriveOntologyCandidate(entry.observation, { now: options.now }) }));
-    const rejected = slice.diagnostics.length + (slice.entries.length - entries.length);
-    const result = stateStore.applyOntologyObservationDrain({
-      spoolPath: logPath,
-      entries,
-      checkpointOffset: slice.nextOffset,
-      drainedAt: options.now,
-    });
-    return {
-      status: 'drained',
-      ...result,
-      rejected: result.rejected + rejected,
-      checkpointOffset: slice.nextOffset,
-    };
+    try {
+      const cursor = stateStore.getOntologyObservationCursor(logPath);
+      const slice = readOntologyObservationSpoolSlice(logPath, {
+        offset: cursor ? cursor.byteOffset : 0,
+        maxBytes: options.maxBytes,
+        maxRecords: options.maxRecords,
+      });
+      const entries = slice.entries
+        .filter(entry => validateObservationAgainstProject(entry.observation))
+        .map(entry => ({ ...entry, candidate: deriveOntologyCandidate(entry.observation, { now: options.now }) }));
+      const rejected = slice.diagnostics.length + (slice.entries.length - entries.length);
+      const result = stateStore.applyOntologyObservationDrain({
+        spoolPath: logPath,
+        entries,
+        checkpointOffset: slice.nextOffset,
+        drainedAt: options.now,
+      });
+      return {
+        status: 'drained',
+        ...result,
+        rejected: result.rejected + rejected,
+        checkpointOffset: slice.nextOffset,
+      };
+    } finally {
+      if (ownsStateStore) stateStore.close();
+    }
   } finally {
     lock.release();
   }
