@@ -113,6 +113,50 @@ const MIGRATIONS = [
     name: '001_initial_state_store',
     sql: INITIAL_SCHEMA_SQL,
   },
+  {
+    version: 2,
+    name: '002_ontology_update_candidates',
+    sql: `
+      CREATE TABLE IF NOT EXISTS ontology_update_candidates (
+        id TEXT PRIMARY KEY,
+        candidate_key TEXT NOT NULL UNIQUE,
+        project_key TEXT NOT NULL,
+        domain_key TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        status TEXT NOT NULL,
+        latest_content_fingerprint TEXT NOT NULL,
+        first_observed_at TEXT NOT NULL,
+        last_observed_at TEXT NOT NULL,
+        observation_count INTEGER NOT NULL CHECK (observation_count >= 1),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ontology_candidates_review
+        ON ontology_update_candidates (status, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_ontology_candidates_project_domain
+        ON ontology_update_candidates (project_key, domain_key, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS ontology_candidate_sources (
+        observation_id TEXT PRIMARY KEY,
+        candidate_id TEXT NOT NULL,
+        spool_path TEXT NOT NULL,
+        line_end_offset INTEGER NOT NULL CHECK (line_end_offset >= 0),
+        observed_at TEXT NOT NULL,
+        FOREIGN KEY (candidate_id) REFERENCES ontology_update_candidates (id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ontology_candidate_sources_candidate
+        ON ontology_candidate_sources (candidate_id, observed_at DESC);
+
+      CREATE TABLE IF NOT EXISTS ontology_observation_spool_cursors (
+        spool_path TEXT PRIMARY KEY,
+        byte_offset INTEGER NOT NULL CHECK (byte_offset >= 0),
+        updated_at TEXT NOT NULL
+      );
+    `,
+  },
 ];
 
 function ensureMigrationTable(db) {
