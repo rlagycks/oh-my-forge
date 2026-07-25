@@ -12,6 +12,7 @@ Claude Code 이벤트(PreToolUse, PostToolUse, Stop, SessionStart 등)에 반응
 - `scripts/lib/ontology-packet.js` — ontology detail에서 profile별 context packet 생성.
   오래된 decision/failure residue를 필터링하고 최신 active 신호를 우선 주입
 - `scripts/lib/ontology-routing.js` — routing 계열 훅의 공용 ontology helper. `project ontology root` 해석, `fileMap` 로딩, domain matching 담당
+- `scripts/hooks/ontology-observation-capture.js` — ontology 추적 파일의 변경 메타데이터만 append-only spool에 기록. 후보 생성이나 active ontology 수정은 수행하지 않음
 
 ## 핵심 제약
 
@@ -25,6 +26,7 @@ Claude Code 이벤트(PreToolUse, PostToolUse, Stop, SessionStart 등)에 반응
 - ontology packet은 `deprecated`, `stale`, `superseded`, `expiresAt` 지난 항목을 제외하고,
   `updatedAt`/`lastSeenAt`/`createdAt`/`date` 기준 최신 active 항목을 먼저 선택한 뒤
   profile limit을 적용한다
+- ontology observation capture는 `ECC_ONTOLOGY_OBSERVATION_CAPTURE=1`일 때만 실행한다. 원문·프롬프트·시크릿을 기록하지 않고, 후보 생성은 후속 비동기 maintainer만 수행한다
 
 ## 관련 도메인
 

@@ -315,6 +315,18 @@
         "description": "Run validate-ontology.js when index.json or docs/features/*.md is edited"
       },
       {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-with-flags.js\" \"post:ontology-observation-capture\" \"scripts/hooks/ontology-observation-capture.js\" --request-file \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/requests/standard-strict.json\"",
+            "async": true,
+            "timeout": 10
+          }
+        ],
+        "description": "Capture metadata-only ontology observations for later deferred maintenance. Enable with ECC_ONTOLOGY_OBSERVATION_CAPTURE=1."
+      },
+      {
         "matcher": "Bash|Write|Edit|MultiEdit",
         "hooks": [
           {

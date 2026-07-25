@@ -171,6 +171,12 @@
     },
     {
       "event": "PostToolUse",
+      "hook": "ontology-observation-capture",
+      "description": "ontology 추적 파일 변경의 metadata-only observation spool 기록 (ECC_ONTOLOGY_OBSERVATION_CAPTURE=1, async)",
+      "async": true
+    },
+    {
+      "event": "PostToolUse",
       "hook": "governance-capture (post)",
       "description": "도구 출력의 거버넌스 이벤트 캡처"
     },
