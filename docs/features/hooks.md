@@ -26,7 +26,7 @@ Claude Code 이벤트(PreToolUse, PostToolUse, Stop, SessionStart 등)에 반응
 - ontology packet은 `deprecated`, `stale`, `superseded`, `expiresAt` 지난 항목을 제외하고,
   `updatedAt`/`lastSeenAt`/`createdAt`/`date` 기준 최신 active 항목을 먼저 선택한 뒤
   profile limit을 적용한다
-- ontology observation capture는 `ECC_ONTOLOGY_OBSERVATION_CAPTURE=1`일 때만 실행한다. 원문·프롬프트·시크릿을 기록하지 않고, 후보 생성은 후속 비동기 maintainer만 수행한다
+- ontology observation capture는 `ECC_ONTOLOGY_OBSERVATION_CAPTURE=1`일 때만 실행한다. 원문·프롬프트·시크릿을 기록하지 않고 DB도 열지 않는다. 후속 single-writer drainer만 `pending_review` 후보를 만들며, 이 단계는 ontology·문서를 수정하지 않는다.
 
 ## 관련 도메인
 

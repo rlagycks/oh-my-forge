@@ -1,5 +1,7 @@
 'use strict';
 
+const crypto = require('crypto');
+const path = require('path');
 const { assertValidEntity } = require('./schema');
 
 const ACTIVE_SESSION_STATES = ['active', 'running', 'idle'];
@@ -118,6 +120,38 @@ function mapGovernanceEventRow(row) {
     resolvedAt: row.resolved_at,
     resolution: row.resolution,
     createdAt: row.created_at,
+  };
+}
+
+function createProjectKey(projectRoot) {
+  return crypto.createHash('sha256').update(path.resolve(projectRoot)).digest('hex');
+}
+
+function mapOntologyCandidateRow(row) {
+  return {
+    id: row.id,
+    candidateKey: row.candidate_key,
+    projectKey: row.project_key,
+    domainKey: row.domain_key,
+    filePath: row.file_path,
+    kind: row.kind,
+    status: row.status,
+    latestContentFingerprint: row.latest_content_fingerprint,
+    firstObservedAt: row.first_observed_at,
+    lastObservedAt: row.last_observed_at,
+    observationCount: row.observation_count,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapOntologyCandidateSourceRow(row) {
+  return {
+    observationId: row.observation_id,
+    candidateId: row.candidate_id,
+    spoolPath: row.spool_path,
+    lineEndOffset: row.line_end_offset,
+    observedAt: row.observed_at,
   };
 }
 
@@ -355,6 +389,44 @@ function createQueryApi(db) {
     FROM skill_versions
     WHERE skill_id = ? AND version = ?
   `);
+  const getOntologyCandidateByKeyStatement = db.prepare(`
+    SELECT *
+    FROM ontology_update_candidates
+    WHERE candidate_key = ?
+  `);
+  const getOntologyCandidateSourceStatement = db.prepare(`
+    SELECT observation_id
+    FROM ontology_candidate_sources
+    WHERE observation_id = ?
+  `);
+  const listOntologyCandidatesStatement = db.prepare(`
+    SELECT *
+    FROM ontology_update_candidates
+    WHERE status = ?
+      AND (? IS NULL OR project_key = ?)
+      AND (? IS NULL OR domain_key = ?)
+    ORDER BY updated_at DESC, id DESC
+    LIMIT ?
+  `);
+  const countOntologyCandidatesStatement = db.prepare(`
+    SELECT COUNT(*) AS total_count
+    FROM ontology_update_candidates
+    WHERE status = ?
+      AND (? IS NULL OR project_key = ?)
+      AND (? IS NULL OR domain_key = ?)
+  `);
+  const listOntologyCandidateEvidenceStatement = db.prepare(`
+    SELECT *
+    FROM ontology_candidate_sources
+    WHERE candidate_id = ?
+    ORDER BY observed_at DESC, observation_id DESC
+    LIMIT ?
+  `);
+  const getOntologyObservationCursorStatement = db.prepare(`
+    SELECT spool_path, byte_offset, updated_at
+    FROM ontology_observation_spool_cursors
+    WHERE spool_path = ?
+  `);
 
   const upsertSessionStatement = db.prepare(`
     INSERT INTO sessions (
@@ -530,6 +602,39 @@ function createQueryApi(db) {
       resolution = excluded.resolution,
       created_at = excluded.created_at
   `);
+  const insertOntologyCandidateStatement = db.prepare(`
+    INSERT INTO ontology_update_candidates (
+      id, candidate_key, project_key, domain_key, file_path, kind, status,
+      latest_content_fingerprint, first_observed_at, last_observed_at,
+      observation_count, created_at, updated_at
+    ) VALUES (
+      @id, @candidate_key, @project_key, @domain_key, @file_path, @kind, @status,
+      @latest_content_fingerprint, @first_observed_at, @last_observed_at,
+      @observation_count, @created_at, @updated_at
+    )
+  `);
+  const updateOntologyCandidateStatement = db.prepare(`
+    UPDATE ontology_update_candidates
+    SET latest_content_fingerprint = @latest_content_fingerprint,
+        last_observed_at = @last_observed_at,
+        observation_count = observation_count + 1,
+        updated_at = @updated_at
+    WHERE id = @id
+  `);
+  const insertOntologyCandidateSourceStatement = db.prepare(`
+    INSERT INTO ontology_candidate_sources (
+      observation_id, candidate_id, spool_path, line_end_offset, observed_at
+    ) VALUES (
+      @observation_id, @candidate_id, @spool_path, @line_end_offset, @observed_at
+    )
+  `);
+  const upsertOntologyObservationCursorStatement = db.prepare(`
+    INSERT INTO ontology_observation_spool_cursors (spool_path, byte_offset, updated_at)
+    VALUES (@spool_path, @byte_offset, @updated_at)
+    ON CONFLICT(spool_path) DO UPDATE SET
+      byte_offset = excluded.byte_offset,
+      updated_at = excluded.updated_at
+  `);
 
   function getSessionById(id) {
     const row = getSessionStatement.get(id);
@@ -591,7 +696,110 @@ function createQueryApi(db) {
     };
   }
 
+  function listOntologyCandidates(options = {}) {
+    const limit = normalizeLimit(options.limit, 50);
+    const projectKey = options.projectKey || (options.projectRoot ? createProjectKey(options.projectRoot) : null);
+    const status = options.status || 'pending_review';
+    const domainKey = options.domainKey || null;
+    return {
+      totalCount: countOntologyCandidatesStatement.get(
+        status, projectKey, projectKey, domainKey, domainKey
+      ).total_count,
+      candidates: listOntologyCandidatesStatement.all(
+        status, projectKey, projectKey, domainKey, domainKey, limit
+      ).map(mapOntologyCandidateRow),
+    };
+  }
+
+  function listOntologyCandidateEvidence(candidateId, options = {}) {
+    const limit = normalizeLimit(options.limit, 100);
+    return listOntologyCandidateEvidenceStatement.all(candidateId, limit).map(mapOntologyCandidateSourceRow);
+  }
+
+  function getOntologyObservationCursor(spoolPath) {
+    const row = getOntologyObservationCursorStatement.get(spoolPath);
+    if (!row) return null;
+    return {
+      spoolPath: row.spool_path,
+      byteOffset: row.byte_offset,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  function applyOntologyObservationDrain({ spoolPath, entries, checkpointOffset, drainedAt } = {}) {
+    if (typeof spoolPath !== 'string' || spoolPath.trim() === '') {
+      throw new Error('spoolPath must be a non-empty string');
+    }
+    if (!Array.isArray(entries)) {
+      throw new Error('entries must be an array');
+    }
+    if (!Number.isSafeInteger(checkpointOffset) || checkpointOffset < 0) {
+      throw new Error('checkpointOffset must be a non-negative integer');
+    }
+
+    const result = { created: 0, updated: 0, duplicates: 0, rejected: 0 };
+    const apply = db.transaction(() => {
+      for (const entry of entries) {
+        const candidate = entry && entry.candidate;
+        const observation = entry && entry.observation;
+        if (!candidate || !observation || typeof observation.id !== 'string'
+            || !Number.isSafeInteger(entry.lineEndOffset) || entry.lineEndOffset < 0) {
+          throw new Error('Invalid ontology observation drain entry');
+        }
+        if (getOntologyCandidateSourceStatement.get(observation.id)) {
+          result.duplicates += 1;
+          continue;
+        }
+
+        let existing = getOntologyCandidateByKeyStatement.get(candidate.candidateKey);
+        if (!existing) {
+          insertOntologyCandidateStatement.run({
+            id: candidate.id,
+            candidate_key: candidate.candidateKey,
+            project_key: candidate.projectKey,
+            domain_key: candidate.domainKey,
+            file_path: candidate.filePath,
+            kind: candidate.kind,
+            status: candidate.status,
+            latest_content_fingerprint: candidate.latestContentFingerprint,
+            first_observed_at: candidate.firstObservedAt,
+            last_observed_at: candidate.lastObservedAt,
+            observation_count: 1,
+            created_at: candidate.createdAt,
+            updated_at: candidate.updatedAt,
+          });
+          existing = { id: candidate.id };
+          result.created += 1;
+        } else {
+          updateOntologyCandidateStatement.run({
+            id: existing.id,
+            latest_content_fingerprint: candidate.latestContentFingerprint,
+            last_observed_at: candidate.lastObservedAt,
+            updated_at: candidate.updatedAt,
+          });
+          result.updated += 1;
+        }
+
+        insertOntologyCandidateSourceStatement.run({
+          observation_id: observation.id,
+          candidate_id: existing.id,
+          spool_path: spoolPath,
+          line_end_offset: entry.lineEndOffset,
+          observed_at: observation.observedAt,
+        });
+      }
+      upsertOntologyObservationCursorStatement.run({
+        spool_path: spoolPath,
+        byte_offset: checkpointOffset,
+        updated_at: drainedAt || new Date().toISOString(),
+      });
+    });
+    apply();
+    return result;
+  }
+
   return {
+    applyOntologyObservationDrain,
     getSessionById,
     getSessionDetail,
     getStatus,
@@ -642,6 +850,9 @@ function createQueryApi(db) {
       });
       return normalized;
     },
+    getOntologyObservationCursor,
+    listOntologyCandidateEvidence,
+    listOntologyCandidates,
     listRecentSessions,
     upsertInstallState(installState) {
       const normalized = normalizeInstallStateInput(installState);
