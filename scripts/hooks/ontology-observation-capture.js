@@ -43,15 +43,15 @@ function collectFilePaths(toolInput = {}) {
     .map(value => path.resolve(value));
 }
 
-function getSessionKey(sessionId, cwd) {
-  const raw = String(sessionId || `cwd:${cwd}`);
+function getSessionKey(sessionId) {
+  const raw = String(sessionId || '');
   return raw.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64) || 'unknown';
 }
 
-function claimDedupe(logPath, sessionId, fingerprint, cwd) {
+function claimDedupe(logPath, sessionId, fingerprint) {
   const markerPath = path.join(
     `${logPath}.dedup`,
-    getSessionKey(sessionId, cwd),
+    getSessionKey(sessionId),
     fingerprint
   );
   try {
@@ -82,7 +82,7 @@ function createObservation({ filePath, projectRoot, domainKey, sessionId, now })
   if (!relativePath || relativePath.startsWith('../') || path.isAbsolute(relativePath)) return null;
 
   const observedAt = now || new Date().toISOString();
-  const dedupeKey = sha256(`${sessionId || ''}:${domainKey}:${relativePath}:${contentFingerprint}`);
+  const dedupeKey = sha256(`${sessionId || ''}:${projectRoot}:${domainKey}:${relativePath}:${contentFingerprint}`);
   return {
     schemaVersion: SCHEMA_VERSION,
     id: `ontology-observation-${dedupeKey.slice(0, 24)}`,
@@ -127,7 +127,9 @@ function captureObservations(rawInput, options = {}) {
     if (!observation) continue;
 
     try {
-      if (!claimDedupe(logPath, sessionId, observation.id, cwd)) continue;
+      // Without a stable session id we cannot scope a marker safely. Capture
+      // rather than suppressing a later session forever.
+      if (sessionId && !claimDedupe(logPath, sessionId, observation.id)) continue;
       appendObservation(observation, logPath);
       captured.push(observation);
     } catch {

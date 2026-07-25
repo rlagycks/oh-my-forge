@@ -89,6 +89,50 @@ if (test('deduplicates an unchanged file within a session', () => {
   failed++;
 }
 
+if (test('keeps matching observations from separate projects in the same session', () => {
+  const first = makeFixture();
+  const second = makeFixture();
+  const sharedLogPath = path.join(os.tmpdir(), `ontology-observations-${Date.now()}.jsonl`);
+  try {
+    const options = { sessionId: 'shared-session', logPath: sharedLogPath };
+    assert.strictEqual(captureObservations(JSON.stringify({ tool_input: { file_path: first.filePath } }), {
+      ...options,
+      cwd: first.root,
+    }).length, 1);
+    assert.strictEqual(captureObservations(JSON.stringify({ tool_input: { file_path: second.filePath } }), {
+      ...options,
+      cwd: second.root,
+    }).length, 1);
+    assert.strictEqual(fs.readFileSync(sharedLogPath, 'utf8').trim().split('\n').length, 2);
+  } finally {
+    fs.rmSync(first.root, { recursive: true, force: true });
+    fs.rmSync(second.root, { recursive: true, force: true });
+    fs.rmSync(sharedLogPath, { force: true });
+    fs.rmSync(`${sharedLogPath}.dedup`, { recursive: true, force: true });
+  }
+})) {
+  passed++;
+} else {
+  failed++;
+}
+
+if (test('does not deduplicate across runs when the session id is unavailable', () => {
+  const fixture = makeFixture();
+  try {
+    const raw = JSON.stringify({ tool_input: { file_path: fixture.filePath } });
+    const options = { cwd: fixture.root, logPath: fixture.logPath, sessionId: null };
+    assert.strictEqual(captureObservations(raw, options).length, 1);
+    assert.strictEqual(captureObservations(raw, options).length, 1);
+    assert.strictEqual(fs.readFileSync(fixture.logPath, 'utf8').trim().split('\n').length, 2);
+  } finally {
+    fs.rmSync(fixture.root, { recursive: true, force: true });
+  }
+})) {
+  passed++;
+} else {
+  failed++;
+}
+
 if (test('does not persist source content or observations for untracked files', () => {
   const fixture = makeFixture();
   const untracked = path.join(fixture.root, 'README.md');
