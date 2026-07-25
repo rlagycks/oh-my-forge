@@ -13,6 +13,7 @@ OMF 세션 데이터, 스킬 이력, 오케스트레이션 상태를 SQLite(sql.
 - `scripts/lib/state-store/queries.js` — 준비된 쿼리 (세션 CRUD, 스킬 이력 조회 등)
 - `scripts/lib/state-store/migrations.js` — `runMigrations(db)` 스키마 버전 관리
 - `scripts/lib/ontology-observation-drainer.js` — metadata-only observation spool을 단일 writer로 읽어 review 후보로 materialize
+- `scripts/lib/ontology-maintainer.js` — Claude Code·Codex CLI adapter가 공통으로 소비할 provider-neutral review package와 fail-closed policy 계약
 
 ## P0 런타임 상태 경계
 
@@ -60,6 +61,7 @@ Append-only는 이벤트 레코드의 쓰기 방식에 대한 계약이다. 기�
 - transaction body가 실패하면 `ROLLBACK`을 시도하고 호출자에게 오류를 반환한다. 프로세스가 commit/export 전에 종료되면 기존 DB 파일이 유지되는 것이 복구 경계다. 시작 시 손상된 DB를 JSONL로 자동 복구하지 않으며, 백업·복구와 JSONL replay 도구는 후속 작업이다.
 - sql.js 기반 파일 DB는 단일 writer 경계를 갖는다. 여러 프로세스가 같은 DB를 동시에 갱신하는 것은 지원하지 않으며, 호출자는 세션/상태 store writer를 직렬화해야 한다. 읽기와 append-only JSONL 기록은 state-store transaction과 독립적이다.
 - ontology observation drain은 `<spool>.drain.lock`으로 writer를 하나로 제한하고, source receipt·candidate upsert·cursor checkpoint를 한 transaction으로 커밋한다. spool을 삭제·truncate하지 않으며, EOF의 불완전 레코드는 다음 drain까지 보류한다.
+- ontology maintainer v1은 `pending_review` 후보를 immutable attempt ledger와 metadata-only review package로 변환할 뿐이다. provider 실행·파일 적용은 기본 거부하며, 두 기능은 별도 adapter·승인·복구 정책이 준비된 뒤에만 열 수 있다.
 
 ## 관련 도메인
 

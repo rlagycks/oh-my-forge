@@ -3,6 +3,11 @@
 const crypto = require('crypto');
 const path = require('path');
 const { assertValidEntity } = require('./schema');
+const {
+  POLICY_ID,
+  evaluateOntologyMaintainerPolicy,
+  validateOntologyMaintainerReviewPackage,
+} = require('../ontology-maintainer');
 
 const ACTIVE_SESSION_STATES = ['active', 'running', 'idle'];
 const SUCCESS_OUTCOMES = new Set(['success', 'succeeded', 'passed']);
@@ -152,6 +157,25 @@ function mapOntologyCandidateSourceRow(row) {
     spoolPath: row.spool_path,
     lineEndOffset: row.line_end_offset,
     observedAt: row.observed_at,
+  };
+}
+
+function mapOntologyMaintainerAttemptRow(row) {
+  return {
+    id: row.id,
+    candidateId: row.candidate_id,
+    policyId: row.policy_id,
+    policyVersion: row.policy_version,
+    requestedMode: row.requested_mode,
+    providerRequested: Boolean(row.provider_requested),
+    applyRequested: Boolean(row.apply_requested),
+    decision: row.decision,
+    reasonCode: row.reason_code,
+    state: row.state,
+    reviewPackage: parseJsonColumn(row.review_package_json, null),
+    reviewPackageSha256: row.review_package_sha256,
+    createdAt: row.created_at,
+    completedAt: row.completed_at,
   };
 }
 
@@ -394,6 +418,11 @@ function createQueryApi(db) {
     FROM ontology_update_candidates
     WHERE candidate_key = ?
   `);
+  const getOntologyCandidateByIdStatement = db.prepare(`
+    SELECT *
+    FROM ontology_update_candidates
+    WHERE id = ?
+  `);
   const getOntologyCandidateSourceStatement = db.prepare(`
     SELECT observation_id
     FROM ontology_candidate_sources
@@ -426,6 +455,29 @@ function createQueryApi(db) {
     SELECT spool_path, byte_offset, updated_at
     FROM ontology_observation_spool_cursors
     WHERE spool_path = ?
+  `);
+  const getOntologyMaintainerPolicyStateStatement = db.prepare(`
+    SELECT *
+    FROM ontology_maintainer_policy_state
+    WHERE policy_id = 'ontology-maintainer-v1'
+  `);
+  const insertOntologyMaintainerAttemptStatement = db.prepare(`
+    INSERT INTO ontology_maintainer_attempts (
+      id, candidate_id, policy_id, policy_version, requested_mode,
+      provider_requested, apply_requested, decision, reason_code, state,
+      review_package_json, review_package_sha256, created_at, completed_at
+    ) VALUES (
+      @id, @candidate_id, @policy_id, @policy_version, @requested_mode,
+      @provider_requested, @apply_requested, @decision, @reason_code, @state,
+      @review_package_json, @review_package_sha256, @created_at, @completed_at
+    )
+  `);
+  const listOntologyMaintainerAttemptsStatement = db.prepare(`
+    SELECT *
+    FROM ontology_maintainer_attempts
+    WHERE (? IS NULL OR candidate_id = ?)
+    ORDER BY created_at DESC, id DESC
+    LIMIT ?
   `);
 
   const upsertSessionStatement = db.prepare(`
@@ -726,6 +778,129 @@ function createQueryApi(db) {
     };
   }
 
+  function getOntologyCandidateById(id) {
+    const row = getOntologyCandidateByIdStatement.get(id);
+    return row ? mapOntologyCandidateRow(row) : null;
+  }
+
+  function getOntologyMaintainerPolicyState() {
+    const row = getOntologyMaintainerPolicyStateStatement.get();
+    if (!row) return null;
+    return {
+      policyId: row.policy_id,
+      policyVersion: row.policy_version,
+      enabled: Boolean(row.enabled),
+      manualDryRunEnabled: Boolean(row.manual_dry_run_enabled),
+      providerEnabled: Boolean(row.provider_enabled),
+      applyEnabled: Boolean(row.apply_enabled),
+      updatedAt: row.updated_at,
+    };
+  }
+
+  function listOntologyMaintainerAttempts(options = {}) {
+    const limit = normalizeLimit(options.limit, 50);
+    const candidateId = options.candidateId || null;
+    return listOntologyMaintainerAttemptsStatement.all(candidateId, candidateId, limit)
+      .map(mapOntologyMaintainerAttemptRow);
+  }
+
+  function recordOntologyMaintainerAttempt(attempt) {
+    const timestamp = attempt.createdAt || new Date().toISOString();
+    const completedAt = attempt.completedAt || timestamp;
+    if (!attempt || typeof attempt.id !== 'string' || attempt.id.trim() === ''
+        || typeof attempt.policyId !== 'string' || attempt.policyId.trim() === ''
+        || typeof attempt.requestedMode !== 'string' || attempt.requestedMode.trim() === ''
+        || typeof attempt.reasonCode !== 'string' || attempt.reasonCode.trim() === ''
+        || typeof attempt.providerRequested !== 'boolean'
+        || typeof attempt.applyRequested !== 'boolean'
+        || !['allowed', 'denied'].includes(attempt.decision)
+        || !['review_package_ready', 'denied'].includes(attempt.state)) {
+      throw new Error('Invalid ontology maintainer attempt');
+    }
+    const reviewPackage = attempt.reviewPackage ?? null;
+    if (reviewPackage !== null && !validateOntologyMaintainerReviewPackage(reviewPackage)) {
+      throw new Error('Invalid ontology maintainer review package');
+    }
+    const policyRow = getOntologyMaintainerPolicyStateStatement.get();
+    const policyState = policyRow && {
+      policyId: policyRow.policy_id,
+      policyVersion: policyRow.policy_version,
+      enabled: Boolean(policyRow.enabled),
+      manualDryRunEnabled: Boolean(policyRow.manual_dry_run_enabled),
+      providerEnabled: Boolean(policyRow.provider_enabled),
+      applyEnabled: Boolean(policyRow.apply_enabled),
+      updatedAt: policyRow.updated_at,
+    };
+    const candidateRow = attempt.candidateId ? getOntologyCandidateByIdStatement.get(attempt.candidateId) : null;
+    const candidate = candidateRow ? mapOntologyCandidateRow(candidateRow) : null;
+    const evidence = candidate
+      ? listOntologyCandidateEvidenceStatement.all(candidate.id, 100).map(mapOntologyCandidateSourceRow)
+      : [];
+    const evaluatedPolicy = evaluateOntologyMaintainerPolicy({
+      candidate,
+      evidence,
+      policyState,
+      mode: attempt.requestedMode,
+      provider: attempt.providerRequested ? 'requested' : null,
+      apply: attempt.applyRequested,
+    });
+    if (attempt.policyId !== POLICY_ID
+        || attempt.policyVersion !== evaluatedPolicy.policyVersion
+        || attempt.decision !== (evaluatedPolicy.allowed ? 'allowed' : 'denied')
+        || attempt.reasonCode !== evaluatedPolicy.reasonCode
+        || attempt.state !== evaluatedPolicy.state
+        || (evaluatedPolicy.allowed !== (reviewPackage !== null))
+        || (reviewPackage !== null && reviewPackage.attemptId !== attempt.id)) {
+      throw new Error('Ontology maintainer attempt does not match policy evaluation');
+    }
+    if (reviewPackage !== null) {
+      const expectedCandidate = candidate && {
+        id: candidate.id,
+        domainKey: candidate.domainKey,
+        filePath: candidate.filePath,
+        status: candidate.status,
+        latestContentFingerprint: candidate.latestContentFingerprint,
+        firstObservedAt: candidate.firstObservedAt,
+        lastObservedAt: candidate.lastObservedAt,
+        observationCount: candidate.observationCount,
+      };
+      const expectedEvidence = evidence.map(item => ({
+        observationId: item.observationId,
+        observedAt: item.observedAt,
+      }));
+      if (JSON.stringify(reviewPackage.candidate) !== JSON.stringify(expectedCandidate)
+          || JSON.stringify(reviewPackage.evidence) !== JSON.stringify(expectedEvidence)) {
+        throw new Error('Ontology maintainer review package does not match persisted candidate evidence');
+      }
+    }
+    const reviewPackageJson = reviewPackage === null ? null : stringifyJson(reviewPackage, 'ontologyMaintainerAttempt.reviewPackage');
+    const reviewPackageSha256 = reviewPackage === null
+      ? null
+      : crypto.createHash('sha256').update(reviewPackageJson).digest('hex');
+    insertOntologyMaintainerAttemptStatement.run({
+      id: attempt.id,
+      candidate_id: attempt.candidateId ?? null,
+      policy_id: attempt.policyId,
+      policy_version: attempt.policyVersion ?? null,
+      requested_mode: attempt.requestedMode,
+      provider_requested: attempt.providerRequested ? 1 : 0,
+      apply_requested: attempt.applyRequested ? 1 : 0,
+      decision: attempt.decision,
+      reason_code: attempt.reasonCode,
+      state: attempt.state,
+      review_package_json: reviewPackageJson,
+      review_package_sha256: reviewPackageSha256,
+      created_at: timestamp,
+      completed_at: completedAt,
+    });
+    return {
+      ...attempt,
+      createdAt: timestamp,
+      completedAt,
+      reviewPackageSha256,
+    };
+  }
+
   function applyOntologyObservationDrain({ spoolPath, entries, checkpointOffset, drainedAt } = {}) {
     if (typeof spoolPath !== 'string' || spoolPath.trim() === '') {
       throw new Error('spoolPath must be a non-empty string');
@@ -851,8 +1026,12 @@ function createQueryApi(db) {
       return normalized;
     },
     getOntologyObservationCursor,
+    getOntologyCandidateById,
+    getOntologyMaintainerPolicyState,
     listOntologyCandidateEvidence,
     listOntologyCandidates,
+    listOntologyMaintainerAttempts,
+    recordOntologyMaintainerAttempt,
     listRecentSessions,
     upsertInstallState(installState) {
       const normalized = normalizeInstallStateInput(installState);

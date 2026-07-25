@@ -157,6 +157,50 @@ const MIGRATIONS = [
       );
     `,
   },
+  {
+    version: 3,
+    name: '003_ontology_maintainer_attempts',
+    sql: `
+      CREATE TABLE IF NOT EXISTS ontology_maintainer_policy_state (
+        policy_id TEXT PRIMARY KEY,
+        policy_version TEXT NOT NULL,
+        enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+        manual_dry_run_enabled INTEGER NOT NULL CHECK (manual_dry_run_enabled IN (0, 1)),
+        provider_enabled INTEGER NOT NULL CHECK (provider_enabled = 0),
+        apply_enabled INTEGER NOT NULL CHECK (apply_enabled = 0),
+        updated_at TEXT NOT NULL
+      );
+
+      INSERT OR IGNORE INTO ontology_maintainer_policy_state (
+        policy_id, policy_version, enabled, manual_dry_run_enabled,
+        provider_enabled, apply_enabled, updated_at
+      ) VALUES (
+        'ontology-maintainer-v1', '1', 1, 1, 0, 0, CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS ontology_maintainer_attempts (
+        id TEXT PRIMARY KEY,
+        candidate_id TEXT,
+        policy_id TEXT NOT NULL,
+        policy_version TEXT,
+        requested_mode TEXT NOT NULL,
+        provider_requested INTEGER NOT NULL CHECK (provider_requested IN (0, 1)),
+        apply_requested INTEGER NOT NULL CHECK (apply_requested IN (0, 1)),
+        decision TEXT NOT NULL CHECK (decision IN ('allowed', 'denied')),
+        reason_code TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('review_package_ready', 'denied')),
+        review_package_json TEXT CHECK (review_package_json IS NULL OR json_valid(review_package_json)),
+        review_package_sha256 TEXT,
+        created_at TEXT NOT NULL,
+        completed_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ontology_maintainer_attempts_candidate_created
+        ON ontology_maintainer_attempts (candidate_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_ontology_maintainer_attempts_decision_created
+        ON ontology_maintainer_attempts (decision, created_at DESC);
+    `,
+  },
 ];
 
 function ensureMigrationTable(db) {
