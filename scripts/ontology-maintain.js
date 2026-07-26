@@ -150,30 +150,54 @@ function assertPrivateDirectoryPath(root, target, getUid) {
 function readWorkflowLockMetadata(lockPath) {
   try {
     const value = JSON.parse(fs.readFileSync(lockPath, { encoding: 'utf8', flag: 'r' }));
+    const keyCount = value && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value).length : 0;
     if (!value || typeof value !== 'object' || Array.isArray(value)
-        || Object.keys(value).length !== 2 || !Number.isSafeInteger(value.pid) || value.pid <= 0
-        || typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt))) return null;
+        || ![2, 3].includes(keyCount) || !Number.isSafeInteger(value.pid) || value.pid <= 0
+        || typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt))
+        || (keyCount === 3 && (typeof value.ownerToken !== 'string' || !/^[a-f0-9]{32}$/.test(value.ownerToken)))) return null;
     return value;
   } catch (_error) {
     return null;
   }
 }
 
+function createWorkflowLockMetadata(pid, nowMs) {
+  return {
+    pid,
+    createdAt: new Date(nowMs).toISOString(),
+    ownerToken: crypto.randomBytes(16).toString('hex'),
+  };
+}
+
+function sameWorkflowLockMetadata(left, right) {
+  return Boolean(left && right) && left.pid === right.pid && left.createdAt === right.createdAt
+    && left.ownerToken === right.ownerToken;
+}
+
 function isWorkflowLockStale(lockPath, { nowMs, isPidAlive, ttlMs }) {
   const stats = fs.lstatSync(lockPath);
   const metadata = readWorkflowLockMetadata(lockPath);
+  // Legacy locks have no unforgeable lease identity, so automatic path deletion
+  // would reintroduce a replacement race. Recover them explicitly instead.
+  if (!metadata?.ownerToken) return false;
   const createdAtMs = metadata ? Date.parse(metadata.createdAt) : stats.mtimeMs;
   if (createdAtMs > nowMs + MAX_WORKFLOW_LOCK_CLOCK_SKEW_MS || nowMs - createdAtMs >= ttlMs) return true;
   return Boolean(metadata) && !isPidAlive(metadata.pid);
 }
 
-function unlinkWorkflowLockIfCurrent(lockPath, expectedStats, getUid, beforeUnlink) {
+function unlinkWorkflowLockIfCurrent(lockPath, expectedStats, expectedMetadata, getUid, beforeUnlink) {
   try {
+    // This is a cooperative-process guard inside a private same-user directory,
+    // not a security boundary against a hostile process running as that user.
     const current = fs.lstatSync(lockPath);
-    if (!sameFileIdentity(current, expectedStats) || !isCurrentUserOwned(current, getUid)) return false;
+    const currentMetadata = readWorkflowLockMetadata(lockPath);
+    if (!sameFileIdentity(current, expectedStats) || !sameWorkflowLockMetadata(currentMetadata, expectedMetadata)
+        || !isCurrentUserOwned(current, getUid)) return false;
     if (typeof beforeUnlink === 'function') beforeUnlink();
     const finalCurrent = fs.lstatSync(lockPath);
-    if (!sameFileIdentity(finalCurrent, expectedStats) || !isCurrentUserOwned(finalCurrent, getUid)) return false;
+    const finalMetadata = readWorkflowLockMetadata(lockPath);
+    if (!sameFileIdentity(finalCurrent, expectedStats) || !sameWorkflowLockMetadata(finalMetadata, expectedMetadata)
+        || !isCurrentUserOwned(finalCurrent, getUid)) return false;
     fs.unlinkSync(lockPath);
     return true;
   } catch (error) {
@@ -205,16 +229,18 @@ function acquireWorkflowLock(dbPath, options = {}) {
   try {
     const descriptor = fs.openSync(lockPath, 'wx', 0o600);
     const identity = fs.fstatSync(descriptor);
-    fs.writeFileSync(descriptor, `${JSON.stringify({ pid, createdAt: new Date(nowMs).toISOString() })}\n`, 'utf8');
+    const metadata = createWorkflowLockMetadata(pid, nowMs);
+    fs.writeFileSync(descriptor, `${JSON.stringify(metadata)}\n`, 'utf8');
     return () => {
       try { fs.closeSync(descriptor); } catch (_error) { /* best effort */ }
-      try { unlinkWorkflowLockIfCurrent(lockPath, identity, getUid, options.beforeReleaseUnlink); } catch (_error) { /* best effort */ }
+      try { unlinkWorkflowLockIfCurrent(lockPath, identity, metadata, getUid, options.beforeReleaseUnlink); } catch (_error) { /* best effort */ }
     };
   } catch (error) {
     if (error?.code !== 'EEXIST') throw error;
     const existing = fs.lstatSync(lockPath);
+    const existingMetadata = readWorkflowLockMetadata(lockPath);
     if (!isCurrentUserOwned(existing, getUid) || !isWorkflowLockStale(lockPath, { nowMs, isPidAlive, ttlMs })) return null;
-    if (!unlinkWorkflowLockIfCurrent(lockPath, existing, getUid, options.beforeReclaimUnlink)) return null;
+    if (!unlinkWorkflowLockIfCurrent(lockPath, existing, existingMetadata, getUid, options.beforeReclaimUnlink)) return null;
     return acquireWorkflowLock(dbPath, options);
   }
 }
