@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "omf.ontology-maintainer-protocol.v1",
+  "title": "Ontology Maintainer Protocol",
+  "oneOf": [
+    { "$ref": "#/$defs/job" },
+    { "$ref": "#/$defs/proposal" },
+    { "$ref": "#/$defs/receipt" },
+    { "$ref": "#/$defs/approval" }
+  ],
+  "$defs": {
+    "bareSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "sha256": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "timestamp": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+    "provider": { "enum": ["claude_code", "codex_cli"] },
+    "job": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "type", "id", "idempotencyKey", "provider", "candidateId", "reviewPackageSha256", "candidateFingerprint", "repoHead", "hop", "hopLimit", "createdAt"],
+      "properties": {
+        "schemaVersion": { "const": 1 }, "type": { "const": "ontology_maintainer_job" },
+        "id": { "type": "string", "pattern": "^ontology-maintainer-job-[0-9a-f-]{36}$" },
+        "idempotencyKey": { "type": "string", "minLength": 16, "maxLength": 160, "pattern": "^[a-z0-9][a-z0-9._/-]*$" },
+        "provider": { "$ref": "#/$defs/provider" },
+        "candidateId": { "type": "string", "pattern": "^ontology-candidate-[a-f0-9]{24}$" },
+        "reviewPackageSha256": { "$ref": "#/$defs/bareSha256" },
+        "candidateFingerprint": { "$ref": "#/$defs/bareSha256" },
+        "repoHead": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" },
+        "hop": { "const": 0 }, "hopLimit": { "const": 1 }, "createdAt": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "intent": {
+      "type": "object", "additionalProperties": false, "required": ["action", "subject"],
+      "properties": {
+        "action": { "enum": ["register_ontology_component", "retire_stale_ontology_reference", "sync_domain_metadata", "update_ontology_relationship"] },
+        "subject": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" }
+      }
+    },
+    "proposal": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "type", "id", "jobId", "provider", "reviewPackageSha256", "candidateFingerprint", "repoHead", "targetPath", "targetBeforeHash", "intent", "proposalSha256", "createdAt"],
+      "properties": {
+        "schemaVersion": { "const": 1 }, "type": { "const": "ontology_maintainer_proposal" },
+        "id": { "type": "string", "pattern": "^ontology-maintainer-proposal-[0-9a-f-]{36}$" },
+        "jobId": { "type": "string", "pattern": "^ontology-maintainer-job-[0-9a-f-]{36}$" },
+        "provider": { "$ref": "#/$defs/provider" },
+        "reviewPackageSha256": { "$ref": "#/$defs/bareSha256" }, "candidateFingerprint": { "$ref": "#/$defs/bareSha256" },
+        "repoHead": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" },
+        "targetPath": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!\\.git/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$" }, "targetBeforeHash": { "$ref": "#/$defs/sha256" },
+        "intent": { "$ref": "#/$defs/intent" }, "proposalSha256": { "$ref": "#/$defs/bareSha256" }, "createdAt": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "artifactReference": {
+      "type": "object", "additionalProperties": false, "required": ["artifactId", "artifactHash", "persistedAt", "signature"],
+      "properties": {
+        "artifactId": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[a-z0-9][a-z0-9._/-]*$" }, "artifactHash": { "$ref": "#/$defs/sha256" },
+        "persistedAt": { "$ref": "#/$defs/timestamp" }, "signature": { "type": "string", "pattern": "^hmac-sha256:[a-f0-9]{64}$" }
+      }
+    },
+    "receipt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "type", "id", "jobId", "proposalId", "provider", "outcome", "reasonCode", "artifactReference", "createdAt"],
+      "properties": {
+        "schemaVersion": { "const": 1 }, "type": { "const": "ontology_maintainer_receipt" },
+        "id": { "type": "string", "pattern": "^ontology-maintainer-receipt-[0-9a-f-]{36}$" },
+        "jobId": { "type": "string", "pattern": "^ontology-maintainer-job-[0-9a-f-]{36}$" }, "proposalId": { "type": "string", "pattern": "^ontology-maintainer-proposal-[0-9a-f-]{36}$" },
+        "provider": { "$ref": "#/$defs/provider" }, "outcome": { "enum": ["succeeded", "retryable_failure", "permanent_failure"] },
+        "reasonCode": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" }, "artifactReference": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/artifactReference" }] }, "createdAt": { "$ref": "#/$defs/timestamp" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "outcome": { "const": "succeeded" } } },
+          "then": { "properties": { "artifactReference": { "$ref": "#/$defs/artifactReference" } } }
+        },
+        {
+          "if": { "properties": { "outcome": { "enum": ["retryable_failure", "permanent_failure"] } } },
+          "then": { "properties": { "artifactReference": { "type": "null" } } }
+        }
+      ]
+    },
+    "approval": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "type", "id", "proposalId", "proposalSha256", "reviewPackageSha256", "candidateFingerprint", "repoHead", "targetPath", "targetBeforeHash", "decision", "approverId", "expiresAt", "createdAt"],
+      "properties": {
+        "schemaVersion": { "const": 1 }, "type": { "const": "ontology_maintainer_approval" },
+        "id": { "type": "string", "pattern": "^ontology-maintainer-approval-[0-9a-f-]{36}$" },
+        "proposalId": { "type": "string", "pattern": "^ontology-maintainer-proposal-[0-9a-f-]{36}$" }, "proposalSha256": { "$ref": "#/$defs/bareSha256" },
+        "reviewPackageSha256": { "$ref": "#/$defs/bareSha256" }, "candidateFingerprint": { "$ref": "#/$defs/bareSha256" },
+        "repoHead": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" }, "targetPath": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!\\.git/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$" },
+        "targetBeforeHash": { "$ref": "#/$defs/sha256" }, "decision": { "enum": ["approved", "rejected"] },
+        "approverId": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[a-z0-9][a-z0-9._/-]*$" }, "expiresAt": { "$ref": "#/$defs/timestamp" }, "createdAt": { "$ref": "#/$defs/timestamp" }
+      }
+    }
+  }
+}

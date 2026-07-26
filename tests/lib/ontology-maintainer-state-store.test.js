@@ -8,7 +8,7 @@ async function main() {
   console.log('\nontology-maintainer-state-store.test.js');
   const store = await createStateStore({ dbPath: ':memory:' });
   try {
-    assert.deepStrictEqual(store.getAppliedMigrations().map(migration => migration.version), [1, 2, 3, 4]);
+    assert.deepStrictEqual(store.getAppliedMigrations().map(migration => migration.version), [1, 2, 3, 4, 5]);
     assert.deepStrictEqual(store.getOntologyMaintainerPolicyState(), {
       policyId: 'ontology-maintainer-v1', policyVersion: '1', enabled: true,
       manualDryRunEnabled: true, providerEnabled: false, applyEnabled: false,

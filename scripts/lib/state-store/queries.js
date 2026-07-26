@@ -9,6 +9,12 @@ const {
   evaluateOntologyMaintainerPolicy,
   validateOntologyMaintainerReviewPackage,
 } = require('../ontology-maintainer');
+const {
+  assertValidOntologyMaintainerApproval,
+  assertValidOntologyMaintainerJob,
+  assertValidOntologyMaintainerProposal,
+  assertValidOntologyMaintainerReceipt,
+} = require('../ontology-maintainer-protocol');
 
 const ACTIVE_SESSION_STATES = ['active', 'running', 'idle'];
 const SUCCESS_OUTCOMES = new Set(['success', 'succeeded', 'passed']);
@@ -178,6 +184,81 @@ function mapOntologyMaintainerAttemptRow(row) {
     reviewPackageSha256: row.review_package_sha256,
     createdAt: row.created_at,
     completedAt: row.completed_at,
+  };
+}
+
+function mapOntologyMaintainerJobRow(row) {
+  return {
+    schemaVersion: 1,
+    type: 'ontology_maintainer_job',
+    id: row.id,
+    idempotencyKey: row.idempotency_key,
+    provider: row.provider,
+    candidateId: row.candidate_id,
+    reviewPackageSha256: row.review_package_sha256,
+    candidateFingerprint: row.candidate_fingerprint,
+    repoHead: row.repo_head,
+    hop: row.hop,
+    hopLimit: row.hop_limit,
+    createdAt: row.created_at,
+  };
+}
+
+function mapOntologyMaintainerProposalRow(row) {
+  return {
+    schemaVersion: 1,
+    type: 'ontology_maintainer_proposal',
+    id: row.id,
+    jobId: row.job_id,
+    provider: row.provider,
+    reviewPackageSha256: row.review_package_sha256,
+    candidateFingerprint: row.candidate_fingerprint,
+    repoHead: row.repo_head,
+    targetPath: row.target_path,
+    targetBeforeHash: row.target_before_hash,
+    intent: { action: row.intent_action, subject: row.intent_subject },
+    proposalSha256: row.proposal_sha256,
+    createdAt: row.created_at,
+  };
+}
+
+function mapOntologyMaintainerReceiptRow(row) {
+  const hasArtifact = row.artifact_id !== null;
+  return {
+    schemaVersion: 1,
+    type: 'ontology_maintainer_receipt',
+    id: row.id,
+    jobId: row.job_id,
+    proposalId: row.proposal_id,
+    provider: row.provider,
+    outcome: row.outcome,
+    reasonCode: row.reason_code,
+    artifactReference: hasArtifact ? {
+      artifactId: row.artifact_id,
+      artifactHash: row.artifact_hash,
+      persistedAt: row.artifact_persisted_at,
+      signature: row.artifact_signature,
+    } : null,
+    createdAt: row.created_at,
+  };
+}
+
+function mapOntologyMaintainerApprovalRow(row) {
+  return {
+    schemaVersion: 1,
+    type: 'ontology_maintainer_approval',
+    id: row.id,
+    proposalId: row.proposal_id,
+    proposalSha256: row.proposal_sha256,
+    reviewPackageSha256: row.review_package_sha256,
+    candidateFingerprint: row.candidate_fingerprint,
+    repoHead: row.repo_head,
+    targetPath: row.target_path,
+    targetBeforeHash: row.target_before_hash,
+    decision: row.decision,
+    approverId: row.approver_id,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
   };
 }
 
@@ -478,6 +559,85 @@ function createQueryApi(db) {
     SELECT *
     FROM ontology_maintainer_attempts
     WHERE (? IS NULL OR candidate_id = ?)
+    ORDER BY created_at DESC, id DESC
+    LIMIT ?
+  `);
+  const getOntologyMaintainerReviewPackageStatement = db.prepare(`
+    SELECT *
+    FROM ontology_maintainer_attempts
+    WHERE candidate_id = ?
+      AND review_package_sha256 = ?
+      AND decision = 'allowed'
+      AND state = 'review_package_ready'
+      AND review_package_json IS NOT NULL
+    ORDER BY created_at DESC, id DESC
+    LIMIT 1
+  `);
+  const getOntologyMaintainerJobByIdStatement = db.prepare(`
+    SELECT * FROM ontology_maintainer_jobs WHERE id = ?
+  `);
+  const getOntologyMaintainerJobByIdempotencyKeyStatement = db.prepare(`
+    SELECT * FROM ontology_maintainer_jobs WHERE idempotency_key = ?
+  `);
+  const insertOntologyMaintainerJobStatement = db.prepare(`
+    INSERT INTO ontology_maintainer_jobs (
+      id, idempotency_key, provider, candidate_id, review_package_sha256,
+      candidate_fingerprint, repo_head, hop, hop_limit, created_at
+    ) VALUES (
+      @id, @idempotency_key, @provider, @candidate_id, @review_package_sha256,
+      @candidate_fingerprint, @repo_head, @hop, @hop_limit, @created_at
+    )
+  `);
+  const getOntologyMaintainerProposalByIdStatement = db.prepare(`
+    SELECT * FROM ontology_maintainer_proposals WHERE id = ?
+  `);
+  const getOntologyMaintainerProposalByJobIdStatement = db.prepare(`
+    SELECT * FROM ontology_maintainer_proposals WHERE job_id = ?
+  `);
+  const insertOntologyMaintainerProposalStatement = db.prepare(`
+    INSERT INTO ontology_maintainer_proposals (
+      id, job_id, provider, review_package_sha256, candidate_fingerprint,
+      repo_head, target_path, target_before_hash, intent_action, intent_subject,
+      proposal_sha256, created_at
+    ) VALUES (
+      @id, @job_id, @provider, @review_package_sha256, @candidate_fingerprint,
+      @repo_head, @target_path, @target_before_hash, @intent_action, @intent_subject,
+      @proposal_sha256, @created_at
+    )
+  `);
+  const insertOntologyMaintainerReceiptStatement = db.prepare(`
+    INSERT INTO ontology_maintainer_receipts (
+      id, job_id, proposal_id, provider, outcome, reason_code,
+      artifact_id, artifact_hash, artifact_persisted_at, artifact_signature, created_at
+    ) VALUES (
+      @id, @job_id, @proposal_id, @provider, @outcome, @reason_code,
+      @artifact_id, @artifact_hash, @artifact_persisted_at, @artifact_signature, @created_at
+    )
+  `);
+  const getSuccessfulOntologyMaintainerReceiptStatement = db.prepare(`
+    SELECT * FROM ontology_maintainer_receipts
+    WHERE proposal_id = ? AND outcome = 'succeeded'
+    ORDER BY created_at DESC, id DESC
+    LIMIT 1
+  `);
+  const listOntologyMaintainerReceiptsStatement = db.prepare(`
+    SELECT * FROM ontology_maintainer_receipts
+    WHERE (? IS NULL OR proposal_id = ?)
+    ORDER BY created_at DESC, id DESC
+    LIMIT ?
+  `);
+  const insertOntologyMaintainerApprovalStatement = db.prepare(`
+    INSERT INTO ontology_maintainer_approvals (
+      id, proposal_id, proposal_sha256, review_package_sha256, candidate_fingerprint,
+      repo_head, target_path, target_before_hash, decision, approver_id, expires_at, created_at
+    ) VALUES (
+      @id, @proposal_id, @proposal_sha256, @review_package_sha256, @candidate_fingerprint,
+      @repo_head, @target_path, @target_before_hash, @decision, @approver_id, @expires_at, @created_at
+    )
+  `);
+  const listOntologyMaintainerApprovalsStatement = db.prepare(`
+    SELECT * FROM ontology_maintainer_approvals
+    WHERE (? IS NULL OR proposal_id = ?)
     ORDER BY created_at DESC, id DESC
     LIMIT ?
   `);
@@ -907,6 +1067,199 @@ function createQueryApi(db) {
     };
   }
 
+  function assertOntologyMaintainerJobFresh(job) {
+    const candidateRow = getOntologyCandidateByIdStatement.get(job.candidateId);
+    const candidate = candidateRow ? mapOntologyCandidateRow(candidateRow) : null;
+    if (!candidate || candidate.status !== 'pending_review'
+        || candidate.latestContentFingerprint !== job.candidateFingerprint) {
+      throw new Error('Ontology maintainer job has a stale candidate fingerprint');
+    }
+    const attemptRow = getOntologyMaintainerReviewPackageStatement.get(job.candidateId, job.reviewPackageSha256);
+    if (!attemptRow) throw new Error('Ontology maintainer job has a missing or stale review package');
+    const reviewPackage = parseJsonColumn(attemptRow.review_package_json, null);
+    if (!validateOntologyMaintainerReviewPackage(reviewPackage)
+        || reviewPackage.candidate.id !== candidate.id
+        || reviewPackage.candidate.latestContentFingerprint !== candidate.latestContentFingerprint) {
+      throw new Error('Ontology maintainer job review package does not bind the current candidate');
+    }
+    return candidate;
+  }
+
+  function claimOntologyMaintainerJob(job) {
+    assertValidOntologyMaintainerJob(job);
+    const claim = db.transaction(() => {
+      const existing = getOntologyMaintainerJobByIdempotencyKeyStatement.get(job.idempotencyKey);
+      if (existing) return { claimed: false, job: mapOntologyMaintainerJobRow(existing) };
+
+      assertOntologyMaintainerJobFresh(job);
+      insertOntologyMaintainerJobStatement.run({
+        id: job.id,
+        idempotency_key: job.idempotencyKey,
+        provider: job.provider,
+        candidate_id: job.candidateId,
+        review_package_sha256: job.reviewPackageSha256,
+        candidate_fingerprint: job.candidateFingerprint,
+        repo_head: job.repoHead,
+        hop: job.hop,
+        hop_limit: job.hopLimit,
+        created_at: job.createdAt,
+      });
+      return { claimed: true, job: { ...job } };
+    });
+    return claim();
+  }
+
+  function getOntologyMaintainerJobById(id) {
+    const row = getOntologyMaintainerJobByIdStatement.get(id);
+    return row ? mapOntologyMaintainerJobRow(row) : null;
+  }
+
+  function assertProposalMatchesJob(proposal, job, currentRepoHead) {
+    if (typeof currentRepoHead !== 'string' || currentRepoHead !== job.repoHead) {
+      throw new Error('Ontology maintainer proposal has a stale repo head');
+    }
+    if (proposal.jobId !== job.id || proposal.provider !== job.provider
+        || proposal.reviewPackageSha256 !== job.reviewPackageSha256
+        || proposal.candidateFingerprint !== job.candidateFingerprint
+        || proposal.repoHead !== job.repoHead) {
+      throw new Error('Ontology maintainer proposal does not match its claimed job');
+    }
+    assertOntologyMaintainerJobFresh(job);
+  }
+
+  function recordOntologyMaintainerProposal(proposal, { currentRepoHead } = {}) {
+    assertValidOntologyMaintainerProposal(proposal);
+    const record = db.transaction(() => {
+      const jobRow = getOntologyMaintainerJobByIdStatement.get(proposal.jobId);
+      if (!jobRow) throw new Error('Ontology maintainer proposal job was not claimed');
+      const job = mapOntologyMaintainerJobRow(jobRow);
+      const existing = getOntologyMaintainerProposalByJobIdStatement.get(job.id);
+      if (existing) {
+        const stored = mapOntologyMaintainerProposalRow(existing);
+        if (stored.proposalSha256 !== proposal.proposalSha256) {
+          throw new Error('Ontology maintainer job already has a different immutable proposal');
+        }
+        return stored;
+      }
+      assertProposalMatchesJob(proposal, job, currentRepoHead);
+      insertOntologyMaintainerProposalStatement.run({
+        id: proposal.id,
+        job_id: proposal.jobId,
+        provider: proposal.provider,
+        review_package_sha256: proposal.reviewPackageSha256,
+        candidate_fingerprint: proposal.candidateFingerprint,
+        repo_head: proposal.repoHead,
+        target_path: proposal.targetPath,
+        target_before_hash: proposal.targetBeforeHash,
+        intent_action: proposal.intent.action,
+        intent_subject: proposal.intent.subject,
+        proposal_sha256: proposal.proposalSha256,
+        created_at: proposal.createdAt,
+      });
+      return { ...proposal, intent: { ...proposal.intent } };
+    });
+    return record();
+  }
+
+  function getOntologyMaintainerProposalById(id) {
+    const row = getOntologyMaintainerProposalByIdStatement.get(id);
+    return row ? mapOntologyMaintainerProposalRow(row) : null;
+  }
+
+  function recordOntologyMaintainerReceipt(receipt) {
+    assertValidOntologyMaintainerReceipt(receipt);
+    const record = db.transaction(() => {
+      const jobRow = getOntologyMaintainerJobByIdStatement.get(receipt.jobId);
+      const proposalRow = getOntologyMaintainerProposalByIdStatement.get(receipt.proposalId);
+      if (!jobRow || !proposalRow) throw new Error('Ontology maintainer receipt has no claimed job or proposal');
+      const job = mapOntologyMaintainerJobRow(jobRow);
+      const proposal = mapOntologyMaintainerProposalRow(proposalRow);
+      if (proposal.jobId !== job.id || receipt.provider !== job.provider || receipt.provider !== proposal.provider) {
+        throw new Error('Ontology maintainer receipt provider does not match its job and proposal');
+      }
+      const artifact = receipt.artifactReference;
+      insertOntologyMaintainerReceiptStatement.run({
+        id: receipt.id,
+        job_id: receipt.jobId,
+        proposal_id: receipt.proposalId,
+        provider: receipt.provider,
+        outcome: receipt.outcome,
+        reason_code: receipt.reasonCode,
+        artifact_id: artifact?.artifactId ?? null,
+        artifact_hash: artifact?.artifactHash ?? null,
+        artifact_persisted_at: artifact?.persistedAt ?? null,
+        artifact_signature: artifact?.signature ?? null,
+        created_at: receipt.createdAt,
+      });
+      return { ...receipt, artifactReference: artifact && { ...artifact } };
+    });
+    return record();
+  }
+
+  function recordOntologyMaintainerApproval(approval, { currentRepoHead, currentTargetBeforeHash, now } = {}) {
+    assertValidOntologyMaintainerApproval(approval);
+    const recordedAt = now || new Date().toISOString();
+    if (typeof currentRepoHead !== 'string' || typeof currentTargetBeforeHash !== 'string') {
+      throw new Error('Ontology maintainer approval requires current repo and target bindings');
+    }
+    if (Date.parse(approval.expiresAt) <= Date.parse(recordedAt)) {
+      throw new Error('Ontology maintainer approval is expired');
+    }
+    const record = db.transaction(() => {
+      const proposalRow = getOntologyMaintainerProposalByIdStatement.get(approval.proposalId);
+      if (!proposalRow) throw new Error('Ontology maintainer approval proposal was not recorded');
+      const proposal = mapOntologyMaintainerProposalRow(proposalRow);
+      const jobRow = getOntologyMaintainerJobByIdStatement.get(proposal.jobId);
+      if (!jobRow) throw new Error('Ontology maintainer approval job was not claimed');
+      const job = mapOntologyMaintainerJobRow(jobRow);
+      if (currentRepoHead !== proposal.repoHead || currentTargetBeforeHash !== proposal.targetBeforeHash) {
+        throw new Error('Ontology maintainer approval has a stale repo head or target before-hash');
+      }
+      if (approval.proposalSha256 !== proposal.proposalSha256
+          || approval.reviewPackageSha256 !== proposal.reviewPackageSha256
+          || approval.candidateFingerprint !== proposal.candidateFingerprint
+          || approval.repoHead !== proposal.repoHead
+          || approval.targetPath !== proposal.targetPath
+          || approval.targetBeforeHash !== proposal.targetBeforeHash) {
+        throw new Error('Ontology maintainer approval does not bind its exact proposal');
+      }
+      assertOntologyMaintainerJobFresh(job);
+      if (approval.decision === 'approved' && !getSuccessfulOntologyMaintainerReceiptStatement.get(proposal.id)) {
+        throw new Error('Ontology maintainer approval requires an attested proposal artifact receipt');
+      }
+      insertOntologyMaintainerApprovalStatement.run({
+        id: approval.id,
+        proposal_id: approval.proposalId,
+        proposal_sha256: approval.proposalSha256,
+        review_package_sha256: approval.reviewPackageSha256,
+        candidate_fingerprint: approval.candidateFingerprint,
+        repo_head: approval.repoHead,
+        target_path: approval.targetPath,
+        target_before_hash: approval.targetBeforeHash,
+        decision: approval.decision,
+        approver_id: approval.approverId,
+        expires_at: approval.expiresAt,
+        created_at: approval.createdAt,
+      });
+      return { ...approval };
+    });
+    return record();
+  }
+
+  function listOntologyMaintainerReceipts(options = {}) {
+    const limit = normalizeLimit(options.limit, 50);
+    const proposalId = options.proposalId || null;
+    return listOntologyMaintainerReceiptsStatement.all(proposalId, proposalId, limit)
+      .map(mapOntologyMaintainerReceiptRow);
+  }
+
+  function listOntologyMaintainerApprovals(options = {}) {
+    const limit = normalizeLimit(options.limit, 50);
+    const proposalId = options.proposalId || null;
+    return listOntologyMaintainerApprovalsStatement.all(proposalId, proposalId, limit)
+      .map(mapOntologyMaintainerApprovalRow);
+  }
+
   function applyOntologyObservationDrain({ spoolPath, entries, checkpointOffset, drainedAt } = {}) {
     if (typeof spoolPath !== 'string' || spoolPath.trim() === '') {
       throw new Error('spoolPath must be a non-empty string');
@@ -981,6 +1334,7 @@ function createQueryApi(db) {
 
   return {
     applyOntologyObservationDrain,
+    claimOntologyMaintainerJob,
     getSessionById,
     getSessionDetail,
     getStatus,
@@ -1033,11 +1387,18 @@ function createQueryApi(db) {
     },
     getOntologyObservationCursor,
     getOntologyCandidateById,
+    getOntologyMaintainerJobById,
     getOntologyMaintainerPolicyState,
+    getOntologyMaintainerProposalById,
     listOntologyCandidateEvidence,
     listOntologyCandidates,
     listOntologyMaintainerAttempts,
+    listOntologyMaintainerApprovals,
+    listOntologyMaintainerReceipts,
     recordOntologyMaintainerAttempt,
+    recordOntologyMaintainerApproval,
+    recordOntologyMaintainerProposal,
+    recordOntologyMaintainerReceipt,
     listRecentSessions,
     upsertInstallState(installState) {
       const normalized = normalizeInstallStateInput(installState);

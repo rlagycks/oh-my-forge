@@ -1,6 +1,6 @@
 # State Store
 
-**Last Updated:** 2026-07-21
+**Last Updated:** 2026-07-26
 
 ## 목적
 
@@ -14,6 +14,7 @@ OMF 세션 데이터, 스킬 이력, 오케스트레이션 상태를 SQLite(sql.
 - `scripts/lib/state-store/migrations.js` — `runMigrations(db)` 스키마 버전 관리
 - `scripts/lib/ontology-observation-drainer.js` — metadata-only observation spool을 단일 writer로 읽어 review 후보로 materialize
 - `scripts/lib/ontology-maintainer.js` — Claude Code·Codex CLI adapter가 공통으로 소비할 provider-neutral review package와 fail-closed policy 계약
+- `scripts/lib/ontology-maintainer-protocol.js` — provider-neutral job·proposal·receipt·approval 계약과 metadata-only 검증 경계
 
 ## P0 런타임 상태 경계
 
@@ -62,6 +63,9 @@ Append-only는 이벤트 레코드의 쓰기 방식에 대한 계약이다. 기�
 - sql.js 기반 파일 DB는 단일 writer 경계를 갖는다. 여러 프로세스가 같은 DB를 동시에 갱신하는 것은 지원하지 않으며, 호출자는 세션/상태 store writer를 직렬화해야 한다. 읽기와 append-only JSONL 기록은 state-store transaction과 독립적이다.
 - ontology observation drain은 `<spool>.drain.lock`으로 writer를 하나로 제한하고, source receipt·candidate upsert·cursor checkpoint를 한 transaction으로 커밋한다. spool을 삭제·truncate하지 않으며, EOF의 불완전 레코드는 다음 drain까지 보류한다.
 - ontology maintainer v1은 `pending_review` 후보를 immutable attempt ledger와 metadata-only review package로 변환할 뿐이다. provider 실행·파일 적용은 기본 거부하며, 두 기능은 별도 adapter·승인·복구 정책이 준비된 뒤에만 열 수 있다.
+- maintainer protocol ledger는 실행 요청의 idempotency key를 원자적으로 claim한다. provider는 `claude_code` 또는 `codex_cli`를 명시해야 하며 fallback·상호 재호출은 허용하지 않고 job은 `hop=0`, `hopLimit=1`로 고정한다.
+- DB에는 job/proposal/receipt/approval의 제한된 메타데이터만 저장한다. prompt·source·diff·patch·shell command·raw output은 스키마와 열 구조 모두에서 제외한다. 실제 apply artifact는 evidence store에 두고 DB에는 hash·artifact ID·attestation 참조만 바인딩한다.
+- approval은 proposal hash, review package hash, candidate fingerprint, repo HEAD, target path/before-hash, expiry를 모두 바인딩한다. 현재 candidate/review package/HEAD/target hash가 다르거나 성공 artifact receipt가 없으면 fail closed하며 어떠한 파일도 변경하지 않는다.
 
 ## 관련 도메인
 
