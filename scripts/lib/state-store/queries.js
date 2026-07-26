@@ -5,6 +5,7 @@ const path = require('path');
 const { assertValidEntity } = require('./schema');
 const {
   POLICY_ID,
+  REVIEW_EVIDENCE_LIMIT,
   evaluateOntologyMaintainerPolicy,
   validateOntologyMaintainerReviewPackage,
 } = require('../ontology-maintainer');
@@ -164,6 +165,7 @@ function mapOntologyMaintainerAttemptRow(row) {
   return {
     id: row.id,
     candidateId: row.candidate_id,
+    requestedCandidateId: row.requested_candidate_id,
     policyId: row.policy_id,
     policyVersion: row.policy_version,
     requestedMode: row.requested_mode,
@@ -463,11 +465,11 @@ function createQueryApi(db) {
   `);
   const insertOntologyMaintainerAttemptStatement = db.prepare(`
     INSERT INTO ontology_maintainer_attempts (
-      id, candidate_id, policy_id, policy_version, requested_mode,
+      id, candidate_id, requested_candidate_id, policy_id, policy_version, requested_mode,
       provider_requested, apply_requested, decision, reason_code, state,
       review_package_json, review_package_sha256, created_at, completed_at
     ) VALUES (
-      @id, @candidate_id, @policy_id, @policy_version, @requested_mode,
+      @id, @candidate_id, @requested_candidate_id, @policy_id, @policy_version, @requested_mode,
       @provider_requested, @apply_requested, @decision, @reason_code, @state,
       @review_package_json, @review_package_sha256, @created_at, @completed_at
     )
@@ -764,7 +766,7 @@ function createQueryApi(db) {
   }
 
   function listOntologyCandidateEvidence(candidateId, options = {}) {
-    const limit = normalizeLimit(options.limit, 100);
+    const limit = normalizeLimit(options.limit, REVIEW_EVIDENCE_LIMIT);
     return listOntologyCandidateEvidenceStatement.all(candidateId, limit).map(mapOntologyCandidateSourceRow);
   }
 
@@ -807,12 +809,14 @@ function createQueryApi(db) {
   function recordOntologyMaintainerAttempt(attempt) {
     const timestamp = attempt.createdAt || new Date().toISOString();
     const completedAt = attempt.completedAt || timestamp;
+    const requestedCandidateId = attempt.requestedCandidateId ?? null;
     if (!attempt || typeof attempt.id !== 'string' || attempt.id.trim() === ''
         || typeof attempt.policyId !== 'string' || attempt.policyId.trim() === ''
         || typeof attempt.requestedMode !== 'string' || attempt.requestedMode.trim() === ''
         || typeof attempt.reasonCode !== 'string' || attempt.reasonCode.trim() === ''
         || typeof attempt.providerRequested !== 'boolean'
         || typeof attempt.applyRequested !== 'boolean'
+        || (requestedCandidateId !== null && !/^ontology-candidate-[a-f0-9]{24}$/.test(requestedCandidateId))
         || !['allowed', 'denied'].includes(attempt.decision)
         || !['review_package_ready', 'denied'].includes(attempt.state)) {
       throw new Error('Invalid ontology maintainer attempt');
@@ -834,7 +838,7 @@ function createQueryApi(db) {
     const candidateRow = attempt.candidateId ? getOntologyCandidateByIdStatement.get(attempt.candidateId) : null;
     const candidate = candidateRow ? mapOntologyCandidateRow(candidateRow) : null;
     const evidence = candidate
-      ? listOntologyCandidateEvidenceStatement.all(candidate.id, 100).map(mapOntologyCandidateSourceRow)
+      ? listOntologyCandidateEvidenceStatement.all(candidate.id, REVIEW_EVIDENCE_LIMIT).map(mapOntologyCandidateSourceRow)
       : [];
     const evaluatedPolicy = evaluateOntologyMaintainerPolicy({
       candidate,
@@ -849,6 +853,7 @@ function createQueryApi(db) {
         || attempt.decision !== (evaluatedPolicy.allowed ? 'allowed' : 'denied')
         || attempt.reasonCode !== evaluatedPolicy.reasonCode
         || attempt.state !== evaluatedPolicy.state
+        || (candidate !== null && requestedCandidateId !== candidate.id)
         || (evaluatedPolicy.allowed !== (reviewPackage !== null))
         || (reviewPackage !== null && reviewPackage.attemptId !== attempt.id)) {
       throw new Error('Ontology maintainer attempt does not match policy evaluation');
@@ -880,6 +885,7 @@ function createQueryApi(db) {
     insertOntologyMaintainerAttemptStatement.run({
       id: attempt.id,
       candidate_id: attempt.candidateId ?? null,
+      requested_candidate_id: requestedCandidateId,
       policy_id: attempt.policyId,
       policy_version: attempt.policyVersion ?? null,
       requested_mode: attempt.requestedMode,

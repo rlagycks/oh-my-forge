@@ -201,6 +201,17 @@ const MIGRATIONS = [
         ON ontology_maintainer_attempts (decision, created_at DESC);
     `,
   },
+  {
+    version: 4,
+    name: '004_ontology_maintainer_requested_candidate_id',
+    sql: `
+      ALTER TABLE ontology_maintainer_attempts
+        ADD COLUMN requested_candidate_id TEXT;
+
+      CREATE INDEX IF NOT EXISTS idx_ontology_maintainer_attempts_requested_candidate_created
+        ON ontology_maintainer_attempts (requested_candidate_id, created_at DESC);
+    `,
+  },
 ];
 
 function ensureMigrationTable(db) {

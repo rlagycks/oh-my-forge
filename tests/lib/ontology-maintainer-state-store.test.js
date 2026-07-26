@@ -2,13 +2,13 @@
 
 const assert = require('assert');
 const { createStateStore } = require('../../scripts/lib/state-store');
-const { runOntologyMaintainerDryRun } = require('../../scripts/lib/ontology-maintainer');
+const { REVIEW_EVIDENCE_LIMIT, runOntologyMaintainerDryRun } = require('../../scripts/lib/ontology-maintainer');
 
 async function main() {
   console.log('\nontology-maintainer-state-store.test.js');
   const store = await createStateStore({ dbPath: ':memory:' });
   try {
-    assert.deepStrictEqual(store.getAppliedMigrations().map(migration => migration.version), [1, 2, 3]);
+    assert.deepStrictEqual(store.getAppliedMigrations().map(migration => migration.version), [1, 2, 3, 4]);
     assert.deepStrictEqual(store.getOntologyMaintainerPolicyState(), {
       policyId: 'ontology-maintainer-v1', policyVersion: '1', enabled: true,
       manualDryRunEnabled: true, providerEnabled: false, applyEnabled: false,
@@ -21,6 +21,22 @@ async function main() {
       createdAt: '2026-07-25T00:00:00.000Z', completedAt: '2026-07-25T00:00:00.000Z',
     });
     assert.strictEqual(store.listOntologyMaintainerAttempts().length, 1);
+    const missingCandidateId = 'ontology-candidate-fedcba9876543210fedcba98';
+    const missingCandidate = runOntologyMaintainerDryRun({ candidateId: missingCandidateId, stateStore: store });
+    assert.deepStrictEqual(missingCandidate, {
+      status: 'denied', reasonCode: 'candidate_not_found', reviewPackage: null,
+    });
+    const missingCandidateAttempt = store.listOntologyMaintainerAttempts()
+      .find(attempt => attempt.requestedCandidateId === missingCandidateId);
+    assert.deepStrictEqual({
+      candidateId: missingCandidateAttempt?.candidateId,
+      requestedCandidateId: missingCandidateAttempt?.requestedCandidateId,
+      reasonCode: missingCandidateAttempt?.reasonCode,
+    }, {
+      candidateId: null,
+      requestedCandidateId: missingCandidateId,
+      reasonCode: 'candidate_not_found',
+    });
     assert.throws(() => store.recordOntologyMaintainerAttempt({ id: 'bad', decision: 'allowed', state: 'denied' }), /Invalid ontology maintainer attempt/);
     assert.throws(() => store.recordOntologyMaintainerAttempt({
       id: 'forged-allowed-attempt', candidateId: null, policyId: 'forged-policy', policyVersion: '999',
@@ -67,7 +83,8 @@ async function main() {
       candidateId: 'ontology-candidate-1234567890abcdef12345678', stateStore: store, now: '2026-07-25T00:00:00.000Z',
     });
     assert.strictEqual(review.status, 'review_package_ready');
-    assert.strictEqual(store.listOntologyMaintainerAttempts({ candidateId: review.attempt.candidateId }).length, 1);
+    const recordedReview = store.listOntologyMaintainerAttempts({ candidateId: review.attempt.candidateId })[0];
+    assert.strictEqual(recordedReview.requestedCandidateId, recordedReview.candidateId);
     const bulkCandidate = {
       id: 'ontology-candidate-abcdefabcdefabcdefabcdef', candidateKey: 'bulk-candidate-key', projectKey: 'project-key',
       domainKey: 'domain_docs', filePath: 'docs/bulk.md', kind: 'observed_file_change', status: 'pending_review',
@@ -89,7 +106,7 @@ async function main() {
       candidateId: bulkCandidate.id, stateStore: store, now: '2026-07-25T01:02:00.000Z',
     });
     assert.strictEqual(bulkReview.status, 'review_package_ready');
-    assert.strictEqual(bulkReview.reviewPackage.evidence.length, 100);
+    assert.strictEqual(bulkReview.reviewPackage.evidence.length, REVIEW_EVIDENCE_LIMIT);
     console.log('  PASS migrates policy and records immutable maintainer attempts');
   } finally {
     store.close();

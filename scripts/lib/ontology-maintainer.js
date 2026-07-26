@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const POLICY_ID = 'ontology-maintainer-v1';
 const REVIEW_PACKAGE_SCHEMA_VERSION = 1;
 const MODE_MANUAL_DRY_RUN = 'manual_dry_run';
+const REVIEW_EVIDENCE_LIMIT = 100;
 const REVIEWER_CHECKLIST = Object.freeze([
   'Confirm the candidate still matches the current project domain and file fingerprint.',
   'Choose a configured Claude Code or Codex CLI adapter only after reviewing the evidence bundle.',
@@ -131,10 +132,11 @@ function validateOntologyMaintainerReviewPackage(reviewPackage) {
     && reviewPackage.reviewerChecklist.every((item, index) => item === REVIEWER_CHECKLIST[index]);
 }
 
-function buildAttempt({ attemptId, candidateId, policy, mode, provider, apply, reviewPackage, now }) {
+function buildAttempt({ attemptId, candidateId, requestedCandidateId, policy, mode, provider, apply, reviewPackage, now }) {
   return {
     id: attemptId,
     candidateId: candidateId || null,
+    requestedCandidateId: requestedCandidateId || null,
     policyId: POLICY_ID,
     policyVersion: policy.policyVersion,
     requestedMode: mode,
@@ -158,13 +160,25 @@ function runOntologyMaintainerDryRun({ candidateId, stateStore, mode = MODE_MANU
   }
   const policyState = stateStore.getOntologyMaintainerPolicyState();
   const candidate = stateStore.getOntologyCandidateById(candidateId);
-  const evidence = candidate ? stateStore.listOntologyCandidateEvidence(candidate.id) : [];
+  const evidence = candidate
+    ? stateStore.listOntologyCandidateEvidence(candidate.id, { limit: REVIEW_EVIDENCE_LIMIT })
+    : [];
   const policy = evaluateOntologyMaintainerPolicy({ candidate, evidence, policyState, mode, provider, apply });
   const attemptId = createAttemptId();
   const reviewPackage = policy.allowed
     ? buildOntologyMaintainerReviewPackage({ attemptId, candidate, evidence, policy, generatedAt: now })
     : null;
-  const attempt = buildAttempt({ attemptId, candidateId: candidate?.id || null, policy, mode, provider, apply, reviewPackage, now });
+  const attempt = buildAttempt({
+    attemptId,
+    candidateId: candidate?.id || null,
+    requestedCandidateId: candidateId,
+    policy,
+    mode,
+    provider,
+    apply,
+    reviewPackage,
+    now,
+  });
   try {
     stateStore.recordOntologyMaintainerAttempt(attempt);
   } catch {
@@ -177,6 +191,7 @@ function runOntologyMaintainerDryRun({ candidateId, stateStore, mode = MODE_MANU
 module.exports = {
   MODE_MANUAL_DRY_RUN,
   POLICY_ID,
+  REVIEW_EVIDENCE_LIMIT,
   REVIEW_PACKAGE_SCHEMA_VERSION,
   buildOntologyMaintainerReviewPackage,
   evaluateOntologyMaintainerPolicy,

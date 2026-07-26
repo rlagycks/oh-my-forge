@@ -4,6 +4,7 @@ const assert = require('assert');
 const {
   buildOntologyMaintainerReviewPackage,
   evaluateOntologyMaintainerPolicy,
+  REVIEW_EVIDENCE_LIMIT,
   runOntologyMaintainerDryRun,
 } = require('../../scripts/lib/ontology-maintainer');
 
@@ -90,6 +91,19 @@ if (test('records an immutable attempt and returns a metadata-only review packag
   assert.strictEqual(result.reviewPackage.provider, 'none');
   assert.deepStrictEqual(result.reviewPackage.proposedChanges, []);
   assert.ok(!JSON.stringify(result.reviewPackage).includes('spoolPath'));
+})) passed++; else failed++;
+
+if (test('uses an explicit shared evidence limit when building a review package', () => {
+  const stateStore = store();
+  let receivedOptions = null;
+  const listEvidence = stateStore.listOntologyCandidateEvidence;
+  stateStore.listOntologyCandidateEvidence = (candidateId, options) => {
+    receivedOptions = options;
+    return listEvidence(candidateId, options);
+  };
+  const result = runOntologyMaintainerDryRun({ candidateId: 'ontology-candidate-123', stateStore });
+  assert.strictEqual(result.status, 'review_package_ready');
+  assert.deepStrictEqual(receivedOptions, { limit: REVIEW_EVIDENCE_LIMIT });
 })) passed++; else failed++;
 
 if (test('does not return an allowed package when the immutable attempt ledger fails', () => {
