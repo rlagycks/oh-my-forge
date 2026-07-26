@@ -68,6 +68,20 @@ if (test('requires runtime, ontology, and install manifest paths in the artifact
   assert.deepStrictEqual(missing, [REQUIRED_PACKAGE_ARTIFACT_PATHS[0]]);
 })) passed++; else failed++;
 
+if (test('requires the foreground ontology maintainer CLI and its execution boundary', () => {
+  const required = [
+    'scripts/ontology-maintain.js',
+    'scripts/lib/ontology-maintainer-runtime.js',
+    'scripts/lib/ontology-maintainer-process.js',
+    'scripts/lib/ontology-maintainer-providers/claude-code.js',
+    'scripts/lib/ontology-maintainer-providers/codex-cli.js',
+    'scripts/lib/ontology-maintainer-providers/index.js',
+  ];
+  assert.deepStrictEqual(findMissingRequiredArtifactPaths(new Set()), REQUIRED_PACKAGE_ARTIFACT_PATHS);
+  assert.deepStrictEqual(findMissingRequiredArtifactPaths(new Set(REQUIRED_PACKAGE_ARTIFACT_PATHS)), []);
+  assert.ok(required.every(relativePath => REQUIRED_PACKAGE_ARTIFACT_PATHS.includes(relativePath)));
+})) passed++; else failed++;
+
 if (test('rejects untracked artifacts from every shipped directory', () => {
   const unexpected = findUntrackedArtifactPaths(
     new Set([
