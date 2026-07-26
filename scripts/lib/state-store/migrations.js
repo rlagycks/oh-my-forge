@@ -212,6 +212,85 @@ const MIGRATIONS = [
         ON ontology_maintainer_attempts (requested_candidate_id, created_at DESC);
     `,
   },
+  {
+    version: 5,
+    name: '005_ontology_maintainer_protocol_ledger',
+    sql: `
+      CREATE TABLE IF NOT EXISTS ontology_maintainer_jobs (
+        id TEXT PRIMARY KEY,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        provider TEXT NOT NULL,
+        candidate_id TEXT NOT NULL,
+        review_package_sha256 TEXT NOT NULL,
+        candidate_fingerprint TEXT NOT NULL,
+        repo_head TEXT NOT NULL,
+        hop INTEGER NOT NULL CHECK (hop = 0),
+        hop_limit INTEGER NOT NULL CHECK (hop_limit = 1),
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (candidate_id) REFERENCES ontology_update_candidates (id) ON DELETE RESTRICT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ontology_maintainer_jobs_candidate_created
+        ON ontology_maintainer_jobs (candidate_id, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS ontology_maintainer_proposals (
+        id TEXT PRIMARY KEY,
+        job_id TEXT NOT NULL UNIQUE,
+        provider TEXT NOT NULL,
+        review_package_sha256 TEXT NOT NULL,
+        candidate_fingerprint TEXT NOT NULL,
+        repo_head TEXT NOT NULL,
+        target_path TEXT NOT NULL,
+        target_before_hash TEXT NOT NULL,
+        intent_action TEXT NOT NULL,
+        intent_subject TEXT NOT NULL,
+        proposal_sha256 TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (job_id) REFERENCES ontology_maintainer_jobs (id) ON DELETE RESTRICT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ontology_maintainer_proposals_job_created
+        ON ontology_maintainer_proposals (job_id, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS ontology_maintainer_receipts (
+        id TEXT PRIMARY KEY,
+        job_id TEXT NOT NULL,
+        proposal_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        reason_code TEXT NOT NULL,
+        artifact_id TEXT,
+        artifact_hash TEXT,
+        artifact_persisted_at TEXT,
+        artifact_signature TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (job_id) REFERENCES ontology_maintainer_jobs (id) ON DELETE RESTRICT,
+        FOREIGN KEY (proposal_id) REFERENCES ontology_maintainer_proposals (id) ON DELETE RESTRICT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ontology_maintainer_receipts_proposal_created
+        ON ontology_maintainer_receipts (proposal_id, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS ontology_maintainer_approvals (
+        id TEXT PRIMARY KEY,
+        proposal_id TEXT NOT NULL,
+        proposal_sha256 TEXT NOT NULL,
+        review_package_sha256 TEXT NOT NULL,
+        candidate_fingerprint TEXT NOT NULL,
+        repo_head TEXT NOT NULL,
+        target_path TEXT NOT NULL,
+        target_before_hash TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        approver_id TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (proposal_id) REFERENCES ontology_maintainer_proposals (id) ON DELETE RESTRICT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ontology_maintainer_approvals_proposal_created
+        ON ontology_maintainer_approvals (proposal_id, created_at DESC);
+    `,
+  },
 ];
 
 function ensureMigrationTable(db) {
