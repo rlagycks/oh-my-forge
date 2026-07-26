@@ -14,6 +14,7 @@ const {
   assertValidOntologyMaintainerJob,
   assertValidOntologyMaintainerProposal,
   assertValidOntologyMaintainerReceipt,
+  verifyOntologyMaintainerArtifactReference,
 } = require('../ontology-maintainer-protocol');
 
 const ACTIVE_SESSION_STATES = ['active', 'running', 'idle'];
@@ -1089,7 +1090,16 @@ function createQueryApi(db) {
     assertValidOntologyMaintainerJob(job);
     const claim = db.transaction(() => {
       const existing = getOntologyMaintainerJobByIdempotencyKeyStatement.get(job.idempotencyKey);
-      if (existing) return { claimed: false, job: mapOntologyMaintainerJobRow(existing) };
+      if (existing) {
+        const stored = mapOntologyMaintainerJobRow(existing);
+        const immutableFields = [
+          'provider', 'candidateId', 'reviewPackageSha256', 'candidateFingerprint', 'repoHead', 'hop', 'hopLimit',
+        ];
+        if (immutableFields.some(field => stored[field] !== job[field])) {
+          throw new Error('Ontology maintainer idempotency conflict');
+        }
+        return { claimed: false, job: stored };
+      }
 
       assertOntologyMaintainerJobFresh(job);
       insertOntologyMaintainerJobStatement.run({
@@ -1166,7 +1176,7 @@ function createQueryApi(db) {
     return row ? mapOntologyMaintainerProposalRow(row) : null;
   }
 
-  function recordOntologyMaintainerReceipt(receipt) {
+  function recordOntologyMaintainerReceipt(receipt, { artifactReader, attestationSecret, evidenceStorePath } = {}) {
     assertValidOntologyMaintainerReceipt(receipt);
     const record = db.transaction(() => {
       const jobRow = getOntologyMaintainerJobByIdStatement.get(receipt.jobId);
@@ -1178,6 +1188,11 @@ function createQueryApi(db) {
         throw new Error('Ontology maintainer receipt provider does not match its job and proposal');
       }
       const artifact = receipt.artifactReference;
+      if (receipt.outcome === 'succeeded' && !verifyOntologyMaintainerArtifactReference({
+        job, proposal, artifactReference: artifact, artifactReader, attestationSecret, evidenceStorePath,
+      })) {
+        throw new Error('Ontology maintainer artifact attestation verification failed');
+      }
       insertOntologyMaintainerReceiptStatement.run({
         id: receipt.id,
         job_id: receipt.jobId,
@@ -1196,7 +1211,9 @@ function createQueryApi(db) {
     return record();
   }
 
-  function recordOntologyMaintainerApproval(approval, { currentRepoHead, currentTargetBeforeHash, now } = {}) {
+  function recordOntologyMaintainerApproval(approval, {
+    currentRepoHead, currentTargetBeforeHash, now, artifactReader, attestationSecret, evidenceStorePath,
+  } = {}) {
     assertValidOntologyMaintainerApproval(approval);
     const recordedAt = now || new Date().toISOString();
     if (typeof currentRepoHead !== 'string' || typeof currentTargetBeforeHash !== 'string') {
@@ -1224,8 +1241,19 @@ function createQueryApi(db) {
         throw new Error('Ontology maintainer approval does not bind its exact proposal');
       }
       assertOntologyMaintainerJobFresh(job);
-      if (approval.decision === 'approved' && !getSuccessfulOntologyMaintainerReceiptStatement.get(proposal.id)) {
+      const successfulReceiptRow = getSuccessfulOntologyMaintainerReceiptStatement.get(proposal.id);
+      if (approval.decision === 'approved' && !successfulReceiptRow) {
         throw new Error('Ontology maintainer approval requires an attested proposal artifact receipt');
+      }
+      if (approval.decision === 'approved' && !verifyOntologyMaintainerArtifactReference({
+        job,
+        proposal,
+        artifactReference: mapOntologyMaintainerReceiptRow(successfulReceiptRow).artifactReference,
+        artifactReader,
+        attestationSecret,
+        evidenceStorePath,
+      })) {
+        throw new Error('Ontology maintainer artifact attestation verification failed');
       }
       insertOntologyMaintainerApprovalStatement.run({
         id: approval.id,

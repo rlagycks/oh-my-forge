@@ -1,6 +1,8 @@
 'use strict';
 
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { isPortableIdentifier, isStrictUtcTimestamp } = require('./evidence-contract');
 
 const PROTOCOL_SCHEMA_VERSION = 1;
@@ -14,6 +16,7 @@ const ALLOWED_INTENT_ACTIONS = Object.freeze([
 const ALLOWED_RECEIPT_OUTCOMES = Object.freeze(['succeeded', 'retryable_failure', 'permanent_failure']);
 const ALLOWED_APPROVAL_DECISIONS = Object.freeze(['approved', 'rejected']);
 const MAX_HOP_LIMIT = 1;
+const MAX_ARTIFACT_BYTES = 2 * 1024 * 1024;
 
 const UUID_SUFFIX = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const BARE_SHA256 = /^[a-f0-9]{64}$/;
@@ -75,7 +78,93 @@ function isSafeProtocolIdentifier(value, { minLength = 1, maxLength = 160 } = {}
 function isSafeTargetPath(value) {
   return typeof value === 'string' && value.length > 0 && value.length <= 512
     && isPortableIdentifier(value) && /^[A-Za-z0-9._/-]+$/.test(value)
-    && !value.includes('..') && !value.includes('//') && !value.startsWith('.git/');
+    && !value.includes('..') && !value.includes('//') && value !== '.git' && !value.startsWith('.git/');
+}
+
+function signaturesMatch(actual, expected) {
+  if (typeof actual !== 'string' || typeof expected !== 'string') return false;
+  const actualBuffer = Buffer.from(actual, 'utf8');
+  const expectedBuffer = Buffer.from(expected, 'utf8');
+  return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function getArtifactKey(artifactId) {
+  return crypto.createHash('sha256').update(artifactId, 'utf8').digest('hex');
+}
+
+function resolveAttestationSecret(value) {
+  const secret = value === undefined ? process.env.OMF_EVIDENCE_ATTESTATION_SECRET : value;
+  return typeof secret === 'string' && secret.length >= 32 ? secret : null;
+}
+
+function artifactSignaturePayload({ job, proposal, artifactReference }) {
+  return [
+    'omf-ontology-maintainer-artifact-v1',
+    job.id,
+    job.provider,
+    job.candidateId,
+    job.reviewPackageSha256,
+    job.candidateFingerprint,
+    job.repoHead,
+    proposal.id,
+    proposal.proposalSha256,
+    proposal.targetPath,
+    proposal.targetBeforeHash,
+    artifactReference.artifactId,
+    artifactReference.artifactHash,
+    artifactReference.persistedAt,
+  ].join('\n');
+}
+
+function assertSignableArtifactInputs({ job, proposal, artifactReference, attestationSecret }) {
+  assertValidOntologyMaintainerJob(job);
+  assertValidOntologyMaintainerProposal(proposal);
+  const referenceErrors = validateArtifactReference({
+    ...artifactReference,
+    signature: artifactReference?.signature || `hmac-sha256:${'0'.repeat(64)}`,
+  });
+  if (referenceErrors.length > 0) throw new Error(`Invalid ontology maintainer artifact reference: ${referenceErrors.join('; ')}`);
+  const secret = resolveAttestationSecret(attestationSecret);
+  if (!secret) throw new Error('Ontology maintainer artifact attestation secret is unavailable');
+  return secret;
+}
+
+function createOntologyMaintainerArtifactSignature({ job, proposal, artifactReference, attestationSecret } = {}) {
+  const secret = assertSignableArtifactInputs({ job, proposal, artifactReference, attestationSecret });
+  return `hmac-sha256:${crypto.createHmac('sha256', secret)
+    .update(artifactSignaturePayload({ job, proposal, artifactReference }), 'utf8')
+    .digest('hex')}`;
+}
+
+function createEvidenceStoreArtifactReader({ evidenceStorePath } = {}) {
+  const configuredPath = evidenceStorePath === undefined ? process.env.OMF_EVIDENCE_STORE : evidenceStorePath;
+  if (typeof configuredPath !== 'string' || configuredPath.trim() === '') {
+    throw new Error('Ontology maintainer evidence store is unavailable');
+  }
+  const artifactDirectory = path.resolve(configuredPath, 'artifacts');
+  return artifactId => fs.readFileSync(path.join(artifactDirectory, getArtifactKey(artifactId)));
+}
+
+function verifyOntologyMaintainerArtifactReference({
+  job, proposal, artifactReference, artifactReader, attestationSecret, evidenceStorePath,
+} = {}) {
+  try {
+    const secret = assertSignableArtifactInputs({ job, proposal, artifactReference, attestationSecret });
+    const readArtifact = typeof artifactReader === 'function'
+      ? artifactReader
+      : createEvidenceStoreArtifactReader({ evidenceStorePath });
+    const artifact = readArtifact(artifactReference.artifactId);
+    const artifactBuffer = Buffer.isBuffer(artifact) ? artifact : Buffer.from(artifact || '');
+    if (artifactBuffer.length === 0 || artifactBuffer.length > MAX_ARTIFACT_BYTES) return false;
+    const actualHash = `sha256:${crypto.createHash('sha256').update(artifactBuffer).digest('hex')}`;
+    const expectedSignature = `hmac-sha256:${crypto.createHmac('sha256', secret)
+      .update(artifactSignaturePayload({ job, proposal, artifactReference }), 'utf8')
+      .digest('hex')}`;
+    return signaturesMatch(actualHash, artifactReference.artifactHash)
+      && signaturesMatch(expectedSignature, artifactReference.signature);
+  } catch (_error) {
+    return false;
+  }
 }
 
 function validateArtifactReference(reference) {
@@ -269,15 +358,19 @@ module.exports = {
   ALLOWED_PROVIDERS,
   ALLOWED_RECEIPT_OUTCOMES,
   MAX_HOP_LIMIT,
+  MAX_ARTIFACT_BYTES,
   PROTOCOL_SCHEMA_VERSION,
   assertValidOntologyMaintainerApproval,
   assertValidOntologyMaintainerJob,
   assertValidOntologyMaintainerProposal,
   assertValidOntologyMaintainerReceipt,
   computeOntologyMaintainerProposalSha256,
+  createEvidenceStoreArtifactReader,
+  createOntologyMaintainerArtifactSignature,
   createOntologyMaintainerProposal,
   validateOntologyMaintainerApproval,
   validateOntologyMaintainerJob,
   validateOntologyMaintainerProposal,
   validateOntologyMaintainerReceipt,
+  verifyOntologyMaintainerArtifactReference,
 };
