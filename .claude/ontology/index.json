@@ -206,6 +206,7 @@
       "scripts/hooks/ontology-maintenance.js",
       "scripts/lib/ontology-maintainer.js",
       "scripts/lib/ontology-maintainer-protocol.js",
+      "scripts/lib/ontology-maintainer-promotion.js",
       "schemas/ontology-maintainer-protocol.schema.json"
     ],
     "spec": "docs/features/state-store.md",
