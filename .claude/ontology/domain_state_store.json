@@ -10,6 +10,7 @@
     "scripts/hooks/ontology-maintenance.js",
     "scripts/lib/ontology-maintainer.js",
     "scripts/lib/ontology-maintainer-protocol.js",
+    "scripts/lib/ontology-maintainer-promotion.js",
     "schemas/ontology-maintainer-protocol.schema.json"
   ],
   "summary": "sql.js(WASM) 기반 SQLite 영구 상태 저장소. Node.js 바이너리 의존성 없이 순수 JS로 실행. 세션 데이터, 훅 플래그, 비용 추적 등 런타임 상태 관리.",
@@ -30,7 +31,8 @@
     { "file": "migrations.js", "exports": ["runMigrations"] },
     { "file": "ontology-observation-drainer.js", "exports": ["drainOntologyObservationSpool", "validateOntologyObservation"] },
     { "file": "ontology-maintainer.js", "exports": ["runOntologyMaintainerDryRun", "evaluateOntologyMaintainerPolicy"] },
-    { "file": "ontology-maintainer-protocol.js", "exports": ["validateOntologyMaintainerJob", "createOntologyMaintainerProposal", "validateOntologyMaintainerReceipt", "validateOntologyMaintainerApproval"] }
+    { "file": "ontology-maintainer-protocol.js", "exports": ["validateOntologyMaintainerJob", "createOntologyMaintainerProposal", "validateOntologyMaintainerReceipt", "validateOntologyMaintainerApproval"] },
+    { "file": "ontology-maintainer-promotion.js", "exports": ["promoteOntologyMaintainerApproval", "validateOntologyMaintainerPromotionArtifact"] }
   ],
   "constraints": [
     "sql.js(WASM) 유지 — better-sqlite3로 교체 금지 (Node.js 바이너리 의존성 제거 이유)",

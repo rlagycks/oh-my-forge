@@ -158,10 +158,10 @@ async function main() {
     const dbPath = path.join(fixture.root, 'state.db');
     try {
       const first = await createStateStore({ dbPath });
-      assert.deepStrictEqual(first.getAppliedMigrations().map(migration => migration.version), [1, 2, 3, 4, 5]);
+      assert.deepStrictEqual(first.getAppliedMigrations().map(migration => migration.version), [1, 2, 3, 4, 5, 6, 7, 8]);
       first.close();
       const reopened = await createStateStore({ dbPath });
-      assert.deepStrictEqual(reopened.getAppliedMigrations().map(migration => migration.version), [1, 2, 3, 4, 5]);
+      assert.deepStrictEqual(reopened.getAppliedMigrations().map(migration => migration.version), [1, 2, 3, 4, 5, 6, 7, 8]);
       reopened.close();
     } finally {
       fs.rmSync(fixture.root, { recursive: true, force: true });

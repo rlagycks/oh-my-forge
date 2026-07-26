@@ -15,6 +15,7 @@ OMF 세션 데이터, 스킬 이력, 오케스트레이션 상태를 SQLite(sql.
 - `scripts/lib/ontology-observation-drainer.js` — metadata-only observation spool을 단일 writer로 읽어 review 후보로 materialize
 - `scripts/lib/ontology-maintainer.js` — Claude Code·Codex CLI adapter가 공통으로 소비할 provider-neutral review package와 fail-closed policy 계약
 - `scripts/lib/ontology-maintainer-protocol.js` — provider-neutral job·proposal·receipt·approval 계약과 metadata-only 검증 경계
+- `scripts/lib/ontology-maintainer-promotion.js` — attested artifact를 사람 승인 뒤 단일 ontology detail JSON 교체로만 반영하는 fail-closed promotion 경계
 
 ## P0 런타임 상태 경계
 
@@ -66,6 +67,8 @@ Append-only는 이벤트 레코드의 쓰기 방식에 대한 계약이다. 기�
 - maintainer protocol ledger는 실행 요청의 idempotency key를 원자적으로 claim한다. provider는 `claude_code` 또는 `codex_cli`를 명시해야 하며 fallback·상호 재호출은 허용하지 않고 job은 `hop=0`, `hopLimit=1`로 고정한다.
 - DB에는 job/proposal/receipt/approval의 제한된 메타데이터만 저장한다. prompt·source·diff·patch·shell command·raw output은 스키마와 열 구조 모두에서 제외한다. 실제 apply artifact는 evidence store에 두고 DB에는 hash·artifact ID·attestation 참조만 바인딩한다.
 - approval은 proposal hash, review package hash, candidate fingerprint, repo HEAD, target path/before-hash, expiry를 모두 바인딩한다. 성공 receipt와 approval 모두 evidence store의 artifact ID를 다시 읽어 SHA-256과 job/proposal/artifact HMAC attestation을 검증한다. verifier·artifact·secret이 없거나 현재 candidate/review package/HEAD/target hash가 다르면 fail closed하며 어떠한 파일도 변경하지 않는다.
+- promotion은 승인된 artifact도 shell·diff·임의 파일 write로 취급하지 않는다. main checkout은 거부하고, caller 소유이며 group/world-write 불가한 isolated Git worktree에서만 실행한다. `.claude/ontology/domain_*.json`으로 index에 정확히 등록된 단일 real file만 허용하고, 구조화된 전체 JSON document 교체 연산을 target hash·real repo HEAD·실제 시계 기준 approval expiry와 다시 대조한다. `.claude`·ontology directory·target의 symlink/realpath 이탈은 거부한다. owner token이 붙은 prepared claim과 per-target lock을 잡고 temp file fsync·atomic rename 뒤 hash를 확인하며, prepared/recovery 레코드는 다른 caller의 재시도를 막아 fail closed한다.
+- provider가 proposal을 기록하기 전에 timeout 등 retryable failure로 끝나면 job에는 bounded reason code만 저장한다. 같은 immutable idempotency job은 해당 상태에서만 후보 freshness를 다시 검증하고 reclaim할 수 있으며, proposal이 한 번 기록되면 `proposal_recorded` 상태로 봉인된다.
 
 ## 관련 도메인
 

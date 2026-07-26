@@ -191,7 +191,7 @@ async function main() {
 
   const store = await createStateStore({ dbPath: ':memory:' });
   try {
-    assert.deepStrictEqual(store.getAppliedMigrations().map(item => item.version), [1, 2, 3, 4, 5]);
+    assert.deepStrictEqual(store.getAppliedMigrations().map(item => item.version), [1, 2, 3, 4, 5, 6, 7, 8]);
     const review = await seedCandidate(store);
     const jobRecord = job({ reviewPackageSha256: review.reviewPackageSha256 });
     const first = store.claimOntologyMaintainerJob(jobRecord);
@@ -206,6 +206,21 @@ async function main() {
       }),
       /idempotency conflict/
     );
+    const retryable = store.recordOntologyMaintainerJobRetryableFailure({
+      jobId: jobRecord.id, reasonCode: 'provider_timeout', updatedAt: NOW,
+    });
+    assert.strictEqual(retryable.state, 'retryable_failure');
+    assert.strictEqual(retryable.lastReasonCode, 'provider_timeout');
+    assert.throws(
+      () => store.recordOntologyMaintainerJobRetryableFailure({
+        jobId: jobRecord.id, reasonCode: 'provider_timeout', updatedAt: NOW,
+      }),
+      /not claimable/
+    );
+    const reclaimed = store.claimOntologyMaintainerJob(jobRecord);
+    assert.strictEqual(reclaimed.claimed, true);
+    assert.strictEqual(reclaimed.reclaimed, true);
+    assert.strictEqual(store.getOntologyMaintainerJobById(jobRecord.id).attemptCount, 2);
 
     assert.throws(
       () => store.claimOntologyMaintainerJob(job({ idempotencyKey: 'new-idempotency-key', reviewPackageSha256: 'f'.repeat(64) })),
@@ -214,6 +229,13 @@ async function main() {
 
     const proposalRecord = proposal(first.job);
     assert.strictEqual(store.recordOntologyMaintainerProposal(proposalRecord, { currentRepoHead: REVIEW_HEAD }).id, proposalRecord.id);
+    assert.strictEqual(store.getOntologyMaintainerJobById(jobRecord.id).state, 'proposal_recorded');
+    assert.throws(
+      () => store.recordOntologyMaintainerJobRetryableFailure({
+        jobId: jobRecord.id, reasonCode: 'provider_timeout', updatedAt: NOW,
+      }),
+      /before a proposal/
+    );
     assert.throws(
       () => store.recordOntologyMaintainerApproval(
         approval(proposalRecord),

@@ -291,6 +291,62 @@ const MIGRATIONS = [
         ON ontology_maintainer_approvals (proposal_id, created_at DESC);
     `,
   },
+  {
+    version: 6,
+    name: '006_ontology_maintainer_promotion_ledger',
+    sql: `
+      CREATE TABLE IF NOT EXISTS ontology_maintainer_promotions (
+        id TEXT PRIMARY KEY,
+        approval_id TEXT NOT NULL UNIQUE,
+        proposal_id TEXT NOT NULL,
+        repo_root TEXT NOT NULL,
+        target_path TEXT NOT NULL,
+        target_before_hash TEXT NOT NULL,
+        target_after_hash TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('prepared', 'applied', 'recovery_required')),
+        reason_code TEXT,
+        created_at TEXT NOT NULL,
+        completed_at TEXT,
+        FOREIGN KEY (approval_id) REFERENCES ontology_maintainer_approvals (id) ON DELETE RESTRICT,
+        FOREIGN KEY (proposal_id) REFERENCES ontology_maintainer_proposals (id) ON DELETE RESTRICT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ontology_maintainer_promotions_proposal_created
+        ON ontology_maintainer_promotions (proposal_id, created_at DESC);
+    `,
+  },
+  {
+    version: 7,
+    name: '007_ontology_maintainer_job_retry_state',
+    sql: `
+      ALTER TABLE ontology_maintainer_jobs
+        ADD COLUMN state TEXT NOT NULL DEFAULT 'claimed'
+        CHECK (state IN ('claimed', 'retryable_failure', 'proposal_recorded'));
+
+      ALTER TABLE ontology_maintainer_jobs
+        ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 1 CHECK (attempt_count >= 1);
+
+      ALTER TABLE ontology_maintainer_jobs
+        ADD COLUMN last_reason_code TEXT;
+
+      ALTER TABLE ontology_maintainer_jobs
+        ADD COLUMN updated_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z';
+
+      CREATE INDEX IF NOT EXISTS idx_ontology_maintainer_jobs_state_updated
+        ON ontology_maintainer_jobs (state, updated_at DESC);
+    `,
+  },
+  {
+    version: 8,
+    name: '008_ontology_maintainer_promotion_owner_lease',
+    sql: `
+      ALTER TABLE ontology_maintainer_promotions
+        ADD COLUMN owner_token TEXT NOT NULL DEFAULT '';
+
+      ALTER TABLE ontology_maintainer_promotions
+        ADD COLUMN lease_expires_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z';
+    `,
+  },
 ];
 
 function ensureMigrationTable(db) {
