@@ -4,7 +4,9 @@ const crypto = require('crypto');
 const path = require('path');
 const {
   assertValidOntologyMaintainerJob,
+  assertValidOntologyMaintainerReceipt,
   createOntologyMaintainerProposal,
+  verifyOntologyMaintainerArtifactReference,
 } = require('./ontology-maintainer-protocol');
 const { validateOntologyMaintainerReviewPackage } = require('./ontology-maintainer');
 const {
@@ -165,17 +167,24 @@ async function executeOntologyMaintainerJob({
       repoHead: claim.job.repoHead, targetPath: semantic.targetPath, targetBeforeHash: semantic.targetBeforeHash,
       intent: semantic.intent, createdAt: now || new Date().toISOString(),
     });
-    proposal = stateStore.recordOntologyMaintainerProposal(proposal, { currentRepoHead });
   } catch (_error) {
     return { status: 'rejected', reasonCode: 'semantic_proposal_rejected' };
   }
-  if (typeof persistArtifact !== 'function') return { status: 'proposal_recorded', proposal };
+  if (typeof persistArtifact !== 'function') {
+    try {
+      proposal = stateStore.recordOntologyMaintainerProposal(proposal, { currentRepoHead });
+      return { status: 'proposal_recorded', proposal };
+    } catch (_error) {
+      return markRetryableFailure(stateStore, claim.job, 'proposal_persistence_failed', now);
+    }
+  }
 
   let persisted;
+  let receipt;
   try {
     persisted = persistArtifact({ job: claim.job, proposal });
     if (!persisted || typeof persisted !== 'object') throw new Error('artifact persistence is unavailable');
-    const receipt = stateStore.recordOntologyMaintainerReceipt({
+    receipt = {
       schemaVersion: 1,
       type: 'ontology_maintainer_receipt',
       id: createReceiptId(),
@@ -186,15 +195,31 @@ async function executeOntologyMaintainerJob({
       reasonCode: 'proposal_ready',
       artifactReference: persisted.artifactReference,
       createdAt: now || new Date().toISOString(),
-    }, {
+    };
+    assertValidOntologyMaintainerReceipt(receipt);
+    if (!verifyOntologyMaintainerArtifactReference({
+      job: claim.job, proposal, artifactReference: receipt.artifactReference,
+      artifactReader: persisted.artifactReader, attestationSecret: persisted.attestationSecret,
+      evidenceStorePath: persisted.evidenceStorePath,
+    })) throw new Error('artifact receipt is not attestable');
+  } catch (_error) {
+    return markRetryableFailure(stateStore, claim.job,
+      persisted === undefined ? 'artifact_persistence_failed' : 'artifact_receipt_rejected', now);
+  }
+  try {
+    proposal = stateStore.recordOntologyMaintainerProposal(proposal, { currentRepoHead });
+  } catch (_error) {
+    return markRetryableFailure(stateStore, claim.job, 'proposal_persistence_failed', now);
+  }
+  try {
+    receipt = stateStore.recordOntologyMaintainerReceipt(receipt, {
       artifactReader: persisted.artifactReader,
       attestationSecret: persisted.attestationSecret,
       evidenceStorePath: persisted.evidenceStorePath,
     });
     return { status: 'succeeded', proposal, receipt };
   } catch (_error) {
-    return markRetryableFailure(stateStore, claim.job,
-      persisted === undefined ? 'artifact_persistence_failed' : 'artifact_receipt_rejected', now);
+    return { status: 'denied', reasonCode: 'receipt_persistence_failed' };
   }
 }
 

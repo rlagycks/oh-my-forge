@@ -235,18 +235,11 @@ async function main() {
     assert.strictEqual(codexExecution.status, 'proposal_recorded');
     assert.strictEqual(codexExecution.proposal.provider, 'codex_cli');
 
-    const retryableFailures = [];
-    const retryableStore = {
-      ...store,
-      recordOntologyMaintainerJobRetryableFailure: failure => {
-        retryableFailures.push(failure);
-      },
-    };
     const persistenceFailure = await executeOntologyMaintainerJob({
       job: job(review.reviewPackageSha256, {
         id: 'ontology-maintainer-job-11111111-1111-1111-1111-111111111111',
         idempotencyKey: 'ontology-maintainer-runtime-artifact-failure-1234567890abcdef',
-      }), reviewPackage: review.reviewPackage, stateStore: retryableStore, currentRepoHead: REVIEW_HEAD,
+      }), reviewPackage: review.reviewPackage, stateStore: store, currentRepoHead: REVIEW_HEAD,
       providerCapabilities: PROVIDER_CAPABILITIES,
       spawnProcess: createMockSpawn({ stdout: JSON.stringify({
         targetPath: '.claude/ontology/domain_state_store.json', targetBeforeHash: `sha256:${'b'.repeat(64)}`,
@@ -255,12 +248,22 @@ async function main() {
       persistArtifact: () => { throw new Error('evidence store is unavailable'); }, now: NOW, ...RUNTIME_SECURITY_OPTIONS,
     });
     assert.deepStrictEqual(persistenceFailure, { status: 'retryable_failure', reasonCode: 'artifact_persistence_failed' });
+    assert.strictEqual(
+      store.getOntologyMaintainerJobById('ontology-maintainer-job-11111111-1111-1111-1111-111111111111').state,
+      'retryable_failure'
+    );
+    const reclaimed = store.claimOntologyMaintainerJob(job(review.reviewPackageSha256, {
+      id: 'ontology-maintainer-job-11111111-1111-1111-1111-111111111111',
+      idempotencyKey: 'ontology-maintainer-runtime-artifact-failure-1234567890abcdef',
+    }));
+    assert.strictEqual(reclaimed.claimed, true);
+    assert.strictEqual(reclaimed.reclaimed, true);
 
     const attestationFailure = await executeOntologyMaintainerJob({
       job: job(review.reviewPackageSha256, {
         id: 'ontology-maintainer-job-22222222-2222-2222-2222-222222222222',
         idempotencyKey: 'ontology-maintainer-runtime-attestation-failure-1234567890abcdef',
-      }), reviewPackage: review.reviewPackage, stateStore: retryableStore, currentRepoHead: REVIEW_HEAD,
+      }), reviewPackage: review.reviewPackage, stateStore: store, currentRepoHead: REVIEW_HEAD,
       providerCapabilities: PROVIDER_CAPABILITIES,
       spawnProcess: createMockSpawn({ stdout: JSON.stringify({
         targetPath: '.claude/ontology/domain_state_store.json', targetBeforeHash: `sha256:${'b'.repeat(64)}`,
@@ -269,10 +272,10 @@ async function main() {
       persistArtifact: () => ({ artifactReference: null }), now: NOW, ...RUNTIME_SECURITY_OPTIONS,
     });
     assert.deepStrictEqual(attestationFailure, { status: 'retryable_failure', reasonCode: 'artifact_receipt_rejected' });
-    assert.deepStrictEqual(retryableFailures, [
-      { jobId: 'ontology-maintainer-job-11111111-1111-1111-1111-111111111111', reasonCode: 'artifact_persistence_failed', now: NOW },
-      { jobId: 'ontology-maintainer-job-22222222-2222-2222-2222-222222222222', reasonCode: 'artifact_receipt_rejected', now: NOW },
-    ]);
+    assert.strictEqual(
+      store.getOntologyMaintainerJobById('ontology-maintainer-job-22222222-2222-2222-2222-222222222222').state,
+      'retryable_failure'
+    );
 
     const unavailable = await executeOntologyMaintainerJob({
       job: job(review.reviewPackageSha256, {
