@@ -8,8 +8,9 @@ const path = require('path');
 
 const {
   findMissingDeclaredPackagePaths,
+  findMissingDeclaredArtifactPaths,
   findMissingRequiredArtifactPaths,
-  findUntrackedAgentArtifactPaths,
+  findUntrackedArtifactPaths,
   normalizePackagePath,
 } = require('../lib/package-artifact');
 
@@ -64,9 +65,9 @@ function readSourcePaths(declaredPaths) {
   );
 }
 
-function readTrackedAgentPaths() {
+function readTrackedPaths() {
   return new Set(
-    run('git', ['ls-files', '-z', '--', '.agents/'])
+    run('git', ['ls-files', '-z'])
       .split('\0')
       .filter(Boolean)
       .map(normalizePackagePath)
@@ -79,9 +80,10 @@ function validatePackageArtifact() {
   const artifactPaths = readPackageArtifactPaths();
   const errors = [
     ...findMissingDeclaredPackagePaths(declaredPaths, readSourcePaths(declaredPaths)),
+    ...findMissingDeclaredArtifactPaths(declaredPaths, artifactPaths),
     ...findMissingRequiredArtifactPaths(artifactPaths)
       .map(relativePath => `${relativePath} is required in the published package but is absent from npm pack`),
-    ...findUntrackedAgentArtifactPaths(artifactPaths, readTrackedAgentPaths())
+    ...findUntrackedArtifactPaths(artifactPaths, readTrackedPaths())
       .map(relativePath => `${relativePath} is present in the published package but is not tracked by git`),
   ];
 

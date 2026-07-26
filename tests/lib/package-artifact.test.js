@@ -4,9 +4,10 @@ const assert = require('assert');
 
 const {
   REQUIRED_PACKAGE_ARTIFACT_PATHS,
+  findMissingDeclaredArtifactPaths,
   findMissingDeclaredPackagePaths,
   findMissingRequiredArtifactPaths,
-  findUntrackedAgentArtifactPaths,
+  findUntrackedArtifactPaths,
   normalizePackagePath,
 } = require('../../scripts/lib/package-artifact');
 
@@ -42,28 +43,53 @@ if (test('reports declared package paths that do not exist in the source tree', 
   assert.deepStrictEqual(missing, ['install.sh is listed in package.json files but does not exist']);
 })) passed++; else failed++;
 
+if (test('requires every declared file, directory, and glob to contribute to the tarball', () => {
+  const artifactPaths = new Set([
+    'scripts/ecc.js',
+    'contexts/dev.md',
+    'scripts/install-apply.js',
+  ]);
+
+  assert.deepStrictEqual(
+    findMissingDeclaredArtifactPaths(
+      ['scripts/ecc.js', 'contexts/', 'scripts/*-apply.js', 'missing/', 'rules/*.md'],
+      artifactPaths
+    ),
+    [
+      'missing is listed in package.json files but does not contribute a path to npm pack',
+      'rules/*.md is listed in package.json files but does not contribute a path to npm pack',
+    ]
+  );
+})) passed++; else failed++;
+
 if (test('requires runtime, ontology, and install manifest paths in the artifact', () => {
   const artifactPaths = new Set(REQUIRED_PACKAGE_ARTIFACT_PATHS.slice(1));
   const missing = findMissingRequiredArtifactPaths(artifactPaths);
   assert.deepStrictEqual(missing, [REQUIRED_PACKAGE_ARTIFACT_PATHS[0]]);
 })) passed++; else failed++;
 
-if (test('rejects an untracked .agents artifact while allowing tracked agent assets', () => {
-  const unexpected = findUntrackedAgentArtifactPaths(
+if (test('rejects untracked artifacts from every shipped directory', () => {
+  const unexpected = findUntrackedArtifactPaths(
     new Set([
       '.agents/skills/tdd-workflow/SKILL.md',
       '.agents/skills/tdd-workflow/local-notes.md',
+      '.codex/local-settings.toml',
+      'scripts/lib/ignored-secret.js',
       'scripts/ecc.js',
     ]),
-    new Set(['.agents/skills/tdd-workflow/SKILL.md'])
+    new Set(['.agents/skills/tdd-workflow/SKILL.md', 'scripts/ecc.js'])
   );
-  assert.deepStrictEqual(unexpected, ['.agents/skills/tdd-workflow/local-notes.md']);
+  assert.deepStrictEqual(unexpected, [
+    '.agents/skills/tdd-workflow/local-notes.md',
+    '.codex/local-settings.toml',
+    'scripts/lib/ignored-secret.js',
+  ]);
 })) passed++; else failed++;
 
-if (test('does not flag tracked .agents artifact files', () => {
-  const unexpected = findUntrackedAgentArtifactPaths(
-    new Set(['.agents/plugins/marketplace.json']),
-    new Set(['.agents/plugins/marketplace.json'])
+if (test('does not flag tracked artifact files', () => {
+  const unexpected = findUntrackedArtifactPaths(
+    new Set(['.agents/plugins/marketplace.json', '.codex/config.toml']),
+    new Set(['.agents/plugins/marketplace.json', '.codex/config.toml'])
   );
   assert.deepStrictEqual(unexpected, []);
 })) passed++; else failed++;
