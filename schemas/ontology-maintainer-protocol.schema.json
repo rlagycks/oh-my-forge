@@ -45,7 +45,7 @@
         "provider": { "$ref": "#/$defs/provider" },
         "reviewPackageSha256": { "$ref": "#/$defs/bareSha256" }, "candidateFingerprint": { "$ref": "#/$defs/bareSha256" },
         "repoHead": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" },
-        "targetPath": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!.*(?:^|/)\\.git(?:/|$))(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$" }, "targetBeforeHash": { "$ref": "#/$defs/sha256" },
+        "targetPath": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!.*(?:^|/)\\.[Gg][Ii][Tt](?:/|$))(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$" }, "targetBeforeHash": { "$ref": "#/$defs/sha256" },
         "intent": { "$ref": "#/$defs/intent" }, "proposalSha256": { "$ref": "#/$defs/bareSha256" }, "createdAt": { "$ref": "#/$defs/timestamp" }
       }
     },
@@ -85,7 +85,7 @@
         "id": { "type": "string", "pattern": "^ontology-maintainer-approval-[0-9a-f-]{36}$" },
         "proposalId": { "type": "string", "pattern": "^ontology-maintainer-proposal-[0-9a-f-]{36}$" }, "proposalSha256": { "$ref": "#/$defs/bareSha256" },
         "reviewPackageSha256": { "$ref": "#/$defs/bareSha256" }, "candidateFingerprint": { "$ref": "#/$defs/bareSha256" },
-        "repoHead": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" }, "targetPath": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!.*(?:^|/)\\.git(?:/|$))(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$" },
+        "repoHead": { "type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$" }, "targetPath": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!.*(?:^|/)\\.[Gg][Ii][Tt](?:/|$))(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$" },
         "targetBeforeHash": { "$ref": "#/$defs/sha256" }, "decision": { "enum": ["approved", "rejected"] },
         "approverId": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[a-z0-9][a-z0-9._/-]*$" }, "expiresAt": { "$ref": "#/$defs/timestamp" }, "createdAt": { "$ref": "#/$defs/timestamp" }
       }
