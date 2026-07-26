@@ -169,6 +169,27 @@ async function main() {
   assert.notStrictEqual(calls[0].options.env.PATH, '/usr/bin');
   assert.deepStrictEqual(Object.keys(calls[0].options.env).sort(), ['LANG', 'LC_ALL', 'PATH']);
 
+  const epipeSpawn = () => {
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = new EventEmitter();
+    child.stdin.end = () => {
+      process.nextTick(() => {
+        const error = new Error('write EPIPE');
+        error.code = 'EPIPE';
+        child.stdin.emit('error', error);
+        child.emit('close', 0, null);
+      });
+    };
+    child.kill = () => true;
+    return child;
+  };
+  const epipeResult = await runBoundedOntologyMaintainerProcess({
+    command: 'claude', args: ['--print'], input: '{}', spawnProcess: epipeSpawn, timeoutMs: 1000,
+  });
+  assert.strictEqual(epipeResult.exitCode, 0, 'stdin EPIPE from an exited provider must be handled');
+
   const nonClosingSpawn = (_command, _args, _options) => {
     const child = new EventEmitter();
     child.stdout = new EventEmitter();
