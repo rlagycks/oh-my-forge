@@ -1206,6 +1206,11 @@ function createQueryApi(db) {
     return row ? mapOntologyMaintainerJobStateRow(row) : null;
   }
 
+  function getOntologyMaintainerJobByIdempotencyKey(idempotencyKey) {
+    const row = getOntologyMaintainerJobByIdempotencyKeyStatement.get(idempotencyKey);
+    return row ? mapOntologyMaintainerJobStateRow(row) : null;
+  }
+
   function assertProposalMatchesJob(proposal, job, currentRepoHead) {
     if (typeof currentRepoHead !== 'string' || currentRepoHead !== job.repoHead) {
       throw new Error('Ontology maintainer proposal has a stale repo head');
@@ -1694,6 +1699,7 @@ function createQueryApi(db) {
     getOntologyCandidateById,
     getOntologyMaintainerApprovalById,
     getOntologyMaintainerJobById,
+    getOntologyMaintainerJobByIdempotencyKey,
     getOntologyMaintainerPolicyState,
     getOntologyMaintainerProposalById,
     getOntologyMaintainerPromotionByApprovalId,

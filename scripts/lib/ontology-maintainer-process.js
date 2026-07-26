@@ -217,6 +217,9 @@ function runBoundedOntologyMaintainerProcess({
     child.stdout.on('data', chunk => { stdout = append(stdout, chunk); });
     child.stderr.on('data', chunk => { stderr = append(stderr, chunk); });
     child.once('close', (exitCode, signal) => settle(snapshot(exitCode, signal)));
+    // A provider can exit before consuming its bounded request. Treat the resulting
+    // stdin EPIPE as best-effort transport cleanup; its close status is authoritative.
+    if (typeof child.stdin.on === 'function') child.stdin.on('error', () => {});
     child.stdin.end(input);
   });
 }

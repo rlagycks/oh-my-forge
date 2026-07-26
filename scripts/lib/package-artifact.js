@@ -18,6 +18,12 @@ const REQUIRED_PACKAGE_ARTIFACT_PATHS = Object.freeze([
   'scripts/install-plan.js',
   'scripts/lib/install-executor.js',
   'scripts/lib/ontology-maintainer.js',
+  'scripts/lib/ontology-maintainer-process.js',
+  'scripts/lib/ontology-maintainer-providers/claude-code.js',
+  'scripts/lib/ontology-maintainer-providers/codex-cli.js',
+  'scripts/lib/ontology-maintainer-providers/index.js',
+  'scripts/lib/ontology-maintainer-runtime.js',
+  'scripts/ontology-maintain.js',
 ]);
 
 function normalizePackagePath(entry) {

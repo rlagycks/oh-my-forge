@@ -41,6 +41,9 @@ fi
 # Validate the exact npm artifact before updating versioned manifests.
 node scripts/ci/validate-package-artifact.js
 
+# Exercise the foreground ontology maintainer gate with mock providers only.
+npm run release:ontology-maintainer
+
 # Verify versioned manifests exist
 for FILE in "$ROOT_PACKAGE_JSON" "$CODEX_PLUGIN_JSON" "$MARKETPLACE_JSON"; do
   if [[ ! -f "$FILE" ]]; then

@@ -380,5 +380,6 @@ module.exports = {
   PROMOTION_OPERATION_TYPE,
   assertValidOntologyMaintainerPromotionArtifact,
   promoteOntologyMaintainerApproval,
+  readRepoHead,
   validateOntologyMaintainerPromotionArtifact,
 };
