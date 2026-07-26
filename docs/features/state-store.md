@@ -16,6 +16,8 @@ OMF 세션 데이터, 스킬 이력, 오케스트레이션 상태를 SQLite(sql.
 - `scripts/lib/ontology-maintainer.js` — Claude Code·Codex CLI adapter가 공통으로 소비할 provider-neutral review package와 fail-closed policy 계약
 - `scripts/lib/ontology-maintainer-protocol.js` — provider-neutral job·proposal·receipt·approval 계약과 metadata-only 검증 경계
 - `scripts/lib/ontology-maintainer-promotion.js` — attested artifact를 사람 승인 뒤 단일 ontology detail JSON 교체로만 반영하는 fail-closed promotion 경계
+- `scripts/lib/ontology-maintainer-runtime.js` — Claude Code·Codex CLI의 고정 argv read-only adapter를 protocol job·proposal·receipt로 조정하는 runtime
+- `scripts/lib/ontology-maintainer-process.js` — shell 없이 timeout·output·environment를 상한하는 mockable process boundary
 
 ## P0 런타임 상태 경계
 
@@ -65,6 +67,7 @@ Append-only는 이벤트 레코드의 쓰기 방식에 대한 계약이다. 기�
 - ontology observation drain은 `<spool>.drain.lock`으로 writer를 하나로 제한하고, source receipt·candidate upsert·cursor checkpoint를 한 transaction으로 커밋한다. spool을 삭제·truncate하지 않으며, EOF의 불완전 레코드는 다음 drain까지 보류한다.
 - ontology maintainer v1은 `pending_review` 후보를 immutable attempt ledger와 metadata-only review package로 변환할 뿐이다. provider 실행·파일 적용은 기본 거부하며, 두 기능은 별도 adapter·승인·복구 정책이 준비된 뒤에만 열 수 있다.
 - maintainer protocol ledger는 실행 요청의 idempotency key를 원자적으로 claim한다. provider는 `claude_code` 또는 `codex_cli`를 명시해야 하며 fallback·상호 재호출은 허용하지 않고 job은 `hop=0`, `hopLimit=1`로 고정한다.
+- maintainer runtime은 hook에서 실행하지 않는다. configured absolute binary가 realpath·regular executable·ownership/permission 검증을 통과하고 injected process runner가 있을 때만 provider를 시작한다. caller `PATH`는 탐색하지 않으며 provider는 fixed argv, `shell: false`, read-only sandbox, trusted minimal environment, bounded stdin/stdout/stderr로만 실행한다. timeout/output-limit은 stdin을 닫고 process group을 종료한 뒤 child close를 확인해야 끝난다. 반환값은 target·before-hash·semantic intent만 허용하고 patch·diff·command·raw output은 내구 저장소에 기록하지 않는다.
 - DB에는 job/proposal/receipt/approval의 제한된 메타데이터만 저장한다. prompt·source·diff·patch·shell command·raw output은 스키마와 열 구조 모두에서 제외한다. 실제 apply artifact는 evidence store에 두고 DB에는 hash·artifact ID·attestation 참조만 바인딩한다.
 - approval은 proposal hash, review package hash, candidate fingerprint, repo HEAD, target path/before-hash, expiry를 모두 바인딩한다. 성공 receipt와 approval 모두 evidence store의 artifact ID를 다시 읽어 SHA-256과 job/proposal/artifact HMAC attestation을 검증한다. verifier·artifact·secret이 없거나 현재 candidate/review package/HEAD/target hash가 다르면 fail closed하며 어떠한 파일도 변경하지 않는다.
 - promotion은 승인된 artifact도 shell·diff·임의 파일 write로 취급하지 않는다. main checkout은 거부하고, caller 소유이며 group/world-write 불가한 isolated Git worktree에서만 실행한다. `.claude/ontology/domain_*.json`으로 index에 정확히 등록된 단일 real file만 허용하고, 구조화된 전체 JSON document 교체 연산을 target hash·real repo HEAD·실제 시계 기준 approval expiry와 다시 대조한다. `.claude`·ontology directory·target의 symlink/realpath 이탈은 거부한다. owner token이 붙은 prepared claim과 per-target lock을 잡고 temp file fsync·atomic rename 뒤 hash를 확인하며, prepared/recovery 레코드는 다른 caller의 재시도를 막아 fail closed한다.
