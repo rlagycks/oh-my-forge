@@ -28,18 +28,18 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 1
 fi
 
-# Check current branch is main
+# Refuse unstaged, staged, and untracked files before any release mutation.
+node scripts/ci/validate-release-worktree.js
+
+# Check current branch is main only after confirming the release candidate is clean.
 CURRENT_BRANCH=$(git branch --show-current)
 if [[ "$CURRENT_BRANCH" != "main" ]]; then
   echo "Error: Must be on main branch (currently on $CURRENT_BRANCH)"
   exit 1
 fi
 
-# Check working tree is clean
-if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo "Error: Working tree is not clean. Commit or stash changes first."
-  exit 1
-fi
+# Validate the exact npm artifact before updating versioned manifests.
+node scripts/ci/validate-package-artifact.js
 
 # Verify versioned manifests exist
 for FILE in "$ROOT_PACKAGE_JSON" "$CODEX_PLUGIN_JSON" "$MARKETPLACE_JSON"; do
