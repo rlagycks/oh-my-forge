@@ -36,10 +36,20 @@ yarn install
 **Verify everything works:**
 
 ```bash
-node tests/run-all.js
+yarn test
 ```
 
 All tests should pass before you start making changes.
+
+### Release preflight
+
+`scripts/release.sh <version>` is intentionally strict. It refuses unstaged,
+staged, and untracked files, then validates the exact `npm pack` artifact before
+it edits any manifest. The published package contains the runtime, ontology, and
+install manifests; `.agents/` contents must be Git-tracked, so local agent notes
+cannot be published accidentally. The supported manual installation contract is
+the Node CLI (`node scripts/ecc.js install` or `npx ecc-install`), not legacy
+`install.sh` or `install.ps1` wrappers.
 
 ---
 
