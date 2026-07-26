@@ -31,20 +31,29 @@ function resolveStateStorePath(options = {}) {
  * IMPORTANT: sql.js db.export() implicitly ends any active transaction, so
  * we must defer all disk writes until after the transaction commits.
  */
-function wrapSqlJsDatabase(rawDb, dbPath) {
+function wrapSqlJsDatabase(rawDb, dbPath, { readOnly = false } = {}) {
   let inTransaction = false;
 
   function saveToDisk() {
-    if (dbPath === ':memory:' || inTransaction) {
+    if (readOnly || dbPath === ':memory:' || inTransaction) {
       return;
     }
     const data = rawDb.export();
     const buffer = Buffer.from(data);
-    fs.writeFileSync(dbPath, buffer);
+    const temporaryPath = `${dbPath}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    try {
+      fs.writeFileSync(temporaryPath, buffer, { mode: 0o600 });
+      fs.renameSync(temporaryPath, dbPath);
+    } finally {
+      if (fs.existsSync(temporaryPath)) {
+        try { fs.unlinkSync(temporaryPath); } catch (_error) { /* best effort */ }
+      }
+    }
   }
 
   const db = {
     exec(sql) {
+      if (readOnly) throw new Error('State store is read-only');
       rawDb.run(sql);
       saveToDisk();
     },
@@ -92,6 +101,7 @@ function wrapSqlJsDatabase(rawDb, dbPath) {
         },
 
         run(namedParams) {
+          if (readOnly) throw new Error('State store is read-only');
           const stmt = rawDb.prepare(sql);
           if (namedParams && typeof namedParams === 'object' && !Array.isArray(namedParams)) {
             const sqlJsParams = {};
@@ -109,6 +119,7 @@ function wrapSqlJsDatabase(rawDb, dbPath) {
 
     transaction(fn) {
       return (...args) => {
+        if (readOnly) throw new Error('State store is read-only');
         rawDb.run('BEGIN');
         inTransaction = true;
         try {
@@ -138,9 +149,13 @@ function wrapSqlJsDatabase(rawDb, dbPath) {
   return db;
 }
 
-async function openDatabase(SQL, dbPath) {
-  if (dbPath !== ':memory:') {
+async function openDatabase(SQL, dbPath, { readOnly = false } = {}) {
+  if (!readOnly && dbPath !== ':memory:') {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  }
+
+  if (readOnly && (dbPath === ':memory:' || !fs.existsSync(dbPath))) {
+    throw new Error('Read-only state store database is unavailable');
   }
 
   let rawDb;
@@ -151,7 +166,7 @@ async function openDatabase(SQL, dbPath) {
     rawDb = new SQL.Database();
   }
 
-  const db = wrapSqlJsDatabase(rawDb, dbPath);
+  const db = wrapSqlJsDatabase(rawDb, dbPath, { readOnly });
   db.pragma('foreign_keys = ON');
   try {
     db.pragma('journal_mode = WAL');
@@ -161,20 +176,29 @@ async function openDatabase(SQL, dbPath) {
   return db;
 }
 
+function getReadOnlyAppliedMigrations(db) {
+  return db
+    .prepare('SELECT version, name, applied_at FROM schema_migrations ORDER BY version ASC')
+    .all()
+    .map(row => ({ version: row.version, name: row.name, appliedAt: row.applied_at }));
+}
+
 async function createStateStore(options = {}) {
   const dbPath = resolveStateStorePath(options);
+  const readOnly = options.readOnly === true;
   const SQL = await initSqlJs();
-  const db = await openDatabase(SQL, dbPath);
-  const appliedMigrations = applyMigrations(db);
+  const db = await openDatabase(SQL, dbPath, { readOnly });
+  const appliedMigrations = readOnly ? getReadOnlyAppliedMigrations(db) : applyMigrations(db);
   const queryApi = createQueryApi(db);
 
   return {
     dbPath,
+    readOnly,
     close() {
       db.close();
     },
     getAppliedMigrations() {
-      return getAppliedMigrations(db);
+      return readOnly ? [...appliedMigrations] : getAppliedMigrations(db);
     },
     validateEntity,
     assertValidEntity,

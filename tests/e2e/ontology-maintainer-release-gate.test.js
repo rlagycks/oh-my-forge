@@ -186,10 +186,36 @@ async function main() {
       const second = await invokeCliAsync(concurrentFixture, concurrentArgs);
       const firstResult = await first;
       assert.strictEqual(JSON.parse(firstResult.stdout).status, 'proposal_recorded', firstResult.stderr);
-      assert.deepStrictEqual(JSON.parse(second.stdout), { status: 'denied', reasonCode: 'workflow_locked' });
+      assert.strictEqual(JSON.parse(second.stdout).status, 'duplicate', second.stderr);
       assert.strictEqual(fs.readFileSync(concurrentFixture.markerPath, 'utf8'), 'rx');
     } finally {
       cleanup(concurrentFixture);
+    }
+
+    const retryFixture = makeFixture();
+    try {
+      await seedCandidate(retryFixture);
+      const retryStore = await createStateStore({ dbPath: retryFixture.dbPath });
+      const retryReview = runOntologyMaintainerDryRun({ candidateId: CANDIDATE_ID, stateStore: retryStore, now: NOW });
+      const retryHash = retryStore.listOntologyMaintainerAttempts({ candidateId: CANDIDATE_ID })[0].reviewPackageSha256;
+      const retryJob = {
+        schemaVersion: 1, type: 'ontology_maintainer_job', id: 'ontology-maintainer-job-99999999-9999-4999-8999-999999999999',
+        idempotencyKey: 'ontology-maintainer-e2e-retry-1234567890abcdef', provider: 'claude_code', candidateId: CANDIDATE_ID,
+        reviewPackageSha256: retryHash, candidateFingerprint: retryReview.reviewPackage.candidate.latestContentFingerprint,
+        repoHead: HEAD, hop: 0, hopLimit: 1, createdAt: NOW,
+      };
+      retryStore.claimOntologyMaintainerJob(retryJob);
+      retryStore.recordOntologyMaintainerJobRetryableFailure({ jobId: retryJob.id, reasonCode: 'provider_timeout', now: NOW });
+      retryStore.close();
+      const retryBinary = writeMockProvider(retryFixture, JSON.stringify({
+        targetPath: '.claude/ontology/domain_docs.json', targetBeforeHash: sha256(fs.readFileSync(retryFixture.detailPath)),
+        intent: { action: 'sync_domain_metadata', subject: 'domain_docs' },
+      }));
+      const retried = parseResult(invokeCli(retryFixture, ['propose', '--candidate', CANDIDATE_ID, '--provider', 'claude_code', '--binary', retryBinary, '--db', retryFixture.dbPath, '--repo', retryFixture.root, '--idempotency-key', retryJob.idempotencyKey]));
+      assert.strictEqual(retried.status, 'proposal_recorded');
+      assert.strictEqual(fs.readFileSync(retryFixture.markerPath, 'utf8'), 'x');
+    } finally {
+      cleanup(retryFixture);
     }
 
     const approvalState = await recordApproval(fixture, proposalResult.proposal);
