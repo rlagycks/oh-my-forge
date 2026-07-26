@@ -1260,6 +1260,65 @@ function createQueryApi(db) {
     return record();
   }
 
+  function recordOntologyMaintainerProposalAndReceipt(proposal, receipt, {
+    currentRepoHead, artifactReader, attestationSecret, evidenceStorePath,
+  } = {}) {
+    assertValidOntologyMaintainerProposal(proposal);
+    assertValidOntologyMaintainerReceipt(receipt);
+    const record = db.transaction(() => {
+      const jobRow = getOntologyMaintainerJobByIdStatement.get(proposal.jobId);
+      if (!jobRow) throw new Error('Ontology maintainer proposal job was not claimed');
+      const jobState = mapOntologyMaintainerJobStateRow(jobRow);
+      const job = mapOntologyMaintainerJobRow(jobRow);
+      if (jobState.state !== 'claimed') throw new Error('Ontology maintainer proposal requires an actively claimed job');
+      if (getOntologyMaintainerProposalByJobIdStatement.get(job.id)) {
+        throw new Error('Ontology maintainer job already has an immutable proposal');
+      }
+      assertProposalMatchesJob(proposal, job, currentRepoHead);
+      if (receipt.jobId !== job.id || receipt.proposalId !== proposal.id
+          || receipt.provider !== job.provider || receipt.provider !== proposal.provider) {
+        throw new Error('Ontology maintainer receipt provider does not match its job and proposal');
+      }
+      const artifact = receipt.artifactReference;
+      if (receipt.outcome === 'succeeded' && !verifyOntologyMaintainerArtifactReference({
+        job, proposal, artifactReference: artifact, artifactReader, attestationSecret, evidenceStorePath,
+      })) throw new Error('Ontology maintainer artifact attestation verification failed');
+      insertOntologyMaintainerProposalStatement.run({
+        id: proposal.id,
+        job_id: proposal.jobId,
+        provider: proposal.provider,
+        review_package_sha256: proposal.reviewPackageSha256,
+        candidate_fingerprint: proposal.candidateFingerprint,
+        repo_head: proposal.repoHead,
+        target_path: proposal.targetPath,
+        target_before_hash: proposal.targetBeforeHash,
+        intent_action: proposal.intent.action,
+        intent_subject: proposal.intent.subject,
+        proposal_sha256: proposal.proposalSha256,
+        created_at: proposal.createdAt,
+      });
+      insertOntologyMaintainerReceiptStatement.run({
+        id: receipt.id,
+        job_id: receipt.jobId,
+        proposal_id: receipt.proposalId,
+        provider: receipt.provider,
+        outcome: receipt.outcome,
+        reason_code: receipt.reasonCode,
+        artifact_id: artifact?.artifactId ?? null,
+        artifact_hash: artifact?.artifactHash ?? null,
+        artifact_persisted_at: artifact?.persistedAt ?? null,
+        artifact_signature: artifact?.signature ?? null,
+        created_at: receipt.createdAt,
+      });
+      markOntologyMaintainerJobProposalRecordedStatement.run({ id: job.id, updated_at: proposal.createdAt });
+      return {
+        proposal: { ...proposal, intent: { ...proposal.intent } },
+        receipt: { ...receipt, artifactReference: artifact && { ...artifact } },
+      };
+    });
+    return record();
+  }
+
   function getOntologyMaintainerProposalById(id) {
     const row = getOntologyMaintainerProposalByIdStatement.get(id);
     return row ? mapOntologyMaintainerProposalRow(row) : null;
@@ -1648,6 +1707,7 @@ function createQueryApi(db) {
     recordOntologyMaintainerApproval,
     recordOntologyMaintainerJobRetryableFailure,
     recordOntologyMaintainerProposal,
+    recordOntologyMaintainerProposalAndReceipt,
     recordOntologyMaintainerReceipt,
     assertOntologyMaintainerPromotionApproval,
     completeOntologyMaintainerPromotion,

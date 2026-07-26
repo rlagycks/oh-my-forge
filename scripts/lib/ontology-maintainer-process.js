@@ -1,6 +1,7 @@
 'use strict';
 
 const { spawn: defaultSpawn } = require('child_process');
+const path = require('path');
 
 const MAX_PROCESS_TIMEOUT_MS = 30_000;
 const MAX_PROCESS_OUTPUT_BYTES = 64 * 1024;
@@ -28,6 +29,14 @@ function normalizeTimeout(timeoutMs) {
   return timeoutMs;
 }
 
+function normalizeTerminationGrace(terminationGraceMs) {
+  if (terminationGraceMs === undefined) return TERMINATION_GRACE_MS;
+  if (!Number.isSafeInteger(terminationGraceMs) || terminationGraceMs < 1 || terminationGraceMs > 5_000) {
+    throw new Error('terminationGraceMs must be an integer between 1 and 5000');
+  }
+  return terminationGraceMs;
+}
+
 function assertFixedProcessInvocation({ command, args, input }) {
   assertBoundedString(command, 'command', 512);
   if (!Array.isArray(args) || args.length > 12) throw new Error('args must be a fixed bounded array');
@@ -47,12 +56,66 @@ function closeStandardInput(child) {
   }
 }
 
-function terminateProcessTree(child, signal) {
-  if (!child) return;
-  if (process.platform !== 'win32' && Number.isSafeInteger(child.pid) && child.pid > 0) {
+function getTrustedWindowsTaskkillPath(systemRoot) {
+  const normalizedRoot = typeof systemRoot === 'string' ? path.win32.normalize(systemRoot) : null;
+  const root = normalizedRoot && /^[a-z]:\\windows$/i.test(normalizedRoot)
+    ? normalizedRoot
+    : 'C:\\Windows';
+  return path.win32.join(root, 'System32', 'taskkill.exe');
+}
+
+function waitForChildClose(child) {
+  return new Promise(resolve => {
+    if (!child || typeof child.once !== 'function') {
+      resolve();
+      return;
+    }
+    child.once('close', () => resolve());
+    child.once('error', () => resolve());
+  });
+}
+
+function terminateWindowsProcessTree(child, { spawnTreeKiller, systemRoot, environment } = {}) {
+  if (!Number.isSafeInteger(child?.pid) || child.pid <= 0 || typeof spawnTreeKiller !== 'function') {
+    return Promise.resolve();
+  }
+  let killer;
+  try {
+    killer = spawnTreeKiller(getTrustedWindowsTaskkillPath(systemRoot), [
+      '/PID', String(child.pid), '/T', '/F',
+    ], {
+      shell: false,
+      stdio: 'ignore',
+      windowsHide: true,
+      detached: false,
+      env: buildBoundedOntologyMaintainerEnvironment(environment),
+    });
+  } catch (_error) {
+    return Promise.resolve();
+  }
+  return waitForChildClose(killer);
+}
+
+function terminateProcessTree(child, signal, {
+  platform = process.platform,
+  spawnTreeKiller = defaultSpawn,
+  systemRoot,
+  environment,
+} = {}) {
+  if (!child) return Promise.resolve();
+  if (platform === 'win32') {
+    closeStandardInput(child);
+    try {
+      if (typeof child.kill === 'function') child.kill(signal);
+    } catch (_error) {
+      // taskkill below remains the tree-wide termination boundary.
+    }
+    return terminateWindowsProcessTree(child, { spawnTreeKiller, systemRoot, environment });
+  }
+  if (Number.isSafeInteger(child.pid) && child.pid > 0) {
     try {
       process.kill(-child.pid, signal);
-      return;
+      return Promise.resolve();
     } catch (_error) {
       // The child may not own a process group; fall through to child.kill().
     }
@@ -62,13 +125,16 @@ function terminateProcessTree(child, signal) {
   } catch (_error) {
     // Best effort only; close event still determines completion.
   }
+  return Promise.resolve();
 }
 
 function runBoundedOntologyMaintainerProcess({
   command, args, input, timeoutMs, environment, spawnProcess = defaultSpawn,
+  spawnTreeKiller = defaultSpawn, platform = process.platform, systemRoot, terminationGraceMs,
 } = {}) {
   assertFixedProcessInvocation({ command, args, input });
   const effectiveTimeout = normalizeTimeout(timeoutMs);
+  const effectiveTerminationGrace = normalizeTerminationGrace(terminationGraceMs);
   if (typeof spawnProcess !== 'function') throw new Error('spawnProcess must be a function');
   const options = {
     shell: false,
@@ -95,7 +161,8 @@ function runBoundedOntologyMaintainerProcess({
     let outputLimitExceeded = false;
     let settled = false;
     let terminating = false;
-    let hardKillTimer = null;
+    let terminationPromise = Promise.resolve();
+    let hardKillPromise = Promise.resolve();
     const snapshot = (exitCode = null, signal = null) => ({
       exitCode: Number.isInteger(exitCode) ? exitCode : null,
       signal: typeof signal === 'string' ? signal : null,
@@ -108,15 +175,25 @@ function runBoundedOntologyMaintainerProcess({
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (hardKillTimer) clearTimeout(hardKillTimer);
-      resolve(result);
+      Promise.all([terminationPromise, hardKillPromise]).then(() => resolve(result));
     };
     const requestTermination = () => {
       if (terminating) return;
       terminating = true;
       closeStandardInput(child);
-      terminateProcessTree(child, 'SIGTERM');
-      hardKillTimer = setTimeout(() => terminateProcessTree(child, 'SIGKILL'), TERMINATION_GRACE_MS);
+      terminationPromise = terminateProcessTree(child, 'SIGTERM', {
+        platform, spawnTreeKiller, systemRoot, environment,
+      });
+      if (platform !== 'win32') {
+        hardKillPromise = new Promise(resolve => {
+          setTimeout(() => {
+            terminationPromise = terminationPromise.then(() => terminateProcessTree(child, 'SIGKILL', {
+              platform, spawnTreeKiller, systemRoot, environment,
+            }));
+            terminationPromise.then(resolve);
+          }, effectiveTerminationGrace);
+        });
+      }
     };
     const append = (current, chunk) => {
       const next = Buffer.concat([current, Buffer.from(chunk)]);
@@ -134,9 +211,8 @@ function runBoundedOntologyMaintainerProcess({
     child.once('error', error => {
       if (settled) return;
       clearTimeout(timer);
-      if (hardKillTimer) clearTimeout(hardKillTimer);
       settled = true;
-      reject(error);
+      Promise.all([terminationPromise, hardKillPromise]).then(() => reject(error));
     });
     child.stdout.on('data', chunk => { stdout = append(stdout, chunk); });
     child.stderr.on('data', chunk => { stderr = append(stderr, chunk); });
@@ -153,6 +229,8 @@ module.exports = {
   TRUSTED_PATH,
   buildBoundedOntologyMaintainerEnvironment,
   closeStandardInput,
+  getTrustedWindowsTaskkillPath,
   runBoundedOntologyMaintainerProcess,
   terminateProcessTree,
+  terminateWindowsProcessTree,
 };

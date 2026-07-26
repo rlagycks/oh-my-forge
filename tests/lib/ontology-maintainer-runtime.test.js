@@ -12,6 +12,7 @@ const { resolveOntologyMaintainerProviderBinary } = require('../../scripts/lib/o
 const {
   buildOntologyMaintainerProviderInvocation,
   executeOntologyMaintainerJob,
+  markRetryableFailure,
   runBoundedOntologyMaintainerProcess,
 } = require('../../scripts/lib/ontology-maintainer-runtime');
 
@@ -69,6 +70,29 @@ function job(reviewPackageSha256, overrides = {}) {
     hopLimit: 1,
     createdAt: NOW,
     ...overrides,
+  };
+}
+
+function createAttestedArtifactPersister(artifact) {
+  return ({ job: claimedJob, proposal }) => {
+    const reference = {
+      artifactId: 'ontology-maintainer/artifacts/runtime-proposal-123',
+      artifactHash: `sha256:${crypto.createHash('sha256').update(artifact).digest('hex')}`,
+      persistedAt: NOW,
+    };
+    return {
+      artifactReference: {
+        ...reference,
+        signature: createOntologyMaintainerArtifactSignature({
+          job: claimedJob, proposal, artifactReference: reference, attestationSecret: ATTESTATION_SECRET,
+        }),
+      },
+      artifactReader: artifactId => {
+        assert.strictEqual(artifactId, reference.artifactId);
+        return artifact;
+      },
+      attestationSecret: ATTESTATION_SECRET,
+    };
   };
 }
 
@@ -157,14 +181,40 @@ async function main() {
     return child;
   };
   const timedOut = await runBoundedOntologyMaintainerProcess({
-    command: 'codex', args: ['exec'], input: '{}', spawnProcess: nonClosingSpawn, timeoutMs: 1,
+    command: 'codex', args: ['exec'], input: '{}', spawnProcess: nonClosingSpawn, timeoutMs: 1, terminationGraceMs: 1,
   });
   assert.strictEqual(timedOut.timedOut, true);
+
+  const posixSignals = [];
+  let posixRunPending = true;
+  const posixRun = runBoundedOntologyMaintainerProcess({
+    command: 'codex', args: ['exec'], input: '{}', timeoutMs: 1, terminationGraceMs: 1, platform: 'darwin',
+    spawnProcess: (_command, _args, _options) => {
+      const child = new EventEmitter();
+      child.pid = 4242;
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.stdin = { end() {}, destroy() {} };
+      child.kill = signal => {
+        posixSignals.push(signal);
+        if (signal === 'SIGTERM') process.nextTick(() => child.emit('close', null, signal));
+        return true;
+      };
+      return child;
+    },
+  }).then(result => {
+    posixRunPending = false;
+    return result;
+  });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.strictEqual(posixRunPending, true);
+  assert.strictEqual((await posixRun).timedOut, true);
+  assert.deepStrictEqual(posixSignals, ['SIGTERM', 'SIGKILL']);
 
   let hangingChild;
   let pending = true;
   const hangingRun = runBoundedOntologyMaintainerProcess({
-    command: 'codex', args: ['exec'], input: '{}', timeoutMs: 1,
+    command: 'codex', args: ['exec'], input: '{}', timeoutMs: 1, terminationGraceMs: 1,
     spawnProcess: (_command, _args, _options) => {
       hangingChild = new EventEmitter();
       hangingChild.stdout = new EventEmitter();
@@ -182,6 +232,44 @@ async function main() {
   hangingChild.emit('close', null, 'SIGTERM');
   assert.strictEqual((await hangingRun).timedOut, true);
 
+  let windowsChild;
+  let windowsKiller;
+  const windowsTreeCalls = [];
+  let windowsRunPending = true;
+  const windowsRun = runBoundedOntologyMaintainerProcess({
+    command: 'codex', args: ['exec'], input: '{}', timeoutMs: 1, platform: 'win32', systemRoot: 'C:\\Windows',
+    spawnProcess: (_command, _args, _options) => {
+      windowsChild = new EventEmitter();
+      windowsChild.pid = 4242;
+      windowsChild.stdout = new EventEmitter();
+      windowsChild.stderr = new EventEmitter();
+      windowsChild.stdin = { end() {}, destroy() {} };
+      windowsChild.kill = () => true;
+      return windowsChild;
+    },
+    spawnTreeKiller: (command, args, options) => {
+      windowsTreeCalls.push({ command, args, options });
+      windowsKiller = new EventEmitter();
+      return windowsKiller;
+    },
+  }).then(result => {
+    windowsRunPending = false;
+    return result;
+  });
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.deepStrictEqual(windowsTreeCalls, [{
+    command: 'C:\\Windows\\System32\\taskkill.exe', args: ['/PID', '4242', '/T', '/F'],
+    options: {
+      shell: false, stdio: 'ignore', windowsHide: true, detached: false,
+      env: { PATH: calls[0].options.env.PATH, LANG: 'C', LC_ALL: 'C' },
+    },
+  }]);
+  windowsChild.emit('close', null, 'SIGTERM');
+  await new Promise(resolve => setTimeout(resolve, 1));
+  assert.strictEqual(windowsRunPending, true);
+  windowsKiller.emit('close', 0, null);
+  assert.strictEqual((await windowsRun).timedOut, true);
+
   const store = await createStateStore({ dbPath: ':memory:' });
   try {
     const review = await seedReview(store);
@@ -193,26 +281,7 @@ async function main() {
         targetPath: '.claude/ontology/domain_state_store.json', targetBeforeHash: `sha256:${'b'.repeat(64)}`,
         intent: { action: 'sync_domain_metadata', subject: 'domain_state_store' },
       }) }),
-      persistArtifact: ({ job: claimedJob, proposal }) => {
-        const reference = {
-          artifactId: 'ontology-maintainer/artifacts/runtime-proposal-123',
-          artifactHash: `sha256:${crypto.createHash('sha256').update(artifact).digest('hex')}`,
-          persistedAt: NOW,
-        };
-        return {
-          artifactReference: {
-            ...reference,
-            signature: createOntologyMaintainerArtifactSignature({
-              job: claimedJob, proposal, artifactReference: reference, attestationSecret: ATTESTATION_SECRET,
-            }),
-          },
-          artifactReader: artifactId => {
-            assert.strictEqual(artifactId, reference.artifactId);
-            return artifact;
-          },
-          attestationSecret: ATTESTATION_SECRET,
-        };
-      },
+      persistArtifact: createAttestedArtifactPersister(artifact),
       now: NOW,
       ...RUNTIME_SECURITY_OPTIONS,
     });
@@ -220,6 +289,17 @@ async function main() {
     assert.strictEqual(execution.proposal.provider, 'claude_code');
     assert.strictEqual(execution.receipt.outcome, 'succeeded');
     assert.strictEqual(store.listOntologyMaintainerReceipts({ proposalId: execution.proposal.id }).length, 1);
+
+    const defaultTimestampJob = job(review.reviewPackageSha256, {
+      id: 'ontology-maintainer-job-33333333-3333-3333-3333-333333333333',
+      idempotencyKey: 'ontology-maintainer-runtime-default-retry-1234567890abcdef',
+    });
+    store.claimOntologyMaintainerJob(defaultTimestampJob);
+    assert.deepStrictEqual(
+      markRetryableFailure(store, defaultTimestampJob, 'provider_timeout'),
+      { status: 'retryable_failure', reasonCode: 'provider_timeout' }
+    );
+    assert.strictEqual(store.getOntologyMaintainerJobById(defaultTimestampJob.id).state, 'retryable_failure');
 
     const codexExecution = await executeOntologyMaintainerJob({
       job: job(review.reviewPackageSha256, {
@@ -234,6 +314,31 @@ async function main() {
     });
     assert.strictEqual(codexExecution.status, 'proposal_recorded');
     assert.strictEqual(codexExecution.proposal.provider, 'codex_cli');
+
+    const atomicFailureStore = {
+      ...store,
+      recordOntologyMaintainerProposalAndReceipt: () => {
+        throw new Error('simulated receipt write failure');
+      },
+    };
+    const atomicFailure = await executeOntologyMaintainerJob({
+      job: job(review.reviewPackageSha256, {
+        id: 'ontology-maintainer-job-44444444-4444-4444-4444-444444444444',
+        idempotencyKey: 'ontology-maintainer-runtime-atomic-failure-1234567890abcdef',
+      }), reviewPackage: review.reviewPackage, stateStore: atomicFailureStore, currentRepoHead: REVIEW_HEAD,
+      providerCapabilities: PROVIDER_CAPABILITIES,
+      spawnProcess: createMockSpawn({ stdout: JSON.stringify({
+        targetPath: '.claude/ontology/domain_state_store.json', targetBeforeHash: `sha256:${'b'.repeat(64)}`,
+        intent: { action: 'sync_domain_metadata', subject: 'domain_state_store' },
+      }) }), persistArtifact: createAttestedArtifactPersister(artifact), now: NOW, ...RUNTIME_SECURITY_OPTIONS,
+    });
+    assert.deepStrictEqual(atomicFailure, {
+      status: 'retryable_failure', reasonCode: 'proposal_receipt_persistence_failed',
+    });
+    assert.strictEqual(
+      store.getOntologyMaintainerJobById('ontology-maintainer-job-44444444-4444-4444-4444-444444444444').state,
+      'retryable_failure'
+    );
 
     const persistenceFailure = await executeOntologyMaintainerJob({
       job: job(review.reviewPackageSha256, {

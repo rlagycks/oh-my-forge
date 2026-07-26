@@ -97,7 +97,7 @@ function validateRuntimeInputs({ job, reviewPackage, stateStore, currentRepoHead
   }
   if (!stateStore || typeof stateStore.claimOntologyMaintainerJob !== 'function'
       || typeof stateStore.recordOntologyMaintainerProposal !== 'function'
-      || typeof stateStore.recordOntologyMaintainerReceipt !== 'function') {
+      || typeof stateStore.recordOntologyMaintainerProposalAndReceipt !== 'function') {
     return 'state_store_unavailable';
   }
   return null;
@@ -108,7 +108,9 @@ function markRetryableFailure(stateStore, job, reasonCode, now) {
     return { status: 'denied', reasonCode: 'retry_transition_unavailable' };
   }
   try {
-    stateStore.recordOntologyMaintainerJobRetryableFailure({ jobId: job.id, reasonCode, now });
+    stateStore.recordOntologyMaintainerJobRetryableFailure({
+      jobId: job.id, reasonCode, now: now || new Date().toISOString(),
+    });
     return { status: 'retryable_failure', reasonCode };
   } catch (_error) {
     return { status: 'denied', reasonCode: 'retry_transition_unavailable' };
@@ -207,19 +209,15 @@ async function executeOntologyMaintainerJob({
       persisted === undefined ? 'artifact_persistence_failed' : 'artifact_receipt_rejected', now);
   }
   try {
-    proposal = stateStore.recordOntologyMaintainerProposal(proposal, { currentRepoHead });
-  } catch (_error) {
-    return markRetryableFailure(stateStore, claim.job, 'proposal_persistence_failed', now);
-  }
-  try {
-    receipt = stateStore.recordOntologyMaintainerReceipt(receipt, {
+    const recorded = stateStore.recordOntologyMaintainerProposalAndReceipt(proposal, receipt, {
+      currentRepoHead,
       artifactReader: persisted.artifactReader,
       attestationSecret: persisted.attestationSecret,
       evidenceStorePath: persisted.evidenceStorePath,
     });
-    return { status: 'succeeded', proposal, receipt };
+    return { status: 'succeeded', proposal: recorded.proposal, receipt: recorded.receipt };
   } catch (_error) {
-    return { status: 'denied', reasonCode: 'receipt_persistence_failed' };
+    return markRetryableFailure(stateStore, claim.job, 'proposal_receipt_persistence_failed', now);
   }
 }
 
