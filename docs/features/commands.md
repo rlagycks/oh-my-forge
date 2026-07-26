@@ -16,6 +16,7 @@
 - 파일명은 lowercase-hyphen (예: `tdd.md`, `qa-loop.md`, `ontology-sync.md`)
 - 커맨드 변경 시 `COMMANDS-QUICK-REF.md` 동기화 필수
 - handoff/completion 포맷을 바꾸는 커맨드는 런타임 schema와 테스트를 같이 갱신해야 함
+- `/ontology-maintain`는 hook이 아닌 명시적 deferred workflow이며, provider 선택·review package binding·proposal-only 경계를 우회해서는 안 됨
 
 ## 관련 도메인
 

@@ -14,6 +14,7 @@
 | `/build-fix` | Detect and fix build errors — delegates to the right build-resolver agent automatically |
 | `/verify` | Run the full verification loop: build → lint → test → type-check |
 | `/quality-gate` | Quality gate check against project standards |
+| `/ontology-maintain` | Explicit provider-only, read-only ontology proposal workflow |
 
 ---
 
