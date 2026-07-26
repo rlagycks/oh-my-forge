@@ -165,6 +165,8 @@ async function main() {
   assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, diff: '--- raw diff' }).valid, false);
   assert.throws(() => proposal(job(), { targetPath: '.git' }), /Invalid ontology maintainer proposal/);
   assert.strictEqual(validateProtocolSchema({ ...validProposal, targetPath: '.git' }), false);
+  assert.throws(() => proposal(job(), { targetPath: 'docs/.git/config' }), /Invalid ontology maintainer proposal/);
+  assert.strictEqual(validateProtocolSchema({ ...validProposal, targetPath: 'docs/.git/config' }), false);
   assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal)).valid, true);
   assert.strictEqual(validateProtocolSchema(receipt(validProposal)), true);
   const retryableReceipt = receipt(validProposal, {

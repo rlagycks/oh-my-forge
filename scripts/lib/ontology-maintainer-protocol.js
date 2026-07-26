@@ -78,7 +78,7 @@ function isSafeProtocolIdentifier(value, { minLength = 1, maxLength = 160 } = {}
 function isSafeTargetPath(value) {
   return typeof value === 'string' && value.length > 0 && value.length <= 512
     && isPortableIdentifier(value) && /^[A-Za-z0-9._/-]+$/.test(value)
-    && !value.includes('..') && !value.includes('//') && value !== '.git' && !value.startsWith('.git/');
+    && !value.includes('..') && !value.includes('//') && !value.split('/').includes('.git');
 }
 
 function signaturesMatch(actual, expected) {
