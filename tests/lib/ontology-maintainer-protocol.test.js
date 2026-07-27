@@ -2,11 +2,20 @@
 
 const assert = require('assert');
 const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const Ajv = require('ajv');
 const { createStateStore } = require('../../scripts/lib/state-store');
 const { runOntologyMaintainerDryRun } = require('../../scripts/lib/ontology-maintainer');
 const {
   ALLOWED_PROVIDERS,
+  MAX_ARTIFACT_BYTES,
+  assertValidOntologyMaintainerApproval,
+  assertValidOntologyMaintainerJob,
+  assertValidOntologyMaintainerProposal,
+  assertValidOntologyMaintainerReceipt,
+  createEvidenceStoreArtifactReader,
   createOntologyMaintainerArtifactSignature,
   createOntologyMaintainerProposal,
   validateOntologyMaintainerApproval,
@@ -149,6 +158,26 @@ async function main() {
   assert.strictEqual(validateProtocolSchema(job()), true);
   assert.strictEqual(validateOntologyMaintainerJob(job({ provider: 'auto' })).valid, false);
   assert.strictEqual(validateOntologyMaintainerJob(job({ hop: 1 })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob(job({ idempotencyKey: 'too-short' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob(job({ idempotencyKey: 'ontology-maintainer-key..escape' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob(job({ idempotencyKey: 'ontology-maintainer-key//escape' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob(job({ idempotencyKey: 'ONTOLOGY-MAINTAINER-KEY' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob(job({ idempotencyKey: 'a'.repeat(161) })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob(job({ id: undefined })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob(job({ candidateId: 'ontology-candidate-not-a-hash' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob(job({ candidateId: undefined })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob(job({ reviewPackageSha256: 'A'.repeat(64) })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob(job({ reviewPackageSha256: undefined })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob(job({ candidateFingerprint: 'A'.repeat(64) })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob(job({ candidateFingerprint: undefined })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob(job({ repoHead: 'not-a-git-head' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob(job({ repoHead: undefined })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob(job({ schemaVersion: 2 })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob(job({ type: 'other' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob(job({ createdAt: '2026-07-26' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob({ ...job(), prompt: 'private source text' }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerJob(null).valid, false);
+  assert.throws(() => assertValidOntologyMaintainerJob(job({ id: 'not-a-job' })), /job.id is invalid/);
 
   const validProposal = proposal(job());
   assert.strictEqual(validateOntologyMaintainerProposal(validProposal).valid, true);
@@ -163,6 +192,51 @@ async function main() {
     /Invalid ontology maintainer proposal input/
   );
   assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, diff: '--- raw diff' }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({
+    ...validProposal,
+    intent: { action: 'sync_domain_metadata', subject: 'domain_docs', rawOutput: 'private output' },
+  }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, schemaVersion: 2 }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, type: 'other' }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, id: 'not-a-proposal' }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, id: undefined }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, jobId: 'not-a-job' }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, jobId: undefined }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, provider: 'auto' }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, reviewPackageSha256: 'A'.repeat(64) }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, reviewPackageSha256: undefined }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, candidateFingerprint: 'A'.repeat(64) }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, candidateFingerprint: undefined }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, repoHead: 'not-a-head' }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, repoHead: undefined }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, targetBeforeHash: `sha256:${'A'.repeat(64)}` }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, targetBeforeHash: undefined }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({
+    ...validProposal, intent: { action: 'unknown_action', subject: 'domain_docs' },
+  }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({
+    ...validProposal, intent: { action: 'sync_domain_metadata', subject: 'INVALID' },
+  }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({
+    ...validProposal, intent: { action: 'sync_domain_metadata', subject: 'domain..docs' },
+  }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({
+    ...validProposal, intent: { action: 'sync_domain_metadata', subject: undefined },
+  }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, createdAt: 'not-a-timestamp' }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, proposalSha256: '0'.repeat(64) }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal({ ...validProposal, proposalSha256: undefined }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerProposal(null).valid, false);
+  assert.throws(
+    () => createOntologyMaintainerProposal({
+      id: validProposal.id, jobId: validProposal.jobId, provider: validProposal.provider,
+      reviewPackageSha256: validProposal.reviewPackageSha256, candidateFingerprint: validProposal.candidateFingerprint,
+      repoHead: validProposal.repoHead, targetPath: validProposal.targetPath, targetBeforeHash: validProposal.targetBeforeHash,
+      intent: null, createdAt: validProposal.createdAt,
+    }),
+    /Invalid ontology maintainer proposal/
+  );
+  assert.throws(() => assertValidOntologyMaintainerProposal({ ...validProposal, id: 'not-a-proposal' }), /proposal identity is invalid/);
   assert.throws(() => proposal(job(), { targetPath: '.git' }), /Invalid ontology maintainer proposal/);
   assert.strictEqual(validateProtocolSchema({ ...validProposal, targetPath: '.git' }), false);
   assert.throws(() => proposal(job(), { targetPath: 'docs/.git/config' }), /Invalid ontology maintainer proposal/);
@@ -179,8 +253,161 @@ async function main() {
   assert.strictEqual(validateOntologyMaintainerReceipt(retryableReceipt).valid, true);
   assert.strictEqual(validateProtocolSchema(retryableReceipt), true);
   assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, { shellCommand: 'rm -rf .' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, {
+    outcome: 'retryable_failure', reasonCode: 'provider_timeout', artifactReference: receipt(validProposal).artifactReference,
+  })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, { artifactReference: null })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, { schemaVersion: 2 })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, { type: 'other' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, { id: 'not-a-receipt' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, { jobId: 'not-a-job' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, { proposalId: 'not-a-proposal' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, { provider: 'auto' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, { outcome: 'other' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, { reasonCode: 'INVALID' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, { createdAt: 'not-a-timestamp' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, {
+    artifactReference: { ...receipt(validProposal).artifactReference, artifactId: '../private-artifact' },
+  })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, {
+    artifactReference: { ...receipt(validProposal).artifactReference, artifactHash: `sha256:${'A'.repeat(64)}` },
+  })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, {
+    artifactReference: { ...receipt(validProposal).artifactReference, persistedAt: 'not-a-timestamp' },
+  })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, {
+    artifactReference: { ...receipt(validProposal).artifactReference, artifactHash: undefined },
+  })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, {
+    artifactReference: { ...receipt(validProposal).artifactReference, signature: 'not-an-attestation' },
+  })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, {
+    artifactReference: { ...receipt(validProposal).artifactReference, signature: undefined },
+  })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, { reasonCode: undefined })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(receipt(validProposal, {
+    artifactReference: { ...receipt(validProposal).artifactReference, prompt: 'private artifact body' },
+  })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerReceipt(null).valid, false);
+  assert.throws(() => assertValidOntologyMaintainerReceipt(receipt(validProposal, { id: 'not-a-receipt' })), /receipt identity is invalid/);
   assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal)).valid, true);
   assert.strictEqual(validateProtocolSchema(approval(validProposal)), true);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { decision: 'rejected' })).valid, true);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { expiresAt: NOW })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval({ ...approval(validProposal), source: 'private source' }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { targetPath: '.claude/.git/config' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { schemaVersion: 2 })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { type: 'other' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { id: 'not-an-approval' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { id: undefined })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { proposalId: 'not-a-proposal' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { proposalId: undefined })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { proposalSha256: 'A'.repeat(64) })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { proposalSha256: undefined })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { reviewPackageSha256: 'A'.repeat(64) })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { reviewPackageSha256: undefined })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { candidateFingerprint: 'A'.repeat(64) })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { candidateFingerprint: undefined })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { repoHead: 'not-a-head' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { repoHead: undefined })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { targetBeforeHash: `sha256:${'A'.repeat(64)}` })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { targetBeforeHash: undefined })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { decision: 'other' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { approverId: 'INVALID' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { approverId: 'maintainer//reviewer' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { approverId: 'maintainer..reviewer' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { approverId: 'a'.repeat(161) })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { createdAt: 'not-a-timestamp' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(approval(validProposal, { expiresAt: 'not-a-timestamp' })).valid, false);
+  assert.strictEqual(validateOntologyMaintainerApproval(null).valid, false);
+  assert.throws(() => assertValidOntologyMaintainerApproval(approval(validProposal, { id: 'not-an-approval' })), /approval identity is invalid/);
+
+  const directReference = artifactReference(job(), validProposal);
+  assert.strictEqual(
+    verifyOntologyMaintainerArtifactReference({
+      job: job(), proposal: validProposal, artifactReference: directReference,
+      artifactReader, attestationSecret: ATTESTATION_SECRET,
+    }),
+    true
+  );
+  assert.strictEqual(
+    verifyOntologyMaintainerArtifactReference({
+      job: job(), proposal: validProposal, artifactReference: directReference,
+      artifactReader: () => Buffer.alloc(0), attestationSecret: ATTESTATION_SECRET,
+    }),
+    false
+  );
+  assert.strictEqual(
+    verifyOntologyMaintainerArtifactReference({
+      job: job(), proposal: validProposal, artifactReference: directReference,
+      artifactReader: () => '', attestationSecret: ATTESTATION_SECRET,
+    }),
+    false
+  );
+  assert.strictEqual(
+    verifyOntologyMaintainerArtifactReference({
+      job: job(), proposal: validProposal, artifactReference: directReference,
+      artifactReader: () => ARTIFACT.toString('utf8'), attestationSecret: ATTESTATION_SECRET,
+    }),
+    true
+  );
+  assert.strictEqual(
+    verifyOntologyMaintainerArtifactReference({
+      job: job(), proposal: validProposal,
+      artifactReference: { ...directReference, artifactHash: `sha256:${'f'.repeat(64)}` },
+      artifactReader, attestationSecret: ATTESTATION_SECRET,
+    }),
+    false
+  );
+  assert.strictEqual(
+    verifyOntologyMaintainerArtifactReference({
+      job: job(), proposal: validProposal,
+      artifactReference: { ...directReference, signature: `hmac-sha256:${'f'.repeat(64)}` },
+      artifactReader, attestationSecret: ATTESTATION_SECRET,
+    }),
+    false
+  );
+  assert.strictEqual(
+    verifyOntologyMaintainerArtifactReference({
+      job: job(), proposal: validProposal, artifactReference: directReference,
+      artifactReader: () => { throw new Error('reader unavailable'); }, attestationSecret: ATTESTATION_SECRET,
+    }),
+    false
+  );
+  assert.strictEqual(
+    verifyOntologyMaintainerArtifactReference({
+      job: job(), proposal: validProposal, artifactReference: directReference,
+      artifactReader: () => Buffer.alloc(MAX_ARTIFACT_BYTES + 1), attestationSecret: ATTESTATION_SECRET,
+    }),
+    false
+  );
+  assert.strictEqual(
+    verifyOntologyMaintainerArtifactReference({
+      job: job(), proposal: validProposal, artifactReference: directReference,
+      artifactReader: () => ARTIFACT, attestationSecret: 'too-short',
+    }),
+    false
+  );
+  assert.throws(
+    () => createEvidenceStoreArtifactReader({ evidenceStorePath: '' }),
+    /evidence store is unavailable/
+  );
+  const evidenceDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'omf-protocol-evidence-'));
+  try {
+    const persistedArtifactDirectory = path.join(evidenceDirectory, 'artifacts');
+    fs.mkdirSync(persistedArtifactDirectory);
+    const persistedArtifactPath = path.join(
+      persistedArtifactDirectory,
+      crypto.createHash('sha256').update(directReference.artifactId, 'utf8').digest('hex')
+    );
+    fs.writeFileSync(persistedArtifactPath, ARTIFACT);
+    assert.deepStrictEqual(
+      createEvidenceStoreArtifactReader({ evidenceStorePath: evidenceDirectory })(directReference.artifactId),
+      ARTIFACT
+    );
+  } finally {
+    fs.rmSync(evidenceDirectory, { recursive: true, force: true });
+  }
   assert.strictEqual(
     verifyOntologyMaintainerArtifactReference({
       job: job(), proposal: validProposal, artifactReference: artifactReference(job(), validProposal),

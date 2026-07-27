@@ -528,7 +528,7 @@ function listEventLogSegments(logPath) {
       return match ? { generation: Number(match[1]), path: path.join(directory, name) } : null;
     })
     .filter(Boolean)
-    .sort((left, right) => right.generation - left.generation);
+    .sort((left, right) => left.generation - right.generation);
   return [...rotated.map(segment => segment.path).reverse(), logPath];
 }
 

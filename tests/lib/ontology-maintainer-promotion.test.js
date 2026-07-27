@@ -13,6 +13,7 @@ const {
 } = require('../../scripts/lib/ontology-maintainer-protocol');
 const {
   promoteOntologyMaintainerApproval,
+  readRepoHead,
   validateOntologyMaintainerPromotionArtifact,
 } = require('../../scripts/lib/ontology-maintainer-promotion');
 
@@ -64,7 +65,7 @@ function candidate() {
 }
 
 async function createApprovedPromotion({
-  detailPath, operationDocument, expiresAt = '2026-07-27T02:00:00.000Z', approvalCreatedAt = NOW,
+  detailPath, operationDocument, expiresAt = '2099-07-27T02:00:00.000Z', approvalCreatedAt = NOW, artifactOverrides = {},
 }) {
   const store = await createStateStore({ dbPath: ':memory:' });
   const beforeHash = sha256(fs.readFileSync(detailPath));
@@ -98,6 +99,7 @@ async function createApprovedPromotion({
     proposalId: proposal.id, proposalSha256: proposal.proposalSha256,
     targetPath: proposal.targetPath, targetBeforeHash: beforeHash,
     operation: { type: 'replace_json_document', document: operationDocument },
+    ...artifactOverrides,
   }));
   const reference = {
     artifactId: 'ontology-maintainer/artifacts/promotion-123', artifactHash: sha256(artifact), persistedAt: NOW,
@@ -138,8 +140,58 @@ async function main() {
   };
   assert.strictEqual(validateOntologyMaintainerPromotionArtifact(validArtifact).valid, true);
   assert.strictEqual(validateOntologyMaintainerPromotionArtifact({ ...validArtifact, command: 'rm -rf .' }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerPromotionArtifact({ ...validArtifact, schemaVersion: 2 }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerPromotionArtifact({ ...validArtifact, proposalId: 'unbound-proposal' }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerPromotionArtifact({ ...validArtifact, proposalId: null }).valid, false);
   assert.strictEqual(validateOntologyMaintainerPromotionArtifact({ ...validArtifact, targetPath: 'docs/README.md' }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerPromotionArtifact({ ...validArtifact, targetPath: '' }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerPromotionArtifact({ ...validArtifact, targetBeforeHash: 'sha1:untrusted' }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerPromotionArtifact({ ...validArtifact, targetBeforeHash: null }).valid, false);
   assert.strictEqual(validateOntologyMaintainerPromotionArtifact({ ...validArtifact, operation: { type: 'shell', command: 'echo no' } }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerPromotionArtifact({
+    ...validArtifact,
+    operation: { type: 'replace_json_document', document: ['documents must be keyed by domain'] },
+  }).valid, false);
+  const prototypePollutionArtifact = JSON.parse(JSON.stringify({
+    ...validArtifact,
+    operation: {
+      type: 'replace_json_document',
+      document: JSON.parse('{"domain":"domain_docs","metadata":{"__proto__":"must-not-be-accepted"}}'),
+    },
+  }));
+  assert.strictEqual(validateOntologyMaintainerPromotionArtifact(prototypePollutionArtifact).valid, false);
+  assert.strictEqual(validateOntologyMaintainerPromotionArtifact({
+    ...validArtifact,
+    operation: { type: 'replace_json_document', document: { domain: 'domain_docs', count: Infinity } },
+  }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerPromotionArtifact({
+    ...validArtifact,
+    operation: { type: 'replace_json_document', document: { domain: 'domain_docs', values: Array(1001).fill('x') } },
+  }).valid, false);
+  assert.strictEqual(validateOntologyMaintainerPromotionArtifact({
+    ...validArtifact,
+    operation: {
+      type: 'replace_json_document',
+      document: Object.fromEntries(Array.from({ length: 1001 }, (_, index) => [`key_${index}`, index])),
+    },
+  }).valid, false);
+  assert.throws(() => promoteOntologyMaintainerApproval(), /state store is unavailable/);
+  assert.throws(() => promoteOntologyMaintainerApproval({
+    stateStore: {
+      assertOntologyMaintainerPromotionApproval() {},
+      prepareOntologyMaintainerPromotion() {},
+      completeOntologyMaintainerPromotion() {},
+    },
+    repoRoot: '',
+  }), /requires a repository root/);
+  assert.throws(() => promoteOntologyMaintainerApproval({
+    stateStore: {
+      assertOntologyMaintainerPromotionApproval() {},
+      prepareOntologyMaintainerPromotion() {},
+      completeOntologyMaintainerPromotion() {},
+    },
+    repoRoot: null,
+  }), /requires a repository root/);
 
   const approved = await createApprovedPromotion({ ...repo, operationDocument: nextDocument });
   try {
@@ -318,6 +370,431 @@ async function main() {
   } finally {
     packedRefsPromotion.store.close();
     cleanupRepo(packedRefsRepo);
+  }
+
+  const wrongDomainRepo = setupRepo();
+  const wrongDomainPromotion = await createApprovedPromotion({
+    ...wrongDomainRepo,
+    operationDocument: { ...nextDocument, domain: 'domain_other' },
+  });
+  try {
+    assert.throws(() => promoteOntologyMaintainerApproval({
+      approvalId: wrongDomainPromotion.approval.id, stateStore: wrongDomainPromotion.store, repoRoot: wrongDomainRepo.root,
+      artifactReader: () => wrongDomainPromotion.artifact, attestationSecret: ATTESTATION_SECRET,
+    }), /document does not match its registered domain/);
+    assert.strictEqual(wrongDomainPromotion.store.listOntologyMaintainerPromotions().length, 0);
+  } finally {
+    wrongDomainPromotion.store.close();
+    cleanupRepo(wrongDomainRepo);
+  }
+
+  const changedArtifactRepo = setupRepo();
+  const changedArtifactPromotion = await createApprovedPromotion({ ...changedArtifactRepo, operationDocument: nextDocument });
+  let artifactReadCount = 0;
+  try {
+    assert.throws(() => promoteOntologyMaintainerApproval({
+      approvalId: changedArtifactPromotion.approval.id, stateStore: changedArtifactPromotion.store, repoRoot: changedArtifactRepo.root,
+      artifactReader: () => {
+        artifactReadCount += 1;
+        return artifactReadCount === 1
+          ? changedArtifactPromotion.artifact
+          : Buffer.from(`${changedArtifactPromotion.artifact.toString('utf8')} `);
+      },
+      attestationSecret: ATTESTATION_SECRET,
+    }), /artifact hash changed after attestation/);
+    assert.strictEqual(artifactReadCount, 2);
+    assert.strictEqual(changedArtifactPromotion.store.listOntologyMaintainerPromotions().length, 0);
+  } finally {
+    changedArtifactPromotion.store.close();
+    cleanupRepo(changedArtifactRepo);
+  }
+
+  const lockedRepo = setupRepo();
+  const lockedPromotion = await createApprovedPromotion({ ...lockedRepo, operationDocument: nextDocument });
+  const lockPath = path.join(path.dirname(lockedRepo.detailPath), `.${path.basename(lockedRepo.detailPath)}.ontology-maintainer.lock`);
+  try {
+    fs.writeFileSync(lockPath, 'held by another guarded promotion\n', { mode: 0o600 });
+    assert.throws(() => promoteOntologyMaintainerApproval({
+      approvalId: lockedPromotion.approval.id, stateStore: lockedPromotion.store, repoRoot: lockedRepo.root,
+      artifactReader: () => lockedPromotion.artifact, attestationSecret: ATTESTATION_SECRET,
+    }), /target is already locked/);
+    assert.strictEqual(lockedPromotion.store.listOntologyMaintainerPromotions().length, 0);
+  } finally {
+    lockedPromotion.store.close();
+    cleanupRepo(lockedRepo);
+  }
+
+  const rollbackRepo = setupRepo();
+  const rollbackPromotion = await createApprovedPromotion({ ...rollbackRepo, operationDocument: nextDocument });
+  const rollbackOriginal = fs.readFileSync(rollbackRepo.detailPath, 'utf8');
+  try {
+    assert.throws(() => promoteOntologyMaintainerApproval({
+      approvalId: rollbackPromotion.approval.id, stateStore: rollbackPromotion.store, repoRoot: rollbackRepo.root,
+      artifactReader: () => rollbackPromotion.artifact, attestationSecret: ATTESTATION_SECRET,
+      failureInjector: stage => { if (stage === 'after_rename') throw new Error('simulate completion outage'); },
+    }), /simulate completion outage/);
+    assert.strictEqual(fs.readFileSync(rollbackRepo.detailPath, 'utf8'), rollbackOriginal);
+    assert.strictEqual(rollbackPromotion.store.listOntologyMaintainerPromotions({ approvalId: rollbackPromotion.approval.id })[0].state, 'recovery_required');
+  } finally {
+    rollbackPromotion.store.close();
+    cleanupRepo(rollbackRepo);
+  }
+
+  const invalidHeadRepo = setupRepo();
+  try {
+    fs.writeFileSync(path.join(invalidHeadRepo.gitDirectory, 'HEAD'), 'ref: ../outside\n', 'utf8');
+    assert.throws(() => readRepoHead(invalidHeadRepo.root), /HEAD reference is invalid/);
+  } finally {
+    cleanupRepo(invalidHeadRepo);
+  }
+
+  const detachedHeadRepo = setupRepo();
+  try {
+    fs.writeFileSync(path.join(detachedHeadRepo.gitDirectory, 'HEAD'), `${HEAD}\n`, 'utf8');
+    assert.strictEqual(readRepoHead(detachedHeadRepo.root), HEAD);
+  } finally {
+    cleanupRepo(detachedHeadRepo);
+  }
+
+  const malformedDetachedHeadRepo = setupRepo();
+  try {
+    fs.writeFileSync(path.join(malformedDetachedHeadRepo.gitDirectory, 'HEAD'), 'not-a-git-object\n', 'utf8');
+    assert.throws(() => readRepoHead(malformedDetachedHeadRepo.root), /HEAD is invalid/);
+  } finally {
+    cleanupRepo(malformedDetachedHeadRepo);
+  }
+
+  const malformedGitFileRepo = setupRepo();
+  try {
+    fs.writeFileSync(path.join(malformedGitFileRepo.root, '.git'), 'not a gitdir pointer\n', 'utf8');
+    assert.throws(() => readRepoHead(malformedGitFileRepo.root), /repository metadata is invalid/);
+  } finally {
+    cleanupRepo(malformedGitFileRepo);
+  }
+
+  const unavailableGitDirectoryRepo = setupRepo();
+  try {
+    fs.writeFileSync(path.join(unavailableGitDirectoryRepo.root, '.git'), 'gitdir: ../missing-git-directory\n', 'utf8');
+    assert.throws(() => readRepoHead(unavailableGitDirectoryRepo.root), /ENOENT/);
+  } finally {
+    cleanupRepo(unavailableGitDirectoryRepo);
+  }
+
+  const missingPackedRefRepo = setupRepo();
+  try {
+    fs.unlinkSync(path.join(missingPackedRefRepo.gitDirectory, 'refs/heads/main'));
+    assert.throws(() => readRepoHead(missingPackedRefRepo.root), /HEAD is invalid/);
+  } finally {
+    cleanupRepo(missingPackedRefRepo);
+  }
+
+  const invalidReferenceValueRepo = setupRepo();
+  try {
+    fs.writeFileSync(path.join(invalidReferenceValueRepo.gitDirectory, 'refs/heads/main'), 'not-a-git-object\n', 'utf8');
+    assert.throws(() => readRepoHead(invalidReferenceValueRepo.root), /HEAD is invalid/);
+  } finally {
+    cleanupRepo(invalidReferenceValueRepo);
+  }
+
+  const directGitDirectoryRepo = setupRepo();
+  try {
+    fs.unlinkSync(path.join(directGitDirectoryRepo.root, '.git'));
+    fs.cpSync(directGitDirectoryRepo.gitDirectory, path.join(directGitDirectoryRepo.root, '.git'), { recursive: true });
+    assert.strictEqual(readRepoHead(directGitDirectoryRepo.root), HEAD);
+  } finally {
+    cleanupRepo(directGitDirectoryRepo);
+  }
+
+  const symlinkRootRepo = setupRepo();
+  const symlinkRoot = `${symlinkRootRepo.root}-link`;
+  try {
+    fs.symlinkSync(symlinkRootRepo.root, symlinkRoot);
+    assert.throws(() => promoteOntologyMaintainerApproval({
+      stateStore: {
+        assertOntologyMaintainerPromotionApproval() {},
+        prepareOntologyMaintainerPromotion() {},
+        completeOntologyMaintainerPromotion() {},
+      },
+      repoRoot: symlinkRoot,
+    }), /repository root must be a real directory/);
+  } finally {
+    fs.unlinkSync(symlinkRoot);
+    cleanupRepo(symlinkRootRepo);
+  }
+
+  const writableOntologyRepo = setupRepo();
+  const writableOntologyPromotion = await createApprovedPromotion({ ...writableOntologyRepo, operationDocument: nextDocument });
+  try {
+    fs.chmodSync(path.join(writableOntologyRepo.root, '.claude/ontology'), 0o777);
+    assert.throws(() => promoteOntologyMaintainerApproval({
+      approvalId: writableOntologyPromotion.approval.id, stateStore: writableOntologyPromotion.store,
+      repoRoot: writableOntologyRepo.root, artifactReader: () => writableOntologyPromotion.artifact,
+      attestationSecret: ATTESTATION_SECRET,
+    }), /trusted private ontology directory/);
+  } finally {
+    writableOntologyPromotion.store.close();
+    cleanupRepo(writableOntologyRepo);
+  }
+
+  const platformNeutralRepo = setupRepo();
+  const platformNeutralPromotion = await createApprovedPromotion({ ...platformNeutralRepo, operationDocument: nextDocument });
+  const originalGetuid = process.getuid;
+  process.getuid = undefined;
+  try {
+    assert.strictEqual(promoteOntologyMaintainerApproval({
+      approvalId: platformNeutralPromotion.approval.id, stateStore: platformNeutralPromotion.store,
+      repoRoot: platformNeutralRepo.root, artifactReader: () => platformNeutralPromotion.artifact,
+      attestationSecret: ATTESTATION_SECRET,
+    }).status, 'applied');
+  } finally {
+    process.getuid = originalGetuid;
+    platformNeutralPromotion.store.close();
+    cleanupRepo(platformNeutralRepo);
+  }
+
+  const indexSymlinkRepo = setupRepo();
+  const indexSymlinkPromotion = await createApprovedPromotion({ ...indexSymlinkRepo, operationDocument: nextDocument });
+  const indexPath = path.join(indexSymlinkRepo.root, '.claude/ontology/index.json');
+  const externalIndexPath = path.join(indexSymlinkRepo.root, 'external-index.json');
+  try {
+    fs.renameSync(indexPath, externalIndexPath);
+    fs.symlinkSync(externalIndexPath, indexPath);
+    assert.throws(() => promoteOntologyMaintainerApproval({
+      approvalId: indexSymlinkPromotion.approval.id, stateStore: indexSymlinkPromotion.store,
+      repoRoot: indexSymlinkRepo.root, artifactReader: () => indexSymlinkPromotion.artifact,
+      attestationSecret: ATTESTATION_SECRET,
+    }), /index must be a real file/);
+  } finally {
+    indexSymlinkPromotion.store.close();
+    cleanupRepo(indexSymlinkRepo);
+  }
+
+  const partialIndexRepo = setupRepo();
+  const partialIndexPromotion = await createApprovedPromotion({ ...partialIndexRepo, operationDocument: nextDocument });
+  try {
+    const partialIndexPath = path.join(partialIndexRepo.root, '.claude/ontology/index.json');
+    const partialIndex = JSON.parse(fs.readFileSync(partialIndexPath, 'utf8'));
+    writeJson(partialIndexPath, { ...partialIndex, domain_without_entry: null });
+    assert.strictEqual(promoteOntologyMaintainerApproval({
+      approvalId: partialIndexPromotion.approval.id, stateStore: partialIndexPromotion.store,
+      repoRoot: partialIndexRepo.root, artifactReader: () => partialIndexPromotion.artifact,
+      attestationSecret: ATTESTATION_SECRET,
+    }).status, 'applied');
+  } finally {
+    partialIndexPromotion.store.close();
+    cleanupRepo(partialIndexRepo);
+  }
+
+  const bindingRaceRepo = setupRepo();
+  const bindingRacePromotion = await createApprovedPromotion({ ...bindingRaceRepo, operationDocument: nextDocument });
+  const originalReadFile = fs.readFileSync;
+  let bindingRefReads = 0;
+  fs.readFileSync = (filePath, ...args) => {
+    const contents = originalReadFile(filePath, ...args);
+    if (String(filePath).endsWith('/refs/heads/main')) {
+      bindingRefReads += 1;
+      if (bindingRefReads === 1) fs.writeFileSync(filePath, `${'f'.repeat(40)}\n`, 'utf8');
+    }
+    return contents;
+  };
+  try {
+    assert.throws(() => promoteOntologyMaintainerApproval({
+      approvalId: bindingRacePromotion.approval.id, stateStore: bindingRacePromotion.store,
+      repoRoot: bindingRaceRepo.root, artifactReader: () => bindingRacePromotion.artifact,
+      attestationSecret: ATTESTATION_SECRET,
+    }), /bindings changed before apply/);
+    assert.strictEqual(bindingRacePromotion.store.listOntologyMaintainerPromotions({ approvalId: bindingRacePromotion.approval.id }).length, 0);
+  } finally {
+    fs.readFileSync = originalReadFile;
+    bindingRacePromotion.store.close();
+    cleanupRepo(bindingRaceRepo);
+  }
+
+  const stringArtifactRepo = setupRepo();
+  const stringArtifactPromotion = await createApprovedPromotion({ ...stringArtifactRepo, operationDocument: nextDocument });
+  try {
+    assert.strictEqual(promoteOntologyMaintainerApproval({
+      approvalId: stringArtifactPromotion.approval.id, stateStore: stringArtifactPromotion.store, repoRoot: stringArtifactRepo.root,
+      artifactReader: () => stringArtifactPromotion.artifact.toString('utf8'), attestationSecret: ATTESTATION_SECRET,
+    }).status, 'applied');
+  } finally {
+    stringArtifactPromotion.store.close();
+    cleanupRepo(stringArtifactRepo);
+  }
+
+  const postWriteMismatchRepo = setupRepo();
+  const postWriteMismatchPromotion = await createApprovedPromotion({ ...postWriteMismatchRepo, operationDocument: nextDocument });
+  const competingDocument = { domain: 'domain_docs', version: 'competing', source: ['docs/example.md'] };
+  try {
+    assert.throws(() => promoteOntologyMaintainerApproval({
+      approvalId: postWriteMismatchPromotion.approval.id, stateStore: postWriteMismatchPromotion.store, repoRoot: postWriteMismatchRepo.root,
+      artifactReader: () => postWriteMismatchPromotion.artifact, attestationSecret: ATTESTATION_SECRET,
+      failureInjector: stage => { if (stage === 'after_rename') writeJson(postWriteMismatchRepo.detailPath, competingDocument); },
+    }), /post-write hash verification failed/);
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(postWriteMismatchRepo.detailPath, 'utf8')), competingDocument);
+    assert.strictEqual(postWriteMismatchPromotion.store.listOntologyMaintainerPromotions({ approvalId: postWriteMismatchPromotion.approval.id })[0].state, 'recovery_required');
+  } finally {
+    postWriteMismatchPromotion.store.close();
+    cleanupRepo(postWriteMismatchRepo);
+  }
+
+  const completionRepo = setupRepo();
+  const completionPromotion = await createApprovedPromotion({ ...completionRepo, operationDocument: nextDocument });
+  const completionStore = Object.create(completionPromotion.store);
+  const completePromotion = completionPromotion.store.completeOntologyMaintainerPromotion;
+  completionStore.completeOntologyMaintainerPromotion = input => {
+    const promotion = completePromotion(input);
+    return input.state === 'applied' ? { ...promotion, state: 'recovery_required' } : promotion;
+  };
+  try {
+    assert.throws(() => promoteOntologyMaintainerApproval({
+      approvalId: completionPromotion.approval.id, stateStore: completionStore, repoRoot: completionRepo.root,
+      artifactReader: () => completionPromotion.artifact, attestationSecret: ATTESTATION_SECRET,
+    }), /completion was not applied/);
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(completionRepo.detailPath, 'utf8')), {
+      domain: 'domain_docs', version: '1.0', source: ['docs/example.md'],
+    });
+  } finally {
+    completionPromotion.store.close();
+    cleanupRepo(completionRepo);
+  }
+
+  const mismatchedRootRepo = setupRepo();
+  const mismatchedRootPromotion = await createApprovedPromotion({ ...mismatchedRootRepo, operationDocument: nextDocument });
+  const mismatchedRootStore = Object.create(mismatchedRootPromotion.store);
+  mismatchedRootStore.getOntologyMaintainerPromotionByApprovalId = () => ({ repoRoot: '/other/repository', state: 'prepared' });
+  try {
+    assert.throws(() => promoteOntologyMaintainerApproval({
+      approvalId: mismatchedRootPromotion.approval.id, stateStore: mismatchedRootStore, repoRoot: mismatchedRootRepo.root,
+      artifactReader: () => mismatchedRootPromotion.artifact, attestationSecret: ATTESTATION_SECRET,
+    }), /repository root does not match the prepared record/);
+  } finally {
+    mismatchedRootPromotion.store.close();
+    cleanupRepo(mismatchedRootRepo);
+  }
+
+  const unboundArtifactRepo = setupRepo();
+  const unboundArtifactPromotion = await createApprovedPromotion({
+    ...unboundArtifactRepo, operationDocument: nextDocument, artifactOverrides: { proposalSha256: 'b'.repeat(64) },
+  });
+  try {
+    assert.throws(() => promoteOntologyMaintainerApproval({
+      approvalId: unboundArtifactPromotion.approval.id, stateStore: unboundArtifactPromotion.store, repoRoot: unboundArtifactRepo.root,
+      artifactReader: () => unboundArtifactPromotion.artifact, attestationSecret: ATTESTATION_SECRET,
+    }), /artifact does not bind the approved proposal/);
+    assert.strictEqual(unboundArtifactPromotion.store.listOntologyMaintainerPromotions().length, 0);
+  } finally {
+    unboundArtifactPromotion.store.close();
+    cleanupRepo(unboundArtifactRepo);
+  }
+
+  const unregisteredTargetRepo = setupRepo();
+  const unregisteredTargetPromotion = await createApprovedPromotion({ ...unregisteredTargetRepo, operationDocument: nextDocument });
+  try {
+    writeJson(path.join(unregisteredTargetRepo.root, '.claude/ontology/index.json'), {});
+    assert.throws(() => promoteOntologyMaintainerApproval({
+      approvalId: unregisteredTargetPromotion.approval.id, stateStore: unregisteredTargetPromotion.store,
+      repoRoot: unregisteredTargetRepo.root, artifactReader: () => unregisteredTargetPromotion.artifact,
+      attestationSecret: ATTESTATION_SECRET,
+    }), /target is not uniquely registered in the ontology index/);
+    assert.strictEqual(unregisteredTargetPromotion.store.listOntologyMaintainerPromotions().length, 0);
+  } finally {
+    unregisteredTargetPromotion.store.close();
+    cleanupRepo(unregisteredTargetRepo);
+  }
+
+  const missingApprovalRepo = setupRepo();
+  const missingApprovalStore = await createStateStore({ dbPath: ':memory:' });
+  try {
+    assert.throws(() => promoteOntologyMaintainerApproval({
+      approvalId: 'ontology-maintainer-approval-12345678-1234-1234-1234-123456789abc', stateStore: missingApprovalStore,
+      repoRoot: missingApprovalRepo.root, artifactReader: () => Buffer.from('unused'), attestationSecret: ATTESTATION_SECRET,
+    }), /approval was not recorded/);
+  } finally {
+    missingApprovalStore.close();
+    cleanupRepo(missingApprovalRepo);
+  }
+
+  const rejectedPrepareRepo = setupRepo();
+  const rejectedPreparePromotion = await createApprovedPromotion({ ...rejectedPrepareRepo, operationDocument: nextDocument });
+  const rejectedPrepareStore = Object.create(rejectedPreparePromotion.store);
+  const preparePromotion = rejectedPreparePromotion.store.prepareOntologyMaintainerPromotion;
+  rejectedPrepareStore.prepareOntologyMaintainerPromotion = input => {
+    preparePromotion(input);
+    return { state: 'recovery_required', ownerToken: input.ownerToken };
+  };
+  try {
+    assert.throws(() => promoteOntologyMaintainerApproval({
+      approvalId: rejectedPreparePromotion.approval.id, stateStore: rejectedPrepareStore, repoRoot: rejectedPrepareRepo.root,
+      artifactReader: () => rejectedPreparePromotion.artifact, attestationSecret: ATTESTATION_SECRET,
+    }), /prepared or recovery state/);
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(rejectedPrepareRepo.detailPath, 'utf8')), {
+      domain: 'domain_docs', version: '1.0', source: ['docs/example.md'],
+    });
+  } finally {
+    rejectedPreparePromotion.store.close();
+    cleanupRepo(rejectedPrepareRepo);
+  }
+
+  const unavailableArtifactRepo = setupRepo();
+  const unavailableArtifactPromotion = await createApprovedPromotion({ ...unavailableArtifactRepo, operationDocument: nextDocument });
+  let unavailableArtifactReads = 0;
+  try {
+    assert.throws(() => promoteOntologyMaintainerApproval({
+      approvalId: unavailableArtifactPromotion.approval.id, stateStore: unavailableArtifactPromotion.store,
+      repoRoot: unavailableArtifactRepo.root,
+      artifactReader: () => {
+        unavailableArtifactReads += 1;
+        return unavailableArtifactReads === 1 ? unavailableArtifactPromotion.artifact : null;
+      },
+      attestationSecret: ATTESTATION_SECRET,
+    }), /artifact is unavailable or exceeds the size limit/);
+    assert.strictEqual(unavailableArtifactPromotion.store.listOntologyMaintainerPromotions().length, 0);
+  } finally {
+    unavailableArtifactPromotion.store.close();
+    cleanupRepo(unavailableArtifactRepo);
+  }
+
+  const recoveryStoreFailureRepo = setupRepo();
+  const recoveryStoreFailurePromotion = await createApprovedPromotion({ ...recoveryStoreFailureRepo, operationDocument: nextDocument });
+  const recoveryStoreFailureStore = Object.create(recoveryStoreFailurePromotion.store);
+  const completeRecoveryPromotion = recoveryStoreFailurePromotion.store.completeOntologyMaintainerPromotion;
+  recoveryStoreFailureStore.completeOntologyMaintainerPromotion = input => {
+    if (input.state === 'recovery_required') throw new Error('simulated durable recovery outage');
+    return completeRecoveryPromotion(input);
+  };
+  try {
+    assert.throws(() => promoteOntologyMaintainerApproval({
+      approvalId: recoveryStoreFailurePromotion.approval.id, stateStore: recoveryStoreFailureStore,
+      repoRoot: recoveryStoreFailureRepo.root, artifactReader: () => recoveryStoreFailurePromotion.artifact,
+      attestationSecret: ATTESTATION_SECRET,
+      failureInjector: stage => { if (stage === 'after_rename') throw new Error('simulate original apply failure'); },
+    }), /simulate original apply failure/);
+    assert.strictEqual(recoveryStoreFailurePromotion.store.listOntologyMaintainerPromotions({
+      approvalId: recoveryStoreFailurePromotion.approval.id,
+    })[0].state, 'prepared');
+  } finally {
+    recoveryStoreFailurePromotion.store.close();
+    cleanupRepo(recoveryStoreFailureRepo);
+  }
+
+  const directoryFsyncRepo = setupRepo();
+  const directoryFsyncPromotion = await createApprovedPromotion({ ...directoryFsyncRepo, operationDocument: nextDocument });
+  const originalFsync = fs.fsyncSync;
+  fs.fsyncSync = descriptor => {
+    if (fs.fstatSync(descriptor).isDirectory()) throw new Error('directory fsync unsupported by test filesystem');
+    return originalFsync(descriptor);
+  };
+  try {
+    assert.strictEqual(promoteOntologyMaintainerApproval({
+      approvalId: directoryFsyncPromotion.approval.id, stateStore: directoryFsyncPromotion.store,
+      repoRoot: directoryFsyncRepo.root, artifactReader: () => directoryFsyncPromotion.artifact,
+      attestationSecret: ATTESTATION_SECRET,
+    }).status, 'applied');
+  } finally {
+    fs.fsyncSync = originalFsync;
+    directoryFsyncPromotion.store.close();
+    cleanupRepo(directoryFsyncRepo);
   }
   console.log('  PASS promotes only approved, bound structured ontology JSON atomically and fails closed');
 }

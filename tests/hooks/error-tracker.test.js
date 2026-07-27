@@ -218,6 +218,151 @@ if (test('passes through unparsable input without throwing', () => {
   }
 })) passed++; else failed++;
 
+// The hook supports legacy payloads only as a defensive compatibility path.
+// These tests keep that fallback from becoming a source of silent false
+// negatives while retaining the documented PostToolUse semantics above.
+if (test('records a legacy nested exitCode and related file paths', () => {
+  setupHome();
+  try {
+    const command = 'node scripts/check.js src/app.js docs/plan.md config.json';
+    const input = JSON.stringify({
+      tool_name: 'Bash',
+      tool_input: { command },
+      tool_response: { exitCode: 17, stdout: 'legacy runner failed' },
+    });
+    const { captured, stderr } = captureRun(input);
+
+    assert.strictEqual(captured, input, 'hook stdout must remain a pass-through');
+    assert.match(stderr, /Logged failure \(exit 17\)/);
+    const [entry] = loadRecordedErrors();
+    assert.strictEqual(entry.exitCode, 17);
+    assert.strictEqual(entry.errorMessage, null);
+    assert.ok(entry.relatedFiles.includes('scripts/check.js'));
+    assert.ok(entry.relatedFiles.includes('src/app.js'));
+    assert.ok(entry.relatedFiles.includes('plan.md'));
+    assert.ok(entry.relatedFiles.includes('config.json'));
+  } finally {
+    cleanupHome();
+  }
+})) passed++; else failed++;
+
+if (test('extracts a non-zero exit code from legacy output but ignores zero and opaque output', () => {
+  setupHome();
+  try {
+    const failedInput = JSON.stringify({
+      tool_name: 'Bash',
+      tool_input: { command: 'npm test tests/unit.js' },
+      tool_response: { content: 'runner stopped (exit code: 23)' },
+    });
+    captureRun(failedInput);
+    assert.strictEqual(loadRecordedErrors()[0].exitCode, 23);
+
+    const zeroInput = JSON.stringify({
+      tool_name: 'Bash',
+      tool_input: { command: 'npm test' },
+      tool_response: { output: 'done (exit code: 0)' },
+    });
+    const opaqueInput = JSON.stringify({
+      tool_name: 'Bash',
+      tool_input: { command: 'npm test' },
+      tool_response: { stderr: 'legacy output without an exit code' },
+    });
+    captureRun(zeroInput);
+    captureRun(opaqueInput);
+    assert.strictEqual(loadRecordedErrors().length, 1, 'only the confirmed non-zero failure is recorded');
+  } finally {
+    cleanupHome();
+  }
+})) passed++; else failed++;
+
+if (test('uses a top-level error without an event name and defaults unparseable failures to one', () => {
+  setupHome();
+  try {
+    const raw = JSON.stringify({
+      tool_name: 'Bash',
+      tool_input: { command: 'node ' + 'x'.repeat(550) },
+      error: 'provider reported a failure without a code',
+    });
+    captureRun(raw);
+    const [entry] = loadRecordedErrors();
+    assert.strictEqual(entry.exitCode, 1);
+    assert.strictEqual(entry.command.length, 500, 'untrusted command text is capped');
+    assert.strictEqual(entry.errorMessage, 'provider reported a failure without a code');
+  } finally {
+    cleanupHome();
+  }
+})) passed++; else failed++;
+
+if (test('does not let an explicit success event with an error-shaped field create a record', () => {
+  setupHome();
+  try {
+    const raw = JSON.stringify({
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Bash',
+      tool_input: { command: 'echo okay' },
+      error: 'stale error field from an intermediary',
+      tool_response: { stdout: 'okay\n' },
+    });
+    const { captured } = captureRun(raw);
+    assert.strictEqual(captured, raw);
+    assert.deepStrictEqual(loadRecordedErrors(), []);
+  } finally {
+    cleanupHome();
+  }
+})) passed++; else failed++;
+
+if (test('recovers from a malformed saved error list and caps noisy file extraction', () => {
+  setupHome();
+  try {
+    fs.mkdirSync(path.dirname(getStatePath()), { recursive: true });
+    fs.writeFileSync(getStatePath(), '{bad-state', 'utf8');
+    const files = Array.from({ length: 12 }, (_, index) => `src/file-${index}.js`).join(' ');
+    const raw = JSON.stringify({
+      hook_event_name: 'PostToolUseFailure',
+      tool_name: 'Bash',
+      tool_input: { command: `node ${files}` },
+      error: 'Command exited with code 9',
+    });
+    captureRun(raw);
+    const [entry] = loadRecordedErrors();
+    assert.strictEqual(entry.exitCode, 9);
+    assert.strictEqual(entry.relatedFiles.length, 10, 'related file metadata is bounded');
+  } finally {
+    cleanupHome();
+  }
+})) passed++; else failed++;
+
+if (test('replaces a non-array state payload and supports the cwd-derived session key', () => {
+  setupHome();
+  try {
+    fs.mkdirSync(path.dirname(getStatePath()), { recursive: true });
+    fs.writeFileSync(getStatePath(), JSON.stringify({ stale: true }), 'utf8');
+    const explicitFailure = JSON.stringify({
+      hook_event_name: 'PostToolUseFailure',
+      tool_name: 'Bash',
+      tool_input: {},
+      error: 'Command exited with code 4',
+    });
+    captureRun(explicitFailure);
+    assert.strictEqual(loadRecordedErrors().length, 1, 'an object state file must not poison future records');
+    assert.deepStrictEqual(loadRecordedErrors()[0].relatedFiles, []);
+
+    delete process.env.CLAUDE_SESSION_ID;
+    const cwdHash = crypto.createHash('sha1').update(process.cwd()).digest('hex').slice(0, 12);
+    const cwdState = path.join(homeDir, '.claude', 'tmp', `session-errors-${cwdHash}.json`);
+    const fallbackFailure = JSON.stringify({
+      hook_event_name: 'PostToolUseFailure',
+      tool_name: 'Bash',
+      tool_input: { command: 'node index.js' },
+      error: 'Command exited with code 5',
+    });
+    captureRun(fallbackFailure);
+    assert.strictEqual(JSON.parse(fs.readFileSync(cwdState, 'utf8'))[0].exitCode, 5);
+  } finally {
+    cleanupHome();
+  }
+})) passed++; else failed++;
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 
 if (failed > 0) {

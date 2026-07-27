@@ -61,7 +61,36 @@ ENV_VAR: CODEX_SESSION
   assert.deepStrictEqual(files, []);
 })) passed++; else failed++;
 
+if (test('extractPlanFiles normalizes punctuation, Windows separators, CSV labels, and duplicates', () => {
+  touch(path.join(routingRoot, 'lib', 'existing.js'));
+  const markdown = `
+Files: (src/a.js), lib\\existing.js, src/a.js
+Also review "src/new.ts" and \`src/new.ts\`.
+`;
+  const files = extractPlanFiles(markdown, { routingRoot });
+  assert.deepStrictEqual(files, ['src/a.js', 'lib/existing.js', 'src/new.ts']);
+})) passed++; else failed++;
+
+if (test('extractPlanFiles rejects environment, URL, and oversized path candidates', () => {
+  const oversized = `src/${'x'.repeat(250)}.js`;
+  const markdown = `
+Files:
+# section/path.md
+HTTPS://example.test/src/a.js
+ENVIRONMENT_VAR
+\`inline\\npath.js\`
+${oversized}
+`;
+  assert.deepStrictEqual(extractPlanFiles(markdown, { routingRoot }), ['inline/npath.js', 'section/path.md']);
+  assert.deepStrictEqual(extractPlanFiles('', { routingRoot }), []);
+})) passed++; else failed++;
+
+if (test('extractPlanFiles keeps absolute planned paths and supports missing routing roots', () => {
+  const plannedAbsolute = path.join(root, 'new', 'planned.ts');
+  const files = extractPlanFiles(`File: ${plannedAbsolute}`, { routingRoot: path.join(root, 'missing') });
+  assert.deepStrictEqual(files, [plannedAbsolute]);
+})) passed++; else failed++;
+
 console.log(`\nPassed: ${passed}`);
 console.log(`Failed: ${failed}`);
 process.exit(failed > 0 ? 1 : 0);
-

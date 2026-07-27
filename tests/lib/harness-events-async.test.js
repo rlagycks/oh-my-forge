@@ -108,6 +108,21 @@ function event(index) {
     }
   });
 
+  await test('async instrumentation suppresses invalid event and filesystem errors', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-events-async-errors-'));
+    try {
+      const invalid = await appendEventAsync({ event_type: 'unknown' }, path.join(dir, 'events.jsonl'));
+      assert.strictEqual(invalid, undefined);
+
+      const filePath = path.join(dir, 'not-a-directory');
+      fs.writeFileSync(filePath, 'file', 'utf8');
+      const unavailable = await appendEventAsync(event(1), path.join(filePath, 'events.jsonl'));
+      assert.strictEqual(unavailable, undefined);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exitCode = 1;
 })().catch(error => {

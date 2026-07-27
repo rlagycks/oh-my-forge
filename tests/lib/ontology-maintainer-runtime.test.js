@@ -13,8 +13,16 @@ const {
   buildOntologyMaintainerProviderInvocation,
   executeOntologyMaintainerJob,
   markRetryableFailure,
+  parseSemanticProviderOutput,
   runBoundedOntologyMaintainerProcess,
 } = require('../../scripts/lib/ontology-maintainer-runtime');
+const {
+  MAX_PROCESS_INPUT_BYTES,
+  MAX_PROCESS_OUTPUT_BYTES,
+  getTrustedWindowsTaskkillPath,
+  terminateProcessTree,
+  terminateWindowsProcessTree,
+} = require('../../scripts/lib/ontology-maintainer-process');
 
 const NOW = '2026-07-26T02:00:00.000Z';
 const CANDIDATE_ID = 'ontology-candidate-1234567890abcdef12345678';
@@ -139,6 +147,16 @@ async function main() {
     () => buildOntologyMaintainerProviderInvocation({ provider: 'claude_code', binaryPath: 'claude', input: '{}' }),
     /trusted absolute binary path/
   );
+  assert.strictEqual(parseSemanticProviderOutput(''), null);
+  assert.strictEqual(parseSemanticProviderOutput('{not-json'), null);
+  assert.strictEqual(parseSemanticProviderOutput(JSON.stringify({
+    targetPath: '.claude/ontology/domain_state_store.json', targetBeforeHash: `sha256:${'b'.repeat(64)}`,
+    intent: { action: 'sync_domain_metadata', subject: 'domain_state_store' }, extra: true,
+  })), null);
+  assert.strictEqual(parseSemanticProviderOutput(JSON.stringify({
+    targetPath: '.claude/ontology/domain_state_store.json', targetBeforeHash: `sha256:${'b'.repeat(64)}`,
+    intent: { action: 'sync_domain_metadata', subject: 'domain_state_store', raw: 'must-not-persist' },
+  })), null);
   assert.strictEqual(resolveOntologyMaintainerProviderBinary('claude_code', {
     claude_code: { binaryPath: 'claude' },
   }, RUNTIME_SECURITY_OPTIONS), null);
@@ -168,6 +186,40 @@ async function main() {
   assert.strictEqual(calls[0].options.env.SECRET_TOKEN, undefined);
   assert.notStrictEqual(calls[0].options.env.PATH, '/usr/bin');
   assert.deepStrictEqual(Object.keys(calls[0].options.env).sort(), ['LANG', 'LC_ALL', 'PATH']);
+  assert.throws(() => runBoundedOntologyMaintainerProcess({
+    command: 'claude\n--unsafe', args: [], input: '{}', spawnProcess: spawn,
+  }), /bounded single-line string/);
+  assert.throws(() => runBoundedOntologyMaintainerProcess({
+    command: 'claude', args: Array.from({ length: 13 }, () => '--print'), input: '{}', spawnProcess: spawn,
+  }), /fixed bounded array/);
+  assert.throws(() => runBoundedOntologyMaintainerProcess({
+    command: 'claude', args: [], input: 'x'.repeat(MAX_PROCESS_INPUT_BYTES + 1), spawnProcess: spawn,
+  }), /at most/);
+  assert.throws(() => runBoundedOntologyMaintainerProcess({
+    command: 'claude', args: [], input: '{}', timeoutMs: 0, spawnProcess: spawn,
+  }), /timeoutMs must be an integer/);
+  await assert.rejects(
+    runBoundedOntologyMaintainerProcess({
+      command: 'claude', args: [], input: '{}', spawnProcess: () => { throw new Error('spawn unavailable'); },
+    }),
+    /spawn unavailable/
+  );
+  await assert.rejects(
+    runBoundedOntologyMaintainerProcess({ command: 'claude', args: [], input: '{}', spawnProcess: () => ({}) }),
+    /standard streams/
+  );
+  const outputLimited = await runBoundedOntologyMaintainerProcess({
+    command: 'claude', args: [], input: '{}', timeoutMs: 1_000,
+    spawnProcess: createMockSpawn({ stdout: 'x'.repeat(MAX_PROCESS_OUTPUT_BYTES + 1) }),
+  });
+  assert.strictEqual(outputLimited.outputLimitExceeded, true);
+  assert.strictEqual(outputLimited.stdout.length, MAX_PROCESS_OUTPUT_BYTES);
+  assert.strictEqual(getTrustedWindowsTaskkillPath('C:\\Windows\\..\\Windows'), 'C:\\Windows\\System32\\taskkill.exe');
+  assert.strictEqual(getTrustedWindowsTaskkillPath('C:\\unsafe'), 'C:\\Windows\\System32\\taskkill.exe');
+  await terminateWindowsProcessTree({ pid: 0 }, { spawnTreeKiller: () => { throw new Error('must not spawn'); } });
+  const childKillSignals = [];
+  await terminateProcessTree({ kill: signal => childKillSignals.push(signal) }, 'SIGTERM', { platform: 'darwin' });
+  assert.deepStrictEqual(childKillSignals, ['SIGTERM']);
 
   const epipeSpawn = () => {
     const child = new EventEmitter();
@@ -425,6 +477,102 @@ async function main() {
       }) }), now: NOW, ...RUNTIME_SECURITY_OPTIONS,
     });
     assert.deepStrictEqual(invalidOutput, { status: 'rejected', reasonCode: 'provider_output_invalid' });
+
+    assert.deepStrictEqual(await executeOntologyMaintainerJob({
+      job: { ...job(review.reviewPackageSha256), provider: 'auto' }, reviewPackage: review.reviewPackage, stateStore: store,
+      currentRepoHead: REVIEW_HEAD, providerCapabilities: PROVIDER_CAPABILITIES, spawnProcess: createMockSpawn(),
+      ...RUNTIME_SECURITY_OPTIONS,
+    }), { status: 'denied', reasonCode: 'job_invalid' });
+    assert.deepStrictEqual(await executeOntologyMaintainerJob({
+      job: job(review.reviewPackageSha256, {
+        id: 'ontology-maintainer-job-12121212-1212-1212-1212-121212121212',
+        idempotencyKey: 'ontology-maintainer-runtime-binding-1234567890abcdef',
+      }), reviewPackage: { ...review.reviewPackage, candidate: { ...review.reviewPackage.candidate, id: CANDIDATE_ID } },
+      stateStore: store, currentRepoHead: 'f'.repeat(40), providerCapabilities: PROVIDER_CAPABILITIES,
+      spawnProcess: createMockSpawn(), ...RUNTIME_SECURITY_OPTIONS,
+    }), { status: 'denied', reasonCode: 'job_binding_invalid' });
+    assert.deepStrictEqual(await executeOntologyMaintainerJob({
+      job: job(review.reviewPackageSha256, {
+        id: 'ontology-maintainer-job-13131313-1313-1313-1313-131313131313',
+        idempotencyKey: 'ontology-maintainer-runtime-store-1234567890abcdef',
+      }), reviewPackage: review.reviewPackage, stateStore: null, currentRepoHead: REVIEW_HEAD,
+      providerCapabilities: PROVIDER_CAPABILITIES, spawnProcess: createMockSpawn(), ...RUNTIME_SECURITY_OPTIONS,
+    }), { status: 'denied', reasonCode: 'state_store_unavailable' });
+    assert.deepStrictEqual(await executeOntologyMaintainerJob({
+      job: job(review.reviewPackageSha256, {
+        id: 'ontology-maintainer-job-14141414-1414-1414-1414-141414141414',
+        idempotencyKey: 'ontology-maintainer-runtime-runner-1234567890abcdef',
+      }), reviewPackage: review.reviewPackage, stateStore: store, currentRepoHead: REVIEW_HEAD,
+      providerCapabilities: PROVIDER_CAPABILITIES, ...RUNTIME_SECURITY_OPTIONS,
+    }), { status: 'denied', reasonCode: 'process_runner_unavailable' });
+    assert.deepStrictEqual(await executeOntologyMaintainerJob({
+      job: job(review.reviewPackageSha256, {
+        id: 'ontology-maintainer-job-15151515-1515-1515-1515-151515151515',
+        idempotencyKey: 'ontology-maintainer-runtime-claim-1234567890abcdef',
+      }), reviewPackage: review.reviewPackage, stateStore: { ...store, claimOntologyMaintainerJob: () => { throw new Error('locked'); } },
+      currentRepoHead: REVIEW_HEAD, providerCapabilities: PROVIDER_CAPABILITIES, spawnProcess: createMockSpawn(),
+      ...RUNTIME_SECURITY_OPTIONS,
+    }), { status: 'denied', reasonCode: 'job_claim_rejected' });
+    const duplicateExecution = await executeOntologyMaintainerJob({
+      job: job(review.reviewPackageSha256), reviewPackage: review.reviewPackage, stateStore: store,
+      currentRepoHead: REVIEW_HEAD, providerCapabilities: PROVIDER_CAPABILITIES, spawnProcess: createMockSpawn(),
+      ...RUNTIME_SECURITY_OPTIONS,
+    });
+    assert.deepStrictEqual(duplicateExecution.status, 'duplicate');
+    assert.strictEqual(duplicateExecution.job.id, 'ontology-maintainer-job-12345678-1234-1234-1234-123456789abc');
+
+    const timeoutExecution = await executeOntologyMaintainerJob({
+      job: job(review.reviewPackageSha256, {
+        id: 'ontology-maintainer-job-16161616-1616-1616-1616-161616161616',
+        idempotencyKey: 'ontology-maintainer-runtime-timeout-1234567890abcdef',
+      }), reviewPackage: review.reviewPackage, stateStore: store, currentRepoHead: REVIEW_HEAD,
+      providerCapabilities: PROVIDER_CAPABILITIES, timeoutMs: 1, now: NOW, ...RUNTIME_SECURITY_OPTIONS,
+      spawnProcess: nonClosingSpawn,
+    });
+    assert.deepStrictEqual(timeoutExecution, { status: 'retryable_failure', reasonCode: 'provider_timeout' });
+    const outputLimitExecution = await executeOntologyMaintainerJob({
+      job: job(review.reviewPackageSha256, {
+        id: 'ontology-maintainer-job-17171717-1717-1717-1717-171717171717',
+        idempotencyKey: 'ontology-maintainer-runtime-output-limit-1234567890abcd',
+      }), reviewPackage: review.reviewPackage, stateStore: store, currentRepoHead: REVIEW_HEAD,
+      providerCapabilities: PROVIDER_CAPABILITIES, now: NOW, ...RUNTIME_SECURITY_OPTIONS,
+      spawnProcess: createMockSpawn({ stdout: 'x'.repeat(MAX_PROCESS_OUTPUT_BYTES + 1) }),
+    });
+    assert.deepStrictEqual(outputLimitExecution, { status: 'rejected', reasonCode: 'provider_output_too_large' });
+    const processFailure = await executeOntologyMaintainerJob({
+      job: job(review.reviewPackageSha256, {
+        id: 'ontology-maintainer-job-18181818-1818-1818-1818-181818181818',
+        idempotencyKey: 'ontology-maintainer-runtime-process-fail-1234567890ab',
+      }), reviewPackage: review.reviewPackage, stateStore: store, currentRepoHead: REVIEW_HEAD,
+      providerCapabilities: PROVIDER_CAPABILITIES, now: NOW, ...RUNTIME_SECURITY_OPTIONS,
+      spawnProcess: createMockSpawn({ exitCode: 2 }),
+    });
+    assert.deepStrictEqual(processFailure, { status: 'retryable_failure', reasonCode: 'provider_process_failed' });
+    const semanticFailure = await executeOntologyMaintainerJob({
+      job: job(review.reviewPackageSha256, {
+        id: 'ontology-maintainer-job-19191919-1919-1919-1919-191919191919',
+        idempotencyKey: 'ontology-maintainer-runtime-semantic-fail-1234567890ab',
+      }), reviewPackage: review.reviewPackage, stateStore: store, currentRepoHead: REVIEW_HEAD,
+      providerCapabilities: PROVIDER_CAPABILITIES, now: NOW, ...RUNTIME_SECURITY_OPTIONS,
+      spawnProcess: createMockSpawn({ stdout: JSON.stringify({
+        targetPath: '.git/config', targetBeforeHash: `sha256:${'b'.repeat(64)}`,
+        intent: { action: 'sync_domain_metadata', subject: 'domain_state_store' },
+      }) }),
+    });
+    assert.deepStrictEqual(semanticFailure, { status: 'rejected', reasonCode: 'semantic_proposal_rejected' });
+    const proposalWriteFailure = await executeOntologyMaintainerJob({
+      job: job(review.reviewPackageSha256, {
+        id: 'ontology-maintainer-job-20202020-2020-2020-2020-202020202020',
+        idempotencyKey: 'ontology-maintainer-runtime-proposal-write-1234567890',
+      }), reviewPackage: review.reviewPackage,
+      stateStore: { ...store, recordOntologyMaintainerProposal: () => { throw new Error('readonly'); } },
+      currentRepoHead: REVIEW_HEAD, providerCapabilities: PROVIDER_CAPABILITIES, now: NOW, ...RUNTIME_SECURITY_OPTIONS,
+      spawnProcess: createMockSpawn({ stdout: JSON.stringify({
+        targetPath: '.claude/ontology/domain_state_store.json', targetBeforeHash: `sha256:${'b'.repeat(64)}`,
+        intent: { action: 'sync_domain_metadata', subject: 'domain_state_store' },
+      }) }),
+    });
+    assert.deepStrictEqual(proposalWriteFailure, { status: 'retryable_failure', reasonCode: 'proposal_persistence_failed' });
     console.log('  PASS enforces fixed dual-provider process contracts and records semantic proposals only');
   } finally {
     store.close();

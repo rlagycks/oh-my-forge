@@ -144,6 +144,66 @@ run('sourceDocs validation rejects paths that escape the repository root', () =>
   }
 });
 
+run('sourceDocs validation rejects a non-object sourceDocs value', () => {
+  const errors = [];
+  validateSourceDocs('domain_auth', ['docs/features/auth/api.md'], error => errors.push(error));
+
+  assert.deepStrictEqual(errors, [
+    'ERROR: domain_auth — sourceDocs must be an object of doc-kind -> path[]',
+  ]);
+});
+
+run('sourceDocs validation rejects empty and non-string document lists', () => {
+  const errors = [];
+  validateSourceDocs('domain_auth', {
+    prd: [],
+    apiSpec: 'docs/features/auth/api.md',
+  }, error => errors.push(error));
+
+  assert.deepStrictEqual(errors, [
+    'ERROR: domain_auth — sourceDocs.prd must be a non-empty string array',
+    'ERROR: domain_auth — sourceDocs.apiSpec must be a non-empty string array',
+  ]);
+});
+
+run('sourceDocs validation rejects blank, absolute, parent, and non-markdown paths', () => {
+  const errors = [];
+  validateSourceDocs('domain_auth', {
+    docs: ['', '/tmp/outside.md', 'docs\\..\\outside.md', 'docs/features/auth/api.txt'],
+  }, error => errors.push(error));
+
+  assert.deepStrictEqual(errors, [
+    'ERROR: domain_auth — sourceDocs.docs contains a non-string path',
+    'ERROR: domain_auth — sourceDocs.docs must use repo-relative paths: /tmp/outside.md',
+    'ERROR: domain_auth — sourceDocs.docs must stay within the repo root: docs\\..\\outside.md',
+    'ERROR: domain_auth — sourceDocs.docs must point to markdown files: docs/features/auth/api.txt',
+  ]);
+});
+
+run('sourceDocs validation rejects markdown paths that do not exist', () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'source-docs-missing-'));
+
+  try {
+    const errors = [];
+    validateSourceDocs('domain_auth', {
+      apiSpec: ['docs/features/auth/missing.md'],
+    }, error => errors.push(error), { root: tempRoot });
+
+    assert.deepStrictEqual(errors, [
+      'ERROR: domain_auth — sourceDocs.apiSpec path not found: docs/features/auth/missing.md',
+    ]);
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+run('sourceDocs validation allows an omitted sourceDocs field', () => {
+  const errors = [];
+  validateSourceDocs('domain_auth', undefined, error => errors.push(error));
+
+  assert.deepStrictEqual(errors, []);
+});
+
 // No circular dependsOn (DFS)
 run('no circular dependsOn', () => {
   function hasCycle(key, visited, stack) {

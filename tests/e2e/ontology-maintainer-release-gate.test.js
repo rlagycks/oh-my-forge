@@ -143,7 +143,7 @@ async function recordApproval(fixture, proposal) {
     schemaVersion: 1, type: 'ontology_maintainer_approval', id: 'ontology-maintainer-approval-12345678-1234-1234-1234-123456789abc',
     proposalId: proposal.id, proposalSha256: proposal.proposalSha256, reviewPackageSha256: proposal.reviewPackageSha256,
     candidateFingerprint: proposal.candidateFingerprint, repoHead: HEAD, targetPath: proposal.targetPath, targetBeforeHash: beforeHash,
-    decision: 'approved', approverId: 'maintainer/reviewer', expiresAt: '2026-07-27T04:00:00.000Z', createdAt: NOW,
+    decision: 'approved', approverId: 'maintainer/reviewer', expiresAt: '2099-01-01T00:00:00.000Z', createdAt: NOW,
   }, { currentRepoHead: HEAD, currentTargetBeforeHash: beforeHash, now: NOW, artifactReader: () => operation, attestationSecret: ATTESTATION_SECRET });
   return { store, approval, operation, receipt };
 }

@@ -334,5 +334,90 @@ if (test('inferDomainFromDetailPath derives the domain key from a detail filenam
   assert.strictEqual(inferDomainFromDetailPath('notes.md'), '');
 })) passed++; else failed++;
 
+if (test('parseDesignContract normalizes aliases, deduplicates lists, and ignores fenced content', () => {
+  const parsed = parseDesignContract(`
+## **Problem One Line**
+1. First problem
+
+## Inputs / Contracts
+- Stable API
+- Stable API
+\`\`\`
+- ignored fence item
+\`\`\`
+
+### Handoff Format
+* Current State
+* Evidence
+* Open Risks
+* Next Action
+`);
+
+  assert.strictEqual(parsed.problemOneLine, 'First problem');
+  assert.deepStrictEqual(parsed.inputsContracts, ['Stable API']);
+  assert.deepStrictEqual(parsed.handoffFormat, ['Current State', 'Evidence', 'Open Risks', 'Next Action']);
+})) passed++; else failed++;
+
+if (test('validateDesignContract rejects malformed values and incomplete handoff labels', () => {
+  const validation = validateDesignContract({
+    problemOneLine: 'x', mission: 'y', success: ['z'], notDo: ['n'], inputsContracts: ['i'],
+    verificationPoints: ['v'], falseNormalChecks: ['f'], expansionForbidden: ['e'],
+    handoffFormat: ['Current State', 'Evidence'],
+  });
+
+  assert.strictEqual(validation.valid, false);
+  assert.ok(validation.errors.includes('Handoff Format must include: Open Risks'));
+  assert.ok(validation.errors.includes('Handoff Format must include: Next Action'));
+  assert.strictEqual(validateDesignContract(null).errors.length, 9);
+})) passed++; else failed++;
+
+if (test('build and merge preserve optional boundaries and omit empty fragment fields', () => {
+  const fragment = buildOntologyDetailFragment({
+    mission: '', success: [], notDo: [], expansionForbidden: [], inputsContracts: [],
+    verificationPoints: [], falseNormalChecks: [], handoffFormat: [], problemOneLine: '',
+  }, { domain: '  ', version: '  ', source: '  ', summary: '  ' });
+  assert.deepStrictEqual(fragment, { executionContract: {}, completionContract: {} });
+
+  const merged = mergeOntologyDetail({
+    summary: 'keep',
+    executionContract: { approvalBoundary: ['human'], blockOn: ['evidence'] },
+    completionContract: { falseNormalChecks: ['old'], handoffTemplate: ['Current State'] },
+  }, {
+    executionContract: { approvalBoundary: ['human', 'review'], blockOn: ['evidence', 'policy'] },
+    completionContract: { falseNormalChecks: ['old', 'new'], handoffTemplate: ['Current State', 'Evidence'] },
+  });
+  assert.strictEqual(merged.summary, 'keep');
+  assert.deepStrictEqual(merged.executionContract.approvalBoundary, ['human', 'review']);
+  assert.deepStrictEqual(merged.executionContract.blockOn, ['evidence', 'policy']);
+  assert.deepStrictEqual(merged.completionContract.falseNormalChecks, ['old', 'new']);
+  assert.deepStrictEqual(merged.completionContract.handoffTemplate, ['Current State', 'Evidence']);
+})) passed++; else failed++;
+
+if (test('validation helpers fail closed for missing files and deduplicate file batches', () => {
+  withTempDir(tempDir => {
+    const validPath = path.join(tempDir, 'valid.design-contract.md');
+    fs.writeFileSync(validPath, contractMarkdown);
+    const missingPath = path.join(tempDir, 'missing.design-contract.md');
+    const report = validateDesignContractFiles([validPath, validPath, missingPath]);
+    assert.strictEqual(report.files.length, 2);
+    assert.strictEqual(report.valid, false);
+    const missing = report.files.find(file => file.file === missingPath);
+    assert.strictEqual(missing.valid, false);
+    assert.ok(missing.errors[0].includes('ENOENT'));
+  });
+})) passed++; else failed++;
+
+if (test('design-contract CLI rejects unknown commands and empty contract directories', () => {
+  withTempDir(tempDir => {
+    const unknown = spawnSync(process.execPath, [scriptPath, 'unknown'], { encoding: 'utf8' });
+    assert.notStrictEqual(unknown.status, 0);
+    assert.ok(unknown.stderr.includes('Usage: design-contract.js validate'));
+
+    const empty = spawnSync(process.execPath, [scriptPath, 'validate', '--dir', tempDir], { encoding: 'utf8' });
+    assert.notStrictEqual(empty.status, 0);
+    assert.ok(empty.stderr.includes('No design contract files found'));
+  });
+})) passed++; else failed++;
+
 console.log(`\n  ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
