@@ -8,8 +8,11 @@ const path = require('path');
 
 const {
   buildComparison,
+  comparableConfiguration,
+  formatComparison,
   runPairedBenchmark,
   sanitizeAdapterMetadata,
+  verifyDeterministicFailingBaseline,
 } = require('../../scripts/lib/paired-benchmark-runner');
 const { readEvents } = require('../../scripts/lib/harness-events');
 const reportSchema = JSON.parse(fs.readFileSync(
@@ -199,6 +202,75 @@ async function run() {
     }, { strictConfig: true }), /sensitive comparison key/);
   });
 
+  await test('retains only serializable allowlisted metadata and rejects invalid comparable identities', async () => {
+    const fingerprint = `sha256:${'F'.repeat(64)}`;
+    const metadata = sanitizeAdapterMetadata({
+      provider: 'provider',
+      model: 'model',
+      config: {
+        stream: false,
+        stop: ['END', null, true, 2],
+        topLogprobs: 0,
+        temperature: Infinity,
+        timeoutMs: { invalid: true },
+      },
+      totalTokens: 3,
+      humanIntervention: true,
+      comparisonFingerprint: fingerprint,
+    });
+
+    assert.deepStrictEqual(metadata, {
+      provider: 'provider',
+      model: 'model',
+      config: { stream: false, stop: ['END', null, true, 2], topLogprobs: 0 },
+      totalTokens: 3,
+      humanIntervention: true,
+      comparisonFingerprint: fingerprint.toLowerCase(),
+    });
+    assert.throws(() => sanitizeAdapterMetadata(null), /Adapter result must be an object/);
+    assert.throws(() => sanitizeAdapterMetadata({ provider: '   ' }), /provider must be a non-empty string/);
+    assert.throws(() => sanitizeAdapterMetadata({ humanIntervention: 'false' }), /humanIntervention must be a boolean/);
+    assert.throws(() => sanitizeAdapterMetadata({ comparisonFingerprint: 'not-a-fingerprint' }), /sha256 fingerprint/);
+    assert.throws(() => comparableConfiguration({ provider: 'provider', model: 'model' }), /comparison needs/);
+  });
+
+  await test('reports empty comparisons and renders exhausted benchmark limits', async () => {
+    const comparison = buildComparison([{ complete: false, conditions: {} }]);
+    assert.strictEqual(comparison.pairs, 0);
+    assert.strictEqual(comparison.on.successRate, null);
+    assert.strictEqual(comparison.off.costPerSuccessfulTaskUsd, null);
+    assert.strictEqual(comparison.successRateDelta, null);
+    assert.deepStrictEqual(comparison.pairedOutcomes, { onWins: 0, offWins: 0, ties: 0 });
+
+    const text = formatComparison({
+      suite: null,
+      seed: 7,
+      repetitions: 1,
+      snapshot: { hash: 'sha256:snapshot' },
+      providers: [],
+      comparison,
+      pairs: [{ complete: false }],
+      limits: { costUsd: 0, costExceeded: true, timeoutCount: 2 },
+    });
+    assert.match(text, /unnamed suite/);
+    assert.match(text, /Snapshot: sha256:snapshot/);
+    assert.match(text, /Provider\(s\): n\/a/);
+    assert.match(text, /Cost limit reached/);
+    assert.match(text, /Timeouts: 2/);
+  });
+
+  await test('fails closed on malformed or non-deterministic failing baseline attempts', async () => {
+    assert.throws(() => verifyDeterministicFailingBaseline([]), /requires two isolated attempts/);
+    assert.throws(() => verifyDeterministicFailingBaseline([
+      { outcome: 'failure', exitCode: 1, expectedExitCode: 0, timedOut: false, errorCode: null },
+      { outcome: 'failure', exitCode: 2, expectedExitCode: 0, timedOut: false, errorCode: null },
+    ]), /fail deterministically/);
+    assert.throws(() => verifyDeterministicFailingBaseline([
+      { outcome: 'failure', exitCode: 1, expectedExitCode: 0, timedOut: true, errorCode: null },
+      { outcome: 'failure', exitCode: 1, expectedExitCode: 0, timedOut: true, errorCode: null },
+    ]), /fail deterministically/);
+  });
+
   await test('records adapter timeouts and stops before the next pair when cost limit is exhausted', async () => {
     const fixture = makeFixture();
     try {
@@ -254,6 +326,63 @@ async function run() {
         adapter: async () => ({ provider: 'unused' }),
         timeoutMs: 0,
       }), /timeoutMs must be from 1/);
+    } finally {
+      fs.rmSync(fixture.dir, { recursive: true, force: true });
+    }
+  });
+
+  await test('supports object adapters and records metadata failures without aborting other paired attempts', async () => {
+    const fixture = makeFixture();
+    try {
+      let calls = 0;
+      const report = await runPairedBenchmark({
+        suitePath: fixture.suitePath,
+        logPath: fixture.logPath,
+        taskId: 'task-a',
+        snapshotId: 'legacy-snapshot-id',
+        snapshotHash: 'sha256:legacy-snapshot-hash',
+        seed: 9,
+        adapter: {
+          async run() {
+            calls += 1;
+            return calls === 1
+              ? { provider: '' }
+              : undefined;
+          },
+        },
+      });
+      assert.strictEqual(report.results.length, 2);
+      assert.strictEqual(report.snapshot.id, 'legacy-snapshot-id');
+      assert.strictEqual(report.snapshot.hash, 'sha256:legacy-snapshot-hash');
+      assert.strictEqual(report.results.filter(result => result.outcome === 'failure').length, 1);
+      assert.strictEqual(report.results.filter(result => result.errorCode === 'ADAPTER_METADATA_ERROR').length, 1);
+      assert.strictEqual(report.results.filter(result => result.outcome === 'success').length, 1);
+      assert.strictEqual(report.providers.length, 0);
+      assert.strictEqual(report.environmentIntegrity, 'unverified');
+    } finally {
+      fs.rmSync(fixture.dir, { recursive: true, force: true });
+    }
+  });
+
+  await test('rejects malformed benchmark options before scheduling provider work', async () => {
+    const fixture = makeFixture();
+    try {
+      const unused = async () => { throw new Error('must not execute'); };
+      await assert.rejects(() => runPairedBenchmark({
+        suitePath: fixture.suitePath, adapter: unused, taskId: 'missing-task',
+      }), /Unknown golden task/);
+      await assert.rejects(() => runPairedBenchmark({
+        suitePath: fixture.suitePath, adapter: unused, repetitions: 101,
+      }), /repetitions must be from 1/);
+      await assert.rejects(() => runPairedBenchmark({
+        suitePath: fixture.suitePath, adapter: unused, maxCostUsd: -1,
+      }), /maxCostUsd must be a non-negative number/);
+      await assert.rejects(() => runPairedBenchmark({
+        suitePath: fixture.suitePath, adapter: unused, snapshot: {},
+      }), /snapshot must include/);
+      await assert.rejects(() => runPairedBenchmark({
+        suitePath: fixture.suitePath, snapshot: 'adapter-validation', adapter: {},
+      }), /adapter must be a function/);
     } finally {
       fs.rmSync(fixture.dir, { recursive: true, force: true });
     }
