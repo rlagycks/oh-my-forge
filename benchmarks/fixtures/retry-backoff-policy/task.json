@@ -1,0 +1,20 @@
+{
+  "id": "retry-backoff-policy",
+  "prompt": "The retry helper in src/backoff.js and src/retry.js is wrong in several ways. Fix all of them: (1) computeDelay must be exponential, returning baseDelayMs * 2^attempt for attempt starting at 0, capped at maxDelayMs, then multiplied by a jitter factor of (0.5 + 0.5 * random()) and rounded down with Math.floor; (2) retry must attempt the operation at most maxAttempts times in total, not maxAttempts retries after the first call; (3) retry must only retry when isRetryable(error) returns true, and must rethrow immediately otherwise; (4) before each sleep, retry must check the elapsed time from deps.now() against maxElapsedMs and stop retrying if the next delay would exceed the budget, rethrowing the last error; (5) retry must return the operation's resolved value on success. deps supplies now, random, and sleep so the behaviour is deterministic under test. Run `node test/retry.test.js` to check your work.",
+  "stratum": "long-horizon",
+  "tags": ["resilience", "retry", "backoff", "omf-neutral"],
+  "difficulty": "hard",
+  "omf_neutral": true,
+  "success_criteria": [
+    "computeDelay grows exponentially and is capped at maxDelayMs",
+    "Jitter uses the 0.5 to 1.0 multiplier and floors the result",
+    "retry performs at most maxAttempts total attempts",
+    "Non-retryable errors are rethrown without any retry",
+    "The elapsed-time budget stops further retries",
+    "retry resolves with the operation's value on success"
+  ],
+  "provenance": {
+    "source": "benchmarks/fixtures/retry-backoff-policy",
+    "incident": "Synthetic neutral fixture. Multi-file retry-policy defects with injected clock and randomness for determinism."
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "static-path-traversal-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static asset path resolution.",
+  "main": "src/resolve-asset.js",
+  "scripts": {
+    "test": "node test/resolve-asset.test.js"
+  }
+}

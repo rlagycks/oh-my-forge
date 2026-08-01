@@ -1,0 +1,20 @@
+{
+  "id": "log-secret-redaction",
+  "prompt": "redactSecrets in src/redact.js is supposed to scrub credentials from log lines before they are written, but it only handles one pattern and misses the rest. Extend it so every occurrence of the following is replaced with the literal string [REDACTED]: an Authorization header value after 'Authorization: ' (both Bearer and Basic schemes, the whole credential), a JWT (three base64url segments separated by dots), an AWS access key id (AKIA followed by 16 uppercase alphanumerics), and the password inside a URL userinfo section (the part between ':' and '@', keeping the username). Non-secret text must be left byte-for-byte unchanged, and the function must keep returning a string without mutating its input. Run `node test/redact.test.js` to check your work.",
+  "stratum": "security-regression",
+  "tags": ["security", "secrets", "logging", "omf-neutral"],
+  "difficulty": "hard",
+  "omf_neutral": true,
+  "success_criteria": [
+    "Bearer and Basic Authorization header values are redacted",
+    "JWTs are redacted wherever they appear in a line",
+    "AWS access key ids are redacted",
+    "URL userinfo passwords are redacted while the username is preserved",
+    "Multiple secrets on one line are all redacted",
+    "Lines containing no secrets are returned unchanged"
+  ],
+  "provenance": {
+    "source": "benchmarks/fixtures/log-secret-redaction",
+    "incident": "Synthetic neutral fixture. Partial redaction implementation with a hidden verifier that also fails over-redaction of ordinary text."
+  }
+}

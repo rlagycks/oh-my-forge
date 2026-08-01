@@ -1,0 +1,10 @@
+{
+  "name": "event-bus-lifecycle-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal synchronous event bus.",
+  "main": "src/event-bus.js",
+  "scripts": {
+    "test": "node test/event-bus.test.js"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "config-precedence-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Layered configuration loader.",
+  "main": "src/load-config.js",
+  "scripts": {
+    "test": "node test/load-config.test.js"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "iso-duration-parse-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ISO 8601 duration parsing.",
+  "main": "src/duration.js",
+  "scripts": {
+    "test": "node test/duration.test.js"
+  }
+}

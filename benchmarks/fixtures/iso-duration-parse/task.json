@@ -1,0 +1,19 @@
+{
+  "id": "iso-duration-parse",
+  "prompt": "parseDuration in src/duration.js converts an ISO 8601 duration string to a number of seconds, but it only handles hours, minutes and seconds. Extend it to the full form PnYnMnWnDTnHnMnS: years count as 31536000 seconds and months as 2592000 seconds (fixed conversions, no calendar arithmetic), weeks as 604800, days as 86400. The designator M means months before the T separator and minutes after it. A leading minus sign negates the whole duration. The seconds component may be fractional, using either a dot or a comma as the decimal separator, and the result is rounded to three decimal places. Any input that is not a valid ISO 8601 duration, including 'P' with no components and a string with a T separator but no time components, must throw an Error with the message 'invalid duration'. Run `node test/duration.test.js` to check your work.",
+  "stratum": "seeded-defect",
+  "tags": ["parsing", "iso8601", "seeded-defect", "omf-neutral"],
+  "difficulty": "medium",
+  "omf_neutral": true,
+  "success_criteria": [
+    "Year, month, week and day components are parsed",
+    "M is months before T and minutes after T",
+    "A leading minus sign negates the whole duration",
+    "Fractional seconds accept both dot and comma separators",
+    "Invalid input throws an Error with the message 'invalid duration'"
+  ],
+  "provenance": {
+    "source": "benchmarks/fixtures/iso-duration-parse",
+    "incident": "Synthetic neutral fixture. Partial ISO 8601 duration support with a hidden verifier covering the date components and the M ambiguity."
+  }
+}

@@ -1,0 +1,477 @@
+{
+  "suite": "model-performance",
+  "description": "Baseline-failing model-performance corpus. Scored under docs/research/harness-evidence-protocol-2026-08.md. Generated from benchmarks/fixtures/ by scripts/build-model-performance-suite.js — do not edit by hand.",
+  "protocol": "docs/research/harness-evidence-protocol-2026-08.md",
+  "corpus_hash": "sha256:872fb4786bd0156f34f7b65efa2186d52764e22accc7000ed679b1a565298196",
+  "tasks": [
+    {
+      "id": "config-precedence",
+      "prompt": "Operators report that some settings in their config file are being ignored, and that clearing an environment variable does not fall back to the file value. loadConfig in src/load-config.js is not applying the precedence and merge rules this project documents. Bring it in line with the documented behaviour. Run `node test/load-config.test.js` to check your work.",
+      "provenance": {
+        "source": "benchmarks/fixtures/config-precedence",
+        "incident": "Synthetic neutral fixture. The specification lives in the repository (docs/CONFIG.md), not in the prompt, so the task requires locating it."
+      },
+      "tags": [
+        "configuration",
+        "brownfield",
+        "omf-neutral"
+      ],
+      "difficulty": "hard",
+      "stratum": "brownfield-ambiguous",
+      "omf_neutral": true,
+      "success_criteria": [
+        "Precedence follows the documented order",
+        "Empty and unset environment variables fall back rather than overriding",
+        "Nested objects merge while arrays replace",
+        "Documented type coercion is applied to environment values",
+        "Unknown environment variables are ignored"
+      ],
+      "verification": {
+        "argv": [
+          "node",
+          "../verify.js"
+        ],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "csv-quoted-fields",
+      "prompt": "The CSV parser in src/parse-csv.js does not follow RFC 4180. Quoted fields are not handled: a field wrapped in double quotes may contain commas, newlines, and escaped double quotes (\"\" for a literal quote), and the surrounding quotes must be stripped from the parsed value. Fix the parser so quoted fields parse correctly, and keep all existing unquoted behaviour working. Run `node test/parse-csv.test.js` to check your work.",
+      "provenance": {
+        "source": "benchmarks/fixtures/csv-quoted-fields",
+        "incident": "Synthetic neutral fixture. Seeded RFC 4180 quoted-field defect with a hidden generalization verifier."
+      },
+      "tags": [
+        "parsing",
+        "seeded-defect",
+        "omf-neutral"
+      ],
+      "difficulty": "medium",
+      "stratum": "seeded-defect",
+      "omf_neutral": true,
+      "success_criteria": [
+        "Quoted fields containing commas parse as a single field",
+        "Quoted fields containing newlines parse as a single field",
+        "Escaped double quotes inside a quoted field decode to one literal quote",
+        "Surrounding quotes are stripped from the parsed value",
+        "Existing unquoted parsing behaviour is unchanged"
+      ],
+      "verification": {
+        "argv": [
+          "node",
+          "../verify.js"
+        ],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "cursor-pagination",
+      "prompt": "The listing endpoint in src/paginate.js uses offset pagination over src/repository.js, which skips or repeats rows when items are inserted between requests. Convert it to keyset (cursor) pagination: (1) results are ordered by createdAt descending, then by id descending as a stable tie-break; (2) src/cursor.js must encode and decode an opaque cursor carrying the last row's createdAt and id, base64url-encoded, and decode must throw an Error with the message 'invalid cursor' for anything malformed; (3) paginate({limit, cursor}) must return {items, nextCursor, hasMore} where items has at most limit rows starting strictly after the cursor position in that ordering, hasMore reports whether further rows exist, and nextCursor is null when hasMore is false; (4) limit must be clamped to the range 1 to 100 with a default of 20. Do not change the repository's findPage signature. Run `node test/paginate.test.js` to check your work.",
+      "provenance": {
+        "source": "benchmarks/fixtures/cursor-pagination",
+        "incident": "Synthetic neutral fixture. Offset-to-keyset migration spanning three modules with tie-break and boundary conditions."
+      },
+      "tags": [
+        "pagination",
+        "api",
+        "data-access",
+        "omf-neutral"
+      ],
+      "difficulty": "hard",
+      "stratum": "long-horizon",
+      "omf_neutral": true,
+      "success_criteria": [
+        "Ordering is createdAt descending with id descending as tie-break",
+        "Cursors are opaque and round-trip through encode and decode",
+        "Malformed cursors throw an Error with the message 'invalid cursor'",
+        "Pages start strictly after the cursor position and never repeat or skip rows",
+        "hasMore is accurate and nextCursor is null on the last page",
+        "limit is clamped to 1 to 100 with a default of 20"
+      ],
+      "verification": {
+        "argv": [
+          "node",
+          "../verify.js"
+        ],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "event-bus-lifecycle",
+      "prompt": "The event bus in src/event-bus.js and src/subscription.js mishandles listener lifecycle during emit. Fix all of the following: (1) emit must iterate over a snapshot of the listener list taken before dispatch, so subscribing or unsubscribing from inside a handler does not skip or double-invoke other handlers; newly added handlers do not run during the emit that added them, and a handler already in the snapshot still receives that emit even if it is removed part-way through; (2) a once() handler must run exactly once even if the same event is emitted re-entrantly from inside that handler; (3) a handler that throws must not prevent the remaining handlers from running, and emit must rethrow the first error after all handlers have run; (4) the unsubscribe handle returned by on() and once() must be idempotent, so calling it twice never removes a later listener registered for the same event. Keep the on/once/off/emit/listenerCount API. Run `node test/event-bus.test.js` to check your work.",
+      "provenance": {
+        "source": "benchmarks/fixtures/event-bus-lifecycle",
+        "incident": "Synthetic neutral fixture. Multi-file listener-lifecycle defects requiring several coordinated changes."
+      },
+      "tags": [
+        "events",
+        "lifecycle",
+        "concurrency",
+        "omf-neutral"
+      ],
+      "difficulty": "hard",
+      "stratum": "long-horizon",
+      "omf_neutral": true,
+      "success_criteria": [
+        "emit iterates a snapshot so mutation during dispatch is safe",
+        "Handlers added during an emit do not run in that same emit",
+        "A handler removed mid-dispatch still receives the in-flight emit",
+        "once() handlers run exactly once even under re-entrant emit",
+        "A throwing handler does not stop the remaining handlers",
+        "emit rethrows the first handler error after dispatch completes",
+        "Unsubscribe handles are idempotent",
+        "on/once/off/emit/listenerCount keep their existing signatures"
+      ],
+      "verification": {
+        "argv": [
+          "node",
+          "../verify.js"
+        ],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "event-log-legacy-compat",
+      "prompt": "readEvents in src/read-events.js parses a JSONL event log, but it silently drops every legacy record written before the schema_version field existed, and one malformed line aborts the whole read. Fix it so that (1) a record with no schema_version is normalized to schema_version 0 rather than dropped, and its event_type is inferred as 'injection' when it has an injected_tokens field and 'outcome' when it has an outcome field; (2) a legacy record matching neither shape is counted as unrecognized, not dropped silently; (3) a line that is not valid JSON, or that parses to something other than a plain object, is counted as corrupt and skipped without throwing; (4) blank and whitespace-only lines are ignored entirely and counted nowhere; (5) the function returns {events, skipped} where skipped is {corrupt, unrecognized}, and events preserves input order. Run `node test/read-events.test.js` to check your work.",
+      "provenance": {
+        "source": "benchmarks/fixtures/event-log-legacy-compat",
+        "incident": "Replays the event-log backward-compatibility failure mode: structured records added alongside legacy ones, with legacy records silently lost. Synthetic fixture, no incident data."
+      },
+      "tags": [
+        "observability",
+        "backward-compatibility",
+        "jsonl"
+      ],
+      "difficulty": "medium",
+      "stratum": "failure-replay",
+      "omf_neutral": false,
+      "success_criteria": [
+        "Legacy records without schema_version are retained and normalized",
+        "Legacy event_type is inferred from the record shape",
+        "Unrecognized legacy records are counted rather than dropped silently",
+        "A corrupt line is skipped and counted without aborting the read",
+        "Blank lines are ignored and counted nowhere",
+        "Input order is preserved"
+      ],
+      "verification": {
+        "argv": [
+          "node",
+          "../verify.js"
+        ],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "interval-overlap-convention",
+      "prompt": "Schedulers are reporting a conflict when one booking ends at exactly the moment the next one begins, which should be allowed. overlaps() in src/interval.js does not follow the same interval convention as the rest of that module. Make it consistent with the convention the module already uses, and keep the other exported helpers behaving as they do today. Run `node test/interval.test.js` to check your work.",
+      "provenance": {
+        "source": "benchmarks/fixtures/interval-overlap-convention",
+        "incident": "Synthetic neutral fixture. The half-open convention is documented only by the module's sibling helpers, so the task requires reading the surrounding code."
+      },
+      "tags": [
+        "intervals",
+        "scheduling",
+        "brownfield",
+        "omf-neutral"
+      ],
+      "difficulty": "medium",
+      "stratum": "brownfield-ambiguous",
+      "omf_neutral": true,
+      "success_criteria": [
+        "Touching intervals are not treated as overlapping",
+        "Genuinely overlapping intervals are still detected",
+        "The convention matches the other helpers in the module",
+        "Empty intervals never overlap anything",
+        "contains and duration keep their current behaviour"
+      ],
+      "verification": {
+        "argv": [
+          "node",
+          "../verify.js"
+        ],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "iso-duration-parse",
+      "prompt": "parseDuration in src/duration.js converts an ISO 8601 duration string to a number of seconds, but it only handles hours, minutes and seconds. Extend it to the full form PnYnMnWnDTnHnMnS: years count as 31536000 seconds and months as 2592000 seconds (fixed conversions, no calendar arithmetic), weeks as 604800, days as 86400. The designator M means months before the T separator and minutes after it. A leading minus sign negates the whole duration. The seconds component may be fractional, using either a dot or a comma as the decimal separator, and the result is rounded to three decimal places. Any input that is not a valid ISO 8601 duration, including 'P' with no components and a string with a T separator but no time components, must throw an Error with the message 'invalid duration'. Run `node test/duration.test.js` to check your work.",
+      "provenance": {
+        "source": "benchmarks/fixtures/iso-duration-parse",
+        "incident": "Synthetic neutral fixture. Partial ISO 8601 duration support with a hidden verifier covering the date components and the M ambiguity."
+      },
+      "tags": [
+        "parsing",
+        "iso8601",
+        "seeded-defect",
+        "omf-neutral"
+      ],
+      "difficulty": "medium",
+      "stratum": "seeded-defect",
+      "omf_neutral": true,
+      "success_criteria": [
+        "Year, month, week and day components are parsed",
+        "M is months before T and minutes after T",
+        "A leading minus sign negates the whole duration",
+        "Fractional seconds accept both dot and comma separators",
+        "Invalid input throws an Error with the message 'invalid duration'"
+      ],
+      "verification": {
+        "argv": [
+          "node",
+          "../verify.js"
+        ],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "log-secret-redaction",
+      "prompt": "redactSecrets in src/redact.js is supposed to scrub credentials from log lines before they are written, but it only handles one pattern and misses the rest. Extend it so every occurrence of the following is replaced with the literal string [REDACTED]: an Authorization header value after 'Authorization: ' (both Bearer and Basic schemes, the whole credential), a JWT (three base64url segments separated by dots), an AWS access key id (AKIA followed by 16 uppercase alphanumerics), and the password inside a URL userinfo section (the part between ':' and '@', keeping the username). Non-secret text must be left byte-for-byte unchanged, and the function must keep returning a string without mutating its input. Run `node test/redact.test.js` to check your work.",
+      "provenance": {
+        "source": "benchmarks/fixtures/log-secret-redaction",
+        "incident": "Synthetic neutral fixture. Partial redaction implementation with a hidden verifier that also fails over-redaction of ordinary text."
+      },
+      "tags": [
+        "security",
+        "secrets",
+        "logging",
+        "omf-neutral"
+      ],
+      "difficulty": "hard",
+      "stratum": "security-regression",
+      "omf_neutral": true,
+      "success_criteria": [
+        "Bearer and Basic Authorization header values are redacted",
+        "JWTs are redacted wherever they appear in a line",
+        "AWS access key ids are redacted",
+        "URL userinfo passwords are redacted while the username is preserved",
+        "Multiple secrets on one line are all redacted",
+        "Lines containing no secrets are returned unchanged"
+      ],
+      "verification": {
+        "argv": [
+          "node",
+          "../verify.js"
+        ],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "lru-cache-eviction",
+      "prompt": "createLruCache in src/lru-cache.js is meant to be a least-recently-used cache with a fixed capacity, but it evicts the wrong entry: a successful get() does not mark an entry as recently used, and overwriting an existing key does not refresh it either. Fix the recency tracking so eviction always removes the genuinely least-recently-used entry, and so overwriting an existing key updates its value without growing the cache. Keep the existing get/set/has/size API. Run `node test/lru-cache.test.js` to check your work.",
+      "provenance": {
+        "source": "benchmarks/fixtures/lru-cache-eviction",
+        "incident": "Synthetic neutral fixture. Seeded recency-tracking defect with a hidden verifier covering interleaved access patterns."
+      },
+      "tags": [
+        "data-structures",
+        "caching",
+        "seeded-defect",
+        "omf-neutral"
+      ],
+      "difficulty": "medium",
+      "stratum": "seeded-defect",
+      "omf_neutral": true,
+      "success_criteria": [
+        "A successful get() marks the entry as most recently used",
+        "Overwriting an existing key refreshes its recency",
+        "Overwriting an existing key does not increase size",
+        "Eviction removes the least recently used entry once capacity is exceeded",
+        "get/set/has/size keep their existing signatures and return types"
+      ],
+      "verification": {
+        "argv": [
+          "node",
+          "../verify.js"
+        ],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "money-rounding-consistency",
+      "prompt": "Finance reports that invoice totals occasionally disagree with the sum of their tax lines by one cent. The rounding in src/money.js is not applied consistently across the module's functions. Make the rounding consistent, and make allocate() distribute a total across weights so the parts always sum exactly back to the original amount. Do not change the existing rounding convention that the module already establishes. Run `node test/money.test.js` to check your work.",
+      "provenance": {
+        "source": "benchmarks/fixtures/money-rounding-consistency",
+        "incident": "Synthetic neutral fixture. The banker's-rounding convention is established by an existing helper, so the task requires reading the surrounding code rather than the prompt."
+      },
+      "tags": [
+        "money",
+        "rounding",
+        "brownfield",
+        "omf-neutral"
+      ],
+      "difficulty": "hard",
+      "stratum": "brownfield-ambiguous",
+      "omf_neutral": true,
+      "success_criteria": [
+        "All rounding in the module uses the same convention",
+        "The established convention is preserved rather than replaced",
+        "allocate distributes an amount so the parts sum exactly to the input",
+        "Allocation remainders are distributed deterministically",
+        "Negative amounts round consistently with positive ones"
+      ],
+      "verification": {
+        "argv": [
+          "node",
+          "../verify.js"
+        ],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "pipeline-skipped-step-status",
+      "prompt": "runPipeline in src/run-pipeline.js reports overall status 'success' even when a required step was skipped because its precondition was not met, so a run that did not actually do its work looks green. Fix the status logic: (1) each step result must carry status 'completed', 'skipped', 'failed', or 'not_run', with a reason string for anything other than 'completed'; (2) a step whose precondition returns false is 'skipped' and never executed; (3) execution stops at the first failed step and every later step is reported 'not_run'; (4) the overall status is 'failed' if any step failed, otherwise 'incomplete' if any step with required set to true was skipped or not run, otherwise 'success'; (5) optional steps, meaning required set to false, may be skipped without downgrading a successful run. Run `node test/run-pipeline.test.js` to check your work.",
+      "provenance": {
+        "source": "benchmarks/fixtures/pipeline-skipped-step-status",
+        "incident": "Replays the false-normal completion failure mode: a run reporting success while a required step never executed. Synthetic fixture, no incident data."
+      },
+      "tags": [
+        "pipeline",
+        "false-normal",
+        "status-reporting"
+      ],
+      "difficulty": "hard",
+      "stratum": "failure-replay",
+      "omf_neutral": false,
+      "success_criteria": [
+        "A skipped required step prevents an overall status of success",
+        "Skipped steps are never executed",
+        "Execution stops at the first failure and later steps report not_run",
+        "Optional steps may skip without downgrading the run",
+        "Every non-completed step carries a reason"
+      ],
+      "verification": {
+        "argv": [
+          "node",
+          "../verify.js"
+        ],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "prototype-pollution-merge",
+      "prompt": "deepMerge in src/deep-merge.js recursively merges plain objects, but it is vulnerable to prototype pollution: a source key of __proto__, constructor, or prototype can reach Object.prototype and affect unrelated objects. It also mutates the target argument. Fix it so that (1) those three keys are skipped at every depth rather than merged, (2) neither argument is mutated and a new object is returned, and (3) ordinary merging behaviour is preserved: nested plain objects merge recursively, arrays and other non-plain values from the source replace the target value, and a source value of undefined does not overwrite an existing target value. Run `node test/deep-merge.test.js` to check your work.",
+      "provenance": {
+        "source": "benchmarks/fixtures/prototype-pollution-merge",
+        "incident": "Synthetic neutral fixture. Seeded prototype-pollution defect with a hidden verifier that also rejects over-blocking repairs."
+      },
+      "tags": [
+        "security",
+        "prototype-pollution",
+        "seeded-defect",
+        "omf-neutral"
+      ],
+      "difficulty": "medium",
+      "stratum": "security-regression",
+      "omf_neutral": true,
+      "success_criteria": [
+        "__proto__, constructor and prototype keys never reach Object.prototype",
+        "Polluting keys are blocked at nested depths as well as the top level",
+        "Neither input object is mutated",
+        "Nested plain objects still merge recursively",
+        "Arrays and non-plain values replace rather than merge",
+        "A source value of undefined does not overwrite an existing value"
+      ],
+      "verification": {
+        "argv": [
+          "node",
+          "../verify.js"
+        ],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "retry-backoff-policy",
+      "prompt": "The retry helper in src/backoff.js and src/retry.js is wrong in several ways. Fix all of them: (1) computeDelay must be exponential, returning baseDelayMs * 2^attempt for attempt starting at 0, capped at maxDelayMs, then multiplied by a jitter factor of (0.5 + 0.5 * random()) and rounded down with Math.floor; (2) retry must attempt the operation at most maxAttempts times in total, not maxAttempts retries after the first call; (3) retry must only retry when isRetryable(error) returns true, and must rethrow immediately otherwise; (4) before each sleep, retry must check the elapsed time from deps.now() against maxElapsedMs and stop retrying if the next delay would exceed the budget, rethrowing the last error; (5) retry must return the operation's resolved value on success. deps supplies now, random, and sleep so the behaviour is deterministic under test. Run `node test/retry.test.js` to check your work.",
+      "provenance": {
+        "source": "benchmarks/fixtures/retry-backoff-policy",
+        "incident": "Synthetic neutral fixture. Multi-file retry-policy defects with injected clock and randomness for determinism."
+      },
+      "tags": [
+        "resilience",
+        "retry",
+        "backoff",
+        "omf-neutral"
+      ],
+      "difficulty": "hard",
+      "stratum": "long-horizon",
+      "omf_neutral": true,
+      "success_criteria": [
+        "computeDelay grows exponentially and is capped at maxDelayMs",
+        "Jitter uses the 0.5 to 1.0 multiplier and floors the result",
+        "retry performs at most maxAttempts total attempts",
+        "Non-retryable errors are rethrown without any retry",
+        "The elapsed-time budget stops further retries",
+        "retry resolves with the operation's value on success"
+      ],
+      "verification": {
+        "argv": [
+          "node",
+          "../verify.js"
+        ],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "semver-compare",
+      "prompt": "compareVersions in src/compare-versions.js compares semantic versions as strings, so 1.10.0 sorts below 1.9.0 and prerelease versions are ignored. Fix it to return -1, 0, or 1 following semver precedence: compare major, minor, patch numerically; a version with a prerelease has LOWER precedence than the same version without one; compare prerelease identifiers dot-segment by dot-segment, where numeric segments compare numerically, numeric segments rank below non-numeric ones, non-numeric segments compare by ASCII, and a shorter prerelease with otherwise equal segments ranks lower; build metadata after + is ignored entirely. Run `node test/compare-versions.test.js` to check your work.",
+      "provenance": {
+        "source": "benchmarks/fixtures/semver-compare",
+        "incident": "Synthetic neutral fixture. Seeded lexicographic-comparison defect with a hidden verifier covering prerelease precedence."
+      },
+      "tags": [
+        "versioning",
+        "comparison",
+        "seeded-defect",
+        "omf-neutral"
+      ],
+      "difficulty": "medium",
+      "stratum": "seeded-defect",
+      "omf_neutral": true,
+      "success_criteria": [
+        "Numeric segments compare numerically, so 1.10.0 outranks 1.9.0",
+        "A prerelease version ranks below the same version without a prerelease",
+        "Prerelease identifiers compare per semver precedence rules",
+        "Build metadata does not affect precedence",
+        "Equal versions return 0"
+      ],
+      "verification": {
+        "argv": [
+          "node",
+          "../verify.js"
+        ],
+        "expected_exit_code": 0
+      }
+    },
+    {
+      "id": "static-path-traversal",
+      "prompt": "src/resolve-asset.js resolves a client-supplied request path against a static asset root. It is vulnerable to path traversal: a request such as ../../etc/passwd escapes the root. Fix resolveAsset so it rejects any request that would resolve outside the root, and also rejects request paths containing a NUL byte. Legitimate nested paths must keep working, and a leading slash still means the asset root. Rejection must throw an Error whose message is exactly 'forbidden path'. Run `node test/resolve-asset.test.js` to check your work.",
+      "provenance": {
+        "source": "benchmarks/fixtures/static-path-traversal",
+        "incident": "Synthetic neutral fixture. Seeded path-traversal defect with a hidden verifier that also rejects over-blocking repairs."
+      },
+      "tags": [
+        "security",
+        "path-traversal",
+        "seeded-defect",
+        "omf-neutral"
+      ],
+      "difficulty": "medium",
+      "stratum": "security-regression",
+      "omf_neutral": true,
+      "success_criteria": [
+        "Traversal segments that escape the root are rejected",
+        "A sibling directory sharing the root's name prefix is rejected",
+        "Request paths containing a NUL byte are rejected",
+        "Legitimate nested paths still resolve to an absolute path under the root",
+        "Rejections throw an Error with the message 'forbidden path'"
+      ],
+      "verification": {
+        "argv": [
+          "node",
+          "../verify.js"
+        ],
+        "expected_exit_code": 0
+      }
+    }
+  ]
+}

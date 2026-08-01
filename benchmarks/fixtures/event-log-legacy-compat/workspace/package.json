@@ -1,0 +1,10 @@
+{
+  "name": "event-log-legacy-compat-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "JSONL event log reader.",
+  "main": "src/read-events.js",
+  "scripts": {
+    "test": "node test/read-events.test.js"
+  }
+}

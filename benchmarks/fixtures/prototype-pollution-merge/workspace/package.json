@@ -1,0 +1,10 @@
+{
+  "name": "prototype-pollution-merge-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Recursive object merge utility.",
+  "main": "src/deep-merge.js",
+  "scripts": {
+    "test": "node test/deep-merge.test.js"
+  }
+}

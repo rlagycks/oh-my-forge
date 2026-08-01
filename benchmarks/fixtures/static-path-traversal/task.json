@@ -1,0 +1,19 @@
+{
+  "id": "static-path-traversal",
+  "prompt": "src/resolve-asset.js resolves a client-supplied request path against a static asset root. It is vulnerable to path traversal: a request such as ../../etc/passwd escapes the root. Fix resolveAsset so it rejects any request that would resolve outside the root, and also rejects request paths containing a NUL byte. Legitimate nested paths must keep working, and a leading slash still means the asset root. Rejection must throw an Error whose message is exactly 'forbidden path'. Run `node test/resolve-asset.test.js` to check your work.",
+  "stratum": "security-regression",
+  "tags": ["security", "path-traversal", "seeded-defect", "omf-neutral"],
+  "difficulty": "medium",
+  "omf_neutral": true,
+  "success_criteria": [
+    "Traversal segments that escape the root are rejected",
+    "A sibling directory sharing the root's name prefix is rejected",
+    "Request paths containing a NUL byte are rejected",
+    "Legitimate nested paths still resolve to an absolute path under the root",
+    "Rejections throw an Error with the message 'forbidden path'"
+  ],
+  "provenance": {
+    "source": "benchmarks/fixtures/static-path-traversal",
+    "incident": "Synthetic neutral fixture. Seeded path-traversal defect with a hidden verifier that also rejects over-blocking repairs."
+  }
+}

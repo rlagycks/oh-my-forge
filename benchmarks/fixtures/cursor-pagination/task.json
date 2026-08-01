@@ -1,0 +1,20 @@
+{
+  "id": "cursor-pagination",
+  "prompt": "The listing endpoint in src/paginate.js uses offset pagination over src/repository.js, which skips or repeats rows when items are inserted between requests. Convert it to keyset (cursor) pagination: (1) results are ordered by createdAt descending, then by id descending as a stable tie-break; (2) src/cursor.js must encode and decode an opaque cursor carrying the last row's createdAt and id, base64url-encoded, and decode must throw an Error with the message 'invalid cursor' for anything malformed; (3) paginate({limit, cursor}) must return {items, nextCursor, hasMore} where items has at most limit rows starting strictly after the cursor position in that ordering, hasMore reports whether further rows exist, and nextCursor is null when hasMore is false; (4) limit must be clamped to the range 1 to 100 with a default of 20. Do not change the repository's findPage signature. Run `node test/paginate.test.js` to check your work.",
+  "stratum": "long-horizon",
+  "tags": ["pagination", "api", "data-access", "omf-neutral"],
+  "difficulty": "hard",
+  "omf_neutral": true,
+  "success_criteria": [
+    "Ordering is createdAt descending with id descending as tie-break",
+    "Cursors are opaque and round-trip through encode and decode",
+    "Malformed cursors throw an Error with the message 'invalid cursor'",
+    "Pages start strictly after the cursor position and never repeat or skip rows",
+    "hasMore is accurate and nextCursor is null on the last page",
+    "limit is clamped to 1 to 100 with a default of 20"
+  ],
+  "provenance": {
+    "source": "benchmarks/fixtures/cursor-pagination",
+    "incident": "Synthetic neutral fixture. Offset-to-keyset migration spanning three modules with tie-break and boundary conditions."
+  }
+}

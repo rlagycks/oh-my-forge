@@ -1,0 +1,10 @@
+{
+  "name": "money-rounding-consistency-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Money and tax helpers in integer cents.",
+  "main": "src/money.js",
+  "scripts": {
+    "test": "node test/money.test.js"
+  }
+}

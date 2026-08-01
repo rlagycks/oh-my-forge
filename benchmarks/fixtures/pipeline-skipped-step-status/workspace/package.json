@@ -1,0 +1,10 @@
+{
+  "name": "pipeline-skipped-step-status-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ordered pipeline runner with preconditions.",
+  "main": "src/run-pipeline.js",
+  "scripts": {
+    "test": "node test/run-pipeline.test.js"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "id": "pipeline-skipped-step-status",
+  "prompt": "runPipeline in src/run-pipeline.js reports overall status 'success' even when a required step was skipped because its precondition was not met, so a run that did not actually do its work looks green. Fix the status logic: (1) each step result must carry status 'completed', 'skipped', 'failed', or 'not_run', with a reason string for anything other than 'completed'; (2) a step whose precondition returns false is 'skipped' and never executed; (3) execution stops at the first failed step and every later step is reported 'not_run'; (4) the overall status is 'failed' if any step failed, otherwise 'incomplete' if any step with required set to true was skipped or not run, otherwise 'success'; (5) optional steps, meaning required set to false, may be skipped without downgrading a successful run. Run `node test/run-pipeline.test.js` to check your work.",
+  "stratum": "failure-replay",
+  "tags": ["pipeline", "false-normal", "status-reporting"],
+  "difficulty": "hard",
+  "omf_neutral": false,
+  "success_criteria": [
+    "A skipped required step prevents an overall status of success",
+    "Skipped steps are never executed",
+    "Execution stops at the first failure and later steps report not_run",
+    "Optional steps may skip without downgrading the run",
+    "Every non-completed step carries a reason"
+  ],
+  "provenance": {
+    "source": "benchmarks/fixtures/pipeline-skipped-step-status",
+    "incident": "Replays the false-normal completion failure mode: a run reporting success while a required step never executed. Synthetic fixture, no incident data."
+  }
+}
