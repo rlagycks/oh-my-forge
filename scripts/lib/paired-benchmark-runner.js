@@ -1,6 +1,11 @@
 'use strict';
 
 const crypto = require('crypto');
+const {
+  createCheckpointWriter,
+  loadResumablePairs,
+  pairKey: checkpointPairKey,
+} = require('./paired-benchmark-checkpoint');
 const fs = require('fs');
 const path = require('path');
 
@@ -497,6 +502,25 @@ async function runPairedBenchmark(options = {}) {
   const runId = options.runId || createRunId(seed);
   const random = createRandom(seed);
   const pairs = createPairPlan(tasks, repetitions, random, runId);
+
+  // Checkpointing is opt-in and additive: without --checkpoint/--resume the
+  // loop behaves exactly as before.
+  const checkpointContext = {
+    seed,
+    repetitions,
+    suite: suite.suite || null,
+    snapshotId: snapshot?.id ?? null,
+    snapshotHash: snapshot?.hash ?? null,
+    comparisonFingerprint: rawAdapter?.measurementMetadata?.comparisonFingerprint ?? null,
+    guards: { isolation: requireIsolation, comparable: requireComparable, failingBaseline: requireFailingBaseline },
+  };
+  const resumed = options.resumeFrom
+    ? loadResumablePairs(options.resumeFrom, checkpointContext)
+    : { pairs: new Map(), skipped: 0, corrupt: 0 };
+  const checkpoint = options.checkpointPath
+    ? createCheckpointWriter(options.checkpointPath, checkpointContext)
+    : null;
+
   const results = [];
   let costUsd = 0;
   let costExceeded = false;
@@ -505,9 +529,21 @@ async function runPairedBenchmark(options = {}) {
   const usedWorkingDirectories = new Set();
 
   for (const pair of pairs) {
+    // A pair already paid for in an earlier run is reused verbatim. Its cost
+    // is deliberately not added to this run's budget: it was spent before.
+    const restored = resumed.pairs.get(checkpointPairKey(pair.taskId, pair.repetition));
+    if (restored) {
+      Object.assign(pair, restored, { resumed: true });
+      for (const condition of CONDITIONS) {
+        if (pair.conditions?.[condition]) results.push(pair.conditions[condition]);
+      }
+      continue;
+    }
+
     if (costExceeded) {
       pair.status = 'skipped';
       pair.skippedReason = 'cost_limit';
+      checkpoint?.appendPair(pair);
       continue;
     }
     const task = tasks.find(candidate => candidate.id === pair.taskId);
@@ -580,8 +616,13 @@ async function runPairedBenchmark(options = {}) {
       let baseResult;
       if (adapterRun.error) {
         if (requireComparable) {
-          const error = new Error('adapter run did not provide comparable execution metadata');
+          // Keep the adapter's own reason. Without it a budget stop or a
+          // provider outage both surface as an unexplained metadata error.
+          const error = new Error(
+            `adapter run did not provide comparable execution metadata: ${adapterRun.error.message}`
+          );
           error.code = 'COMPARISON_CONFIG_MISMATCH';
+          error.cause = adapterRun.error;
           throw error;
         }
         baseResult = createAdapterFailureResult(task, adapterRun.error, adapterRun.timedOut, Date.now() - startedAt);
@@ -699,6 +740,9 @@ async function runPairedBenchmark(options = {}) {
       pair.complete = false;
       pair.status = 'incomplete';
     }
+    // Written as each pair lands, so an abort later in the run cannot discard
+    // the pairs that already finished.
+    checkpoint?.appendPair(pair);
   }
 
   const providers = [...new Set(results.map(result => result.provider).filter(Boolean))];
@@ -717,6 +761,13 @@ async function runPairedBenchmark(options = {}) {
     executionOrder,
     providers,
     comparison: buildComparison(pairs),
+    resume: {
+      checkpointPath: checkpoint ? checkpoint.path : null,
+      resumedFrom: options.resumeFrom || null,
+      resumedPairs: pairs.filter(pair => pair.resumed).length,
+      executedPairs: pairs.filter(pair => !pair.resumed).length,
+      corruptCheckpointLines: resumed.corrupt,
+    },
     environmentIntegrity: requireIsolation && results.every(result => result.isolation?.attested)
       ? 'adapter_attested'
       : 'unverified',

@@ -141,6 +141,27 @@ node scripts/run-paired-benchmark.js \
 The three `--require-*` flags are mandatory for any result used in a claim.
 Without `--require-isolation` the report is `environmentIntegrity: "unverified"`.
 
+Add `--checkpoint` to any run you care about. A pilot is 90 provider episodes
+and tens of dollars, and a run that hits its cost ceiling — or any adapter
+error under `--require-comparable`, which the runner turns into a thrown
+`COMPARISON_CONFIG_MISMATCH` — aborts before a report is written. Without a
+ledger every pair that already completed is lost.
+
+```bash
+node scripts/run-paired-benchmark.js ... --checkpoint /tmp/pilot.jsonl
+# aborted part-way? continue without paying for finished pairs again:
+node scripts/run-paired-benchmark.js ... --checkpoint /tmp/pilot.jsonl --resume /tmp/pilot.jsonl
+```
+
+Each pair is appended as it lands, so an abort leaves the finished ones on
+disk, and the CLI prints the resume command on failure. A resume refuses
+outright if the seed, repetitions, suite, snapshot, comparison fingerprint or
+guard flags differ, because merging pairs across different configurations
+would pool incomparable data. Only complete pairs are reused; incomplete and
+skipped ones are re-run. The report carries a `resume` block with how many
+pairs were reused versus executed, and resumed pairs do not count against the
+new run's cost ceiling — they were paid for already.
+
 ### 4. Analyze it
 
 The runner emits raw pair counts. A bare `successRateDelta` is not a result:
