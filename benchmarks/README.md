@@ -70,14 +70,20 @@ What is done instead is **contamination detection**:
 
 1. **The verifier does not exist on disk while the agent runs.** It is
    materialized after the agent exits, so ordinary exploration cannot find it.
-2. **Anything left in the episode root is a tamper signal.** Entries other than
-   `workspace/` and `state/` fail the episode with `EPISODE_ROOT_TAMPER`,
-   including a pre-planted `verify.js` — the authoritative fixture copy always
-   overwrites it.
+2. **Anything left in the episode root is recorded.** Entries other than
+   `workspace/` and `state/` are logged and written to the episode artifact as
+   `episodeRootEntries`. A pre-planted `verify.js` is reported and then
+   overwritten by the authoritative fixture copy.
 3. **The workspace is hashed before and after.** Changes to protected paths
-   (`test/`, `package.json`) fail the episode with `OUT_OF_SCOPE_WRITE`. This is
-   the runner-level version of the per-verifier scope checks, so deleting the
-   shipped tests is caught even if a verifier forgets to look.
+   (`test/`, `package.json`) are recorded as `outOfScopeWrites` and the episode
+   is flagged `contaminated`.
+
+Both are recorded rather than thrown. Under `--require-comparable` the runner
+converts any adapter error into an abort of the entire run, so throwing here
+would let one agent touching `test/` destroy a 300-episode pilot. The verifiers
+already fail a tampered workspace independently — each re-runs its own copy of
+the public cases and asserts the shipped files survive — so this layer's job is
+to leave evidence, not to adjudicate.
 
 ### What this does not stop
 

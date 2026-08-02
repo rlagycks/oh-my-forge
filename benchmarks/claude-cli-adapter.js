@@ -167,7 +167,11 @@ module.exports = {
     const stateRoot = path.join(episodeRoot, 'state');
     fs.mkdirSync(stateRoot, { recursive: true });
 
-    if (!baselineAttempt) preparedManifests.set(prepared.cwd, prepared.manifest);
+    // Key on the canonical path: the runner canonicalizes cwd with realpathSync
+    // before handing it back, and on macOS /tmp resolves to /private/tmp. Keying
+    // on the raw path made every lookup miss, so every file read as "added" and
+    // every episode was flagged contaminated.
+    if (!baselineAttempt) preparedManifests.set(fs.realpathSync(prepared.cwd), prepared.manifest);
 
     return {
       cwd: prepared.cwd,
@@ -258,7 +262,11 @@ module.exports = {
     //   1. diff the workspace against its prepared state
     //   2. record anything the agent left in the episode root
     //   3. only then place the verifier, which did not exist during the run
-    const before = preparedManifests.get(cwd) || {};
+    const before = preparedManifests.get(cwd);
+    if (before === undefined) {
+      // Never silently treat a missing baseline as "everything changed".
+      throw new Error(`no prepared manifest for ${cwd}; scope diff would be meaningless`);
+    }
     const changes = classifyChanges(diffManifest(before, computeTreeManifest(cwd)));
     preparedManifests.delete(cwd);
 
@@ -268,26 +276,24 @@ module.exports = {
       fixtureRoot: FIXTURE_ROOT,
     });
 
+    // Contamination is recorded, not thrown. Under --require-comparable the
+    // runner turns any adapter error into an abort of the WHOLE run, so
+    // throwing here would let one agent touching test/ destroy a 300-episode
+    // pilot. The verifiers already fail a tampered workspace on their own —
+    // each re-runs its own copy of the public cases and asserts the shipped
+    // files survive — so this layer only needs to leave evidence.
     if (!changes.clean) {
-      // Writing to protected paths means the run cannot be scored: the shipped
-      // tests or manifest were altered, so a pass proves nothing.
-      const error = new Error(
-        `${episodeId} wrote outside the editable scope: ${changes.outOfScope.join(', ')}`
-      );
-      error.code = 'OUT_OF_SCOPE_WRITE';
-      throw error;
+      console.error(`[omf-benchmark] ${episodeId} wrote outside the editable scope: ${changes.outOfScope.join(', ')}`);
     }
     if (verifier.unexpectedEntries.length > 0) {
-      const error = new Error(
-        `${episodeId} left unexpected entries in the episode root: ${verifier.unexpectedEntries.join(', ')}`
-      );
-      error.code = 'EPISODE_ROOT_TAMPER';
-      throw error;
+      console.error(`[omf-benchmark] ${episodeId} left entries in the episode root: ${verifier.unexpectedEntries.join(', ')}`);
     }
 
     writeEpisodeArtifact(stateRoot, {
       filesChanged: changes.changed,
       outOfScopeWrites: changes.outOfScope,
+      contaminated: !changes.clean || verifier.unexpectedEntries.length > 0,
+      episodeRootEntries: verifier.unexpectedEntries,
       verifierHash: verifier.verifierHash,
       episodeId,
       taskId: task.id,
