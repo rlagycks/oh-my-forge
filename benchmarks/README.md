@@ -162,7 +162,17 @@ Key properties, all enforced by tests:
   Every interval resamples whole tasks and each task carries equal weight.
 - **No verdict below 15 tasks.** With one task the bootstrap collapses to a
   zero-width interval that reads as certainty; the analysis reports
-  `insufficient_data` instead. Override with `--min-clusters` only for testing.
+  `insufficient_data` instead.
+- **Analysis parameters are registered.** `--margin-pp`, `--min-clusters`,
+  `--samples` and `--seed` all change the verdict, so overriding any of them
+  sets `protocolCompliant: false`, drops the protocol citation, prints a
+  `NOT A PRE-REGISTERED RESULT` banner and forces exit 0. Sample counts below
+  1000 are rejected outright — at `samples: 1` the interval degenerates to a
+  point and can flip `inconclusive` to `improvement`.
+- **A pair is funded before it starts.** The full cost of both members is
+  reserved up front, so a run that cannot afford the pair stops without having
+  paid for half of it. Clamping the second member instead would produce a
+  "complete" pair whose halves ran on different budgets.
 - **Directional claims are corroborated.** If the interval says
   improvement/degradation but the task-level sign test does not reach p < 0.05,
   the output says so explicitly.

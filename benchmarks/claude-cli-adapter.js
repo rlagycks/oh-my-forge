@@ -52,6 +52,7 @@ const {
   materializeVerifier,
   prepareEpisode,
 } = require('./lib/fixtures');
+const { createPairBudgetGuard } = require('./lib/pair-budget');
 
 const PROVIDER = 'claude-code-cli';
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -97,6 +98,9 @@ const COMPARISON_FINGERPRINT = computeComparisonFingerprint({
  * diff can tell what the agent actually changed.
  */
 const preparedManifests = new Map();
+
+/** Reserves both members of a pair up front; see lib/pair-budget.js. */
+const pairBudget = createPairBudgetGuard(RUNTIME.maxBudgetUsd);
 
 /**
  * Directory name for one prepared workspace. Baseline preflight attempts and
@@ -191,21 +195,20 @@ module.exports = {
 
     const conditionId = condition === 'on' ? ON_CONDITION : 'off';
 
-    // Both members of a pair must run under the SAME budget, or the second
-    // condition is silently handicapped by whatever the first spent and the
-    // pair is still marked complete. The runner's remaining budget shrinks
-    // monotonically, so rather than clamping, refuse the episode when the
-    // remaining budget can no longer cover a full-price run.
-    if (typeof remainingCostUsd === 'number' && Number.isFinite(remainingCostUsd)
-        && remainingCostUsd < RUNTIME.maxBudgetUsd) {
-      const error = new Error(
-        `${episodeId} skipped: remaining run budget $${remainingCostUsd.toFixed(4)} cannot cover the `
-        + `per-episode budget $${RUNTIME.maxBudgetUsd.toFixed(4)}; a reduced budget would confound the pair`
-      );
+    // Both members of a pair must run under the SAME budget. The reservation
+    // is taken before the FIRST member starts and covers both, so a run that
+    // cannot fund the pair stops without having paid for half of it.
+    const reservation = pairBudget.reserve({
+      taskId: task.id,
+      repetition: request.repetition,
+      remainingCostUsd,
+    });
+    if (!reservation.ok) {
+      const error = new Error(`${episodeId} not started: ${reservation.reason}`);
       error.code = 'INSUFFICIENT_PAIR_BUDGET';
       throw error;
     }
-    const budget = RUNTIME.maxBudgetUsd;
+    const budget = reservation.budget;
 
     const invocation = buildInvocation({
       conditionId,

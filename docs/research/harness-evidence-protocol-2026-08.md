@@ -247,9 +247,19 @@ direction must be reported as suggestive, not established.
 
 ### Implementation
 
-`scripts/lib/paired-stats.js` and `scripts/analyze-paired-benchmark.js`.
-Analysis is deterministic: the bootstrap uses a seeded PRNG, so the same report
-and seed always reproduce the same interval.
+`benchmarks/lib/paired-stats.js` and `benchmarks/analyze.js`. Analysis is
+deterministic: the bootstrap uses a seeded PRNG, so the same report and seed
+always reproduce the same interval.
+
+### Registered analysis parameters
+
+The margin, cluster floor, confidence level, **bootstrap sample count** and
+**RNG seed** are all registered. Overriding any of them produces
+`protocolCompliant: false`, drops the protocol citation, prints a
+`NOT A PRE-REGISTERED RESULT` banner and forces exit 0, so a post-hoc choice
+can neither be quoted as a protocol verdict nor gate a build. Sample counts
+below 1000 are rejected outright: at very small counts the interval degenerates
+to a point and can flip the verdict.
 
 ## 8. Reporting rules
 
@@ -285,6 +295,7 @@ and seed always reproduce the same interval.
 | 2026-08-02 | Added the corroboration requirement | The bootstrap interval and the task-level sign test can disagree; an uncorroborated directional claim must be labelled rather than reported as a finding. Strictly narrows what may be claimed. |
 | 2026-08-02 | Corrected the verifier-isolation claim (§5.3) | Review found the claim false: the agent can read and write the episode root. Verified against the live CLI. Replaced with an explicit non-adversarial threat model plus contamination detection. This weakens a stated guarantee and is recorded as such. |
 | 2026-08-02 | Analysis overrides void the pre-registered label | `--margin-pp` / `--min-clusters` produced output still citing this protocol and still driving a CI exit code. Overridden runs now report `protocolCompliant: false` and never gate. |
+| 2026-08-02 | Bootstrap sample count and RNG seed registered; minimum 1000 draws | Follow-up review showed `samples: 1` turning an `inconclusive` result into `improvement` with a degenerate interval, still labelled protocol-compliant. Both are now registered parameters and sub-1000 counts are rejected. |
 
 ## References
 

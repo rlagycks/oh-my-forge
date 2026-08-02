@@ -16,6 +16,12 @@
  */
 
 const DEFAULT_BOOTSTRAP_SAMPLES = 10000;
+/**
+ * Floor on bootstrap draws. Below this a percentile interval is not estimated
+ * so much as sampled at random, and at very small counts it degenerates to a
+ * point — which reads as certainty.
+ */
+const MIN_BOOTSTRAP_SAMPLES = 1000;
 const DEFAULT_CONFIDENCE = 0.95;
 /** Registered non-inferiority margin, in percentage points. */
 const DEFAULT_MARGIN_PP = 3;
@@ -391,12 +397,24 @@ function analyzePairedReport(report, options = {}) {
   } = options;
   const seed = Number.isInteger(options.seed) ? options.seed : (Number.isInteger(report?.seed) ? report.seed : 1);
 
+  if (!Number.isInteger(samples) || samples < MIN_BOOTSTRAP_SAMPLES) {
+    // A handful of draws does not estimate a percentile. At samples = 1 the
+    // interval collapses to a point and can flip the verdict outright.
+    throw new Error(`samples must be an integer >= ${MIN_BOOTSTRAP_SAMPLES}`);
+  }
+
   // A run analyzed with anything other than the registered parameters is no
-  // longer a pre-registered result and must not be labelled as one.
+  // longer a pre-registered result and must not be labelled as one. The
+  // bootstrap sample count and RNG seed belong here: both change the interval,
+  // so leaving them out would let a post-hoc choice of either be published as
+  // a protocol verdict.
+  const seedOverridden = Number.isInteger(options.seed) && options.seed !== report?.seed;
   const deviations = [
     ...(marginPp === DEFAULT_MARGIN_PP ? [] : [`marginPp ${marginPp} (registered ${DEFAULT_MARGIN_PP})`]),
     ...(minClusters === DEFAULT_MIN_CLUSTERS ? [] : [`minClusters ${minClusters} (registered ${DEFAULT_MIN_CLUSTERS})`]),
     ...(confidence === DEFAULT_CONFIDENCE ? [] : [`confidence ${confidence} (registered ${DEFAULT_CONFIDENCE})`]),
+    ...(samples === DEFAULT_BOOTSTRAP_SAMPLES ? [] : [`samples ${samples} (registered ${DEFAULT_BOOTSTRAP_SAMPLES})`]),
+    ...(seedOverridden ? [`seed ${options.seed} (registered: the run's own seed ${report?.seed ?? 'n/a'})`] : []),
   ];
   const protocolCompliant = deviations.length === 0;
 
@@ -501,6 +519,7 @@ function analyzePairedReport(report, options = {}) {
 module.exports = {
   DEFAULT_BOOTSTRAP_SAMPLES,
   DEFAULT_CONFIDENCE,
+  MIN_BOOTSTRAP_SAMPLES,
   DEFAULT_MARGIN_PP,
   DEFAULT_MIN_CLUSTERS,
   analyzePairedReport,

@@ -159,7 +159,7 @@ test('cluster bootstrap resamples tasks, not repetitions', () => {
   const interval = clusterBootstrap(
     tasks,
     resampled => resampled.reduce((total, task) => total + task.successRateDiff, 0) / resampled.length,
-    { samples: 500, confidence: 0.95, random }
+    { samples: 2000, confidence: 0.95, random }
   );
   // Resampling repetitions would produce many intermediate values; resampling
   // whole tasks can only give -1, 0, or 1.
@@ -169,10 +169,10 @@ test('cluster bootstrap resamples tasks, not repetitions', () => {
 
 test('analysis is reproducible for a fixed seed and varies with the seed', () => {
   const report = buildReport(repeatTasks(15, [[true, false], [false, false], [true, true]]));
-  const a = analyzePairedReport(report, { samples: 400, seed: 5 });
-  const b = analyzePairedReport(report, { samples: 400, seed: 5 });
+  const a = analyzePairedReport(report, { samples: 20000, seed: 5 });
+  const b = analyzePairedReport(report, { samples: 20000, seed: 5 });
   assert.deepStrictEqual(a.quality.ci, b.quality.ci);
-  const c = analyzePairedReport(report, { samples: 400, seed: 6 });
+  const c = analyzePairedReport(report, { samples: 20000, seed: 6 });
   assert.strictEqual(typeof c.quality.ci.lower, 'number');
 });
 
@@ -182,7 +182,7 @@ test('refuses a verdict below the cluster floor', () => {
   // The defect this guards: one task makes the bootstrap collapse to a point,
   // which reads as certainty.
   const report = buildReport({ only: [[false, true]] });
-  const analysis = analyzePairedReport(report, { samples: 200 });
+  const analysis = analyzePairedReport(report, { samples: 2000 });
   assert.strictEqual(analysis.quality.verdict, 'insufficient_data');
   assert.match(analysis.quality.rule, /below the 15-task floor/);
   assert.strictEqual(analysis.quality.ci.lower, analysis.quality.ci.upper, 'the interval is degenerate');
@@ -190,9 +190,9 @@ test('refuses a verdict below the cluster floor', () => {
 
 test('the cluster floor is configurable', () => {
   const report = buildReport(repeatTasks(3, [[false, true]]));
-  assert.strictEqual(analyzePairedReport(report, { samples: 200 }).quality.verdict, 'insufficient_data');
+  assert.strictEqual(analyzePairedReport(report, { samples: 2000 }).quality.verdict, 'insufficient_data');
   assert.strictEqual(
-    analyzePairedReport(report, { samples: 200, minClusters: 2 }).quality.verdict,
+    analyzePairedReport(report, { samples: 2000, minClusters: 2 }).quality.verdict,
     'degradation'
   );
   assert.strictEqual(DEFAULT_MIN_CLUSTERS, 15);
@@ -210,7 +210,7 @@ test('decideVerdict maps intervals onto the registered rule', () => {
 test('identical conditions yield a non-inferior verdict, not an improvement', () => {
   const analysis = analyzePairedReport(
     buildReport(repeatTasks(15, [[true, true], [false, false], [true, true]])),
-    { samples: 400 }
+    { samples: 20000 }
   );
   assert.strictEqual(analysis.quality.pointEstimate, 0);
   assert.strictEqual(analysis.quality.verdict, 'non_inferior');
@@ -219,7 +219,7 @@ test('identical conditions yield a non-inferior verdict, not an improvement', ()
 test('a uniform harness win is reported as an improvement', () => {
   const analysis = analyzePairedReport(
     buildReport(repeatTasks(15, [[true, false], [true, false]])),
-    { samples: 400 }
+    { samples: 20000 }
   );
   assert.strictEqual(analysis.quality.verdict, 'improvement');
   assert.strictEqual(analysis.quality.taskLevelSignTest.onBetter, 15);
@@ -231,14 +231,14 @@ test('a uniform harness win is reported as an improvement', () => {
 test('efficiency is gated on the quality verdict', () => {
   const degraded = analyzePairedReport(
     buildReport(repeatTasks(15, [[false, true], [false, true]])),
-    { samples: 400 }
+    { samples: 20000 }
   );
   assert.strictEqual(degraded.quality.verdict, 'degradation');
   assert.strictEqual(degraded.efficiency.gated, false, 'a condition that fails cheaply must not look efficient');
 
   const fine = analyzePairedReport(
     buildReport(repeatTasks(15, [[true, true], [true, true]])),
-    { samples: 400 }
+    { samples: 20000 }
   );
   assert.strictEqual(fine.efficiency.gated, true);
 });
@@ -246,7 +246,7 @@ test('efficiency is gated on the quality verdict', () => {
 test('efficiency ratios reflect the underlying metrics', () => {
   const analysis = analyzePairedReport(
     buildReport(repeatTasks(15, [[true, true]]), { metrics: { onInput: 300, offInput: 100 } }),
-    { samples: 400 }
+    { samples: 20000 }
   );
   assert.ok(close(analysis.efficiency.ratios.inputTokens.ratio, 3), 'on/off input token ratio');
   assert.ok(close(analysis.efficiency.ratios.durationMs.ratio, 1));
@@ -255,7 +255,7 @@ test('efficiency ratios reflect the underlying metrics', () => {
 test('cost-of-pass is undefined when a condition never succeeds', () => {
   const analysis = analyzePairedReport(
     buildReport(repeatTasks(15, [[false, true]]), { metrics: { onCost: 1, offCost: 0.5 } }),
-    { samples: 400 }
+    { samples: 20000 }
   );
   assert.strictEqual(analysis.efficiency.costPerSuccessUsd.on, null, 'zero successes means no cost-of-pass');
   assert.ok(close(analysis.efficiency.costPerSuccessUsd.off, 0.5));
@@ -265,7 +265,7 @@ test('cost-of-pass divides total cost by successes, not by attempts', () => {
   // 15 tasks x 2 reps, on succeeds once per task: 30 attempts, 15 successes.
   const analysis = analyzePairedReport(
     buildReport(repeatTasks(15, [[true, true], [false, true]]), { metrics: { onCost: 1 } }),
-    { samples: 400 }
+    { samples: 20000 }
   );
   assert.ok(close(analysis.efficiency.costPerSuccessUsd.on, 2), 'two attempts of cost 1 per success');
 });
@@ -283,7 +283,7 @@ test('strata split by task metadata', () => {
     hard0: { difficulty: 'hard' },
     hard1: { difficulty: 'hard' },
   };
-  const analysis = analyzePairedReport(report, { samples: 200, taskMetadata });
+  const analysis = analyzePairedReport(report, { samples: 2000, taskMetadata });
   const byDifficulty = Object.fromEntries(analysis.strata.difficulty.map(row => [row.group, row]));
   assert.strictEqual(byDifficulty.medium.tasks, 8);
   assert.strictEqual(byDifficulty.hard.tasks, 2);
@@ -292,9 +292,57 @@ test('strata split by task metadata', () => {
 });
 
 test('an empty report yields insufficient data rather than throwing', () => {
-  const analysis = analyzePairedReport({ pairs: [] }, { samples: 100 });
+  const analysis = analyzePairedReport({ pairs: [] }, { samples: 2000 });
   assert.strictEqual(analysis.design.tasks, 0);
   assert.strictEqual(analysis.quality.verdict, 'insufficient_data');
+});
+
+
+// ---------------------------------------------- post-hoc analysis controls
+
+test('a bootstrap sample count below the floor is rejected outright', () => {
+  // samples: 1 collapsed the interval to a point and flipped the verdict.
+  const report = buildReport(repeatTasks(15, [[true, false]]));
+  assert.throws(() => analyzePairedReport(report, { samples: 1 }), /samples must be an integer >= 1000/);
+  assert.throws(() => analyzePairedReport(report, { samples: 0 }), /samples/);
+  assert.throws(() => analyzePairedReport(report, { samples: 1500.5 }), /samples/);
+});
+
+test('overriding the sample count voids the pre-registered label', () => {
+  const report = buildReport(repeatTasks(15, [[true, false]]));
+  const registered = analyzePairedReport(report);
+  assert.strictEqual(registered.protocolCompliant, true);
+  assert.ok(registered.protocol, 'a compliant run cites the protocol');
+
+  const overridden = analyzePairedReport(report, { samples: 2000 });
+  assert.strictEqual(overridden.protocolCompliant, false);
+  assert.strictEqual(overridden.protocol, null, 'a non-compliant run must not cite the protocol');
+  assert.ok(overridden.protocolDeviations.some(d => d.startsWith('samples ')));
+});
+
+test('overriding the seed voids the pre-registered label', () => {
+  const report = buildReport(repeatTasks(15, [[true, false]]), { seed: 11 });
+  // Using the run's own seed is not an override.
+  assert.strictEqual(analyzePairedReport(report, { seed: 11 }).protocolCompliant, true);
+
+  const overridden = analyzePairedReport(report, { seed: 12 });
+  assert.strictEqual(overridden.protocolCompliant, false);
+  assert.ok(overridden.protocolDeviations.some(d => d.startsWith('seed ')));
+});
+
+test('every registered analysis parameter is covered by the deviation list', () => {
+  const report = buildReport(repeatTasks(15, [[true, false]]));
+  for (const [label, options] of [
+    ['marginPp', { marginPp: 5 }],
+    ['minClusters', { minClusters: 2 }],
+    ['confidence', { confidence: 0.9 }],
+    ['samples', { samples: 2000 }],
+    ['seed', { seed: 999 }],
+  ]) {
+    const analysis = analyzePairedReport(report, options);
+    assert.strictEqual(analysis.protocolCompliant, false, `${label} must be a deviation`);
+    assert.ok(analysis.protocolDeviations.some(d => d.startsWith(label)), `${label} must be listed`);
+  }
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
