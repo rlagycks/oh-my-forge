@@ -13,7 +13,7 @@ const REQUIRED_PACKAGE_ARTIFACT_PATHS = Object.freeze([
   'manifests/install-components.json',
   'manifests/install-modules.json',
   'manifests/install-profiles.json',
-  'scripts/ecc.js',
+  'scripts/omf.js',
   'scripts/install-apply.js',
   'scripts/install-plan.js',
   'scripts/lib/install-executor.js',

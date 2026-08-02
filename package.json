@@ -1,6 +1,6 @@
 {
   "name": "oh-my-forge",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Ontology-driven Claude Code harness — agents, skills, commands, hooks, and rules with structural error prevention and Codex delegation.",
   "keywords": [
     "claude-code",
@@ -49,7 +49,7 @@
     "rules/",
     "schemas/",
     "scripts/ci/",
-    "scripts/ecc.js",
+    "scripts/omf.js",
     "scripts/gan-harness.sh",
     "scripts/hooks/",
     "scripts/lib/",
@@ -87,11 +87,11 @@
     "README.md"
   ],
   "bin": {
-    "ecc": "scripts/ecc.js",
-    "ecc-install": "scripts/install-apply.js"
+    "omf": "scripts/omf.js",
+    "omf-install": "scripts/install-apply.js"
   },
   "scripts": {
-    "postinstall": "echo '\\n  oh-my-forge installed!\\n  Run: npx ecc typescript\\n  Docs: https://github.com/rlagycks/oh-my-forge\\n'",
+    "postinstall": "echo '\\n  oh-my-forge installed!\\n  Run: npx omf typescript\\n  Docs: https://github.com/rlagycks/oh-my-forge\\n'",
     "lint": "eslint . && markdownlint '**/*.md' --ignore node_modules",
     "harness:audit": "node scripts/harness-audit.js",
     "claw": "node scripts/claw.js",

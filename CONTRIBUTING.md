@@ -48,8 +48,8 @@ staged, and untracked files, then validates the exact `npm pack` artifact before
 it edits any manifest. The published package contains the runtime, ontology, and
 install manifests; every artifact path must be Git-tracked, so local agent notes
 or ignored configuration cannot be published accidentally. The supported manual
-installation contract is the Node CLI (`node scripts/ecc.js install` or
-`npx ecc-install`), not legacy
+installation contract is the Node CLI (`node scripts/omf.js install` or
+`npx omf-install`), not legacy
 `install.sh` or `install.ps1` wrappers.
 
 ---

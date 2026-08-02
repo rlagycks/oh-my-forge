@@ -253,7 +253,7 @@ Claude Code 세션 안에서 다음 명령 하나만 실행하세요:
 git clone https://github.com/rlagycks/oh-my-forge.git
 cd oh-my-forge
 yarn install
-node scripts/ecc.js install
+node scripts/omf.js install
 ```
 
 ### 설치 확인

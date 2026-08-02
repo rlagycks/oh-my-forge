@@ -7,7 +7,16 @@
   "homepage": "https://github.com/rlagycks/oh-my-forge",
   "repository": "https://github.com/rlagycks/oh-my-forge",
   "license": "MIT",
-  "keywords": ["claude-code", "agents", "skills", "tdd", "code-review", "security", "workflow", "automation"],
+  "keywords": [
+    "claude-code",
+    "agents",
+    "skills",
+    "tdd",
+    "code-review",
+    "security",
+    "workflow",
+    "automation"
+  ],
   "skills": "./skills",
   "commands": "./commands"
 }

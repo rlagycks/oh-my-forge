@@ -1,6 +1,6 @@
 {
   "name": "oh-my-forge",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Ontology-driven Codex harness — skills, MCP configs, and agents for TDD, security scanning, code review, and structural error prevention.",
   "author": {
     "name": "rlagycks"
@@ -8,7 +8,16 @@
   "homepage": "https://github.com/rlagycks/oh-my-forge",
   "repository": "https://github.com/rlagycks/oh-my-forge",
   "license": "MIT",
-  "keywords": ["codex", "agents", "skills", "tdd", "code-review", "security", "workflow", "automation"],
+  "keywords": [
+    "codex",
+    "agents",
+    "skills",
+    "tdd",
+    "code-review",
+    "security",
+    "workflow",
+    "automation"
+  ],
   "skills": "./skills/",
   "mcpServers": "./mcp.default.json",
   "interface": {
@@ -17,7 +26,10 @@
     "longDescription": "oh-my-forge is a customized Claude Code harness built on everything-claude-code. It adds an ontology-driven structural error prevention system and Codex delegation via ontology GPS, so agent mistakes become system-level constraints — not repeated prompt patches.",
     "developerName": "rlagycks",
     "category": "Productivity",
-    "capabilities": ["Read", "Write"],
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
     "websiteURL": "https://github.com/rlagycks/oh-my-forge",
     "defaultPrompt": [
       "Use the tdd-workflow skill to write tests before implementation.",
