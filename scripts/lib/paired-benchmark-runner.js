@@ -22,6 +22,14 @@ const DEFAULT_REPETITIONS = 1;
 const MAX_REPETITIONS = 100;
 const MAX_SEED = 0xffffffff;
 const CONDITIONS = Object.freeze(['on', 'off']);
+/**
+ * Transport/infrastructure failures. These say nothing about the agent, so a
+ * pair hitting one is dropped rather than scored or aborted on.
+ */
+const OPERATIONAL_ERROR_CODES = new Set([
+  'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENETDOWN', 'ENETUNREACH',
+  'EPIPE', 'EAI_AGAIN', 'ENOTFOUND',
+]);
 const SENSITIVE_KEY_PATTERN = /prompt|source|context|payload|message|content|raw|output|input|code|stdout|stderr|transcript|response|request|secret|password|token|authorization|credential|cookie|header|api[_-]?key|access[_-]?key|private[_-]?key/i;
 const SAFE_CONFIG_KEYS = new Set([
   'temperature', 'topp', 'topk', 'maxtokens', 'maxoutputtokens', 'maxcompletiontokens',
@@ -525,6 +533,7 @@ async function runPairedBenchmark(options = {}) {
   let costUsd = 0;
   let costExceeded = false;
   let baselineConfiguration = null;
+  const operationalFailures = [];
   const usedStateRoots = new Set();
   const usedWorkingDirectories = new Set();
 
@@ -615,6 +624,38 @@ async function runPairedBenchmark(options = {}) {
       let metadata = {};
       let baseResult;
       if (adapterRun.error) {
+        // An operational failure is an OUTCOME, not a broken comparison: the
+        // episode ran and did not finish. The protocol counts timeouts as a
+        // reported safety metric, and if one condition times out more often
+        // that is a real effect to measure rather than a reason to discard the
+        // run. Aborting here meant a single slow episode killed a 300-episode
+        // pilot. Only a genuine metadata problem invalidates the comparison.
+        // An operational failure — a timeout, a dropped connection, a provider
+        // outage — is infrastructure, not evidence. Aborting the run on one is
+        // wrong (a single dropped episode killed a 300-episode pilot), and so
+        // is scoring it as a task failure: whichever condition happened to be
+        // running would be penalised for the network. Drop the whole pair
+        // instead, which the analysis already excludes rather than imputes.
+        const operational = adapterRun.timedOut
+          || OPERATIONAL_ERROR_CODES.has(adapterRun.error.code);
+        if (operational) {
+          operationalFailures.push({
+            taskId: pair.taskId,
+            repetition: pair.repetition,
+            condition,
+            code: adapterRun.error.code || null,
+            timedOut: Boolean(adapterRun.timedOut),
+          });
+          // Recorded in `results` so timeouts stay countable as a safety
+          // metric, but deliberately NOT attached to pair.conditions: the pair
+          // stays incomplete and the analysis excludes it instead of scoring
+          // an infrastructure failure against whichever condition was running.
+          const dropped = createAdapterFailureResult(task, adapterRun.error, adapterRun.timedOut, Date.now() - startedAt);
+          results.push({ ...dropped, episodeId, condition, harnessEnabled: condition === 'on', repetition: pair.repetition, operationalFailure: true });
+          pair.status = 'incomplete';
+          pair.skippedReason = 'operational_failure';
+          break;
+        }
         if (requireComparable) {
           // Keep the adapter's own reason. Without it a budget stop or a
           // provider outage both surface as an unexplained metadata error.
@@ -761,6 +802,7 @@ async function runPairedBenchmark(options = {}) {
     executionOrder,
     providers,
     comparison: buildComparison(pairs),
+    operationalFailures,
     resume: {
       checkpointPath: checkpoint ? checkpoint.path : null,
       resumedFrom: options.resumeFrom || null,
