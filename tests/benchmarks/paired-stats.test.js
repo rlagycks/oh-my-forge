@@ -14,7 +14,7 @@ const {
   passAtK,
   passCaretK,
   percentile,
-} = require('../../scripts/lib/paired-stats');
+} = require('../../benchmarks/lib/paired-stats');
 
 let passed = 0;
 let failed = 0;

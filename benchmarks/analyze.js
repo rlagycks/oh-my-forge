@@ -11,7 +11,7 @@
  * an exact test, cost-of-pass, and a verdict against the registered margin.
  *
  * Usage:
- *   node scripts/analyze-paired-benchmark.js --report run.json [--suite s.json]
+ *   node benchmarks/analyze.js --report run.json [--suite s.json]
  *                                            [--json] [--samples N] [--seed N]
  *                                            [--margin-pp N]
  *
@@ -102,6 +102,13 @@ function renderText(analysis) {
     lines.push('  WARNING: not an isolation-verified run; barred from product claims.');
   }
 
+  if (!analysis.protocolCompliant) {
+    lines.push('');
+    lines.push('*** NOT A PRE-REGISTERED RESULT ***');
+    for (const deviation of analysis.protocolDeviations) lines.push(`  overridden: ${deviation}`);
+    lines.push('  This output must not be quoted as a protocol result.');
+  }
+
   lines.push('');
   lines.push(`QUALITY  ${VERDICT_LABEL[quality.verdict] ?? quality.verdict}`);
   lines.push('-'.repeat(62));
@@ -162,7 +169,7 @@ function renderText(analysis) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help || !args.reportPath) {
-    console.log('Usage: node scripts/analyze-paired-benchmark.js --report <file> [--suite <file>] [--json] [--samples N] [--seed N] [--margin-pp N]');
+    console.log('Usage: node benchmarks/analyze.js --report <file> [--suite <file>] [--json] [--samples N] [--seed N] [--margin-pp N]');
     return args.help ? 0 : 1;
   }
 
@@ -180,6 +187,9 @@ function main() {
   console.log(args.json ? JSON.stringify(analysis, null, 2) : renderText(analysis));
 
   // Only a measured degradation is a failure; inconclusive is a valid outcome.
+  // A run analyzed with overridden parameters must never drive a CI gate: it
+  // would let a caller tune the margin until the build goes green.
+  if (!analysis.protocolCompliant) return 0;
   return analysis.quality.verdict === 'degradation' ? 1 : 0;
 }
 

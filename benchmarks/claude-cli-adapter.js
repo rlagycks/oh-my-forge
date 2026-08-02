@@ -42,12 +42,16 @@ const {
   buildInvocation,
   computeComparisonFingerprint,
   normalizeRuntime,
-} = require('../scripts/lib/benchmark-conditions');
+} = require('./lib/conditions');
 const {
   DEFAULT_FIXTURE_ROOT,
+  classifyChanges,
   computeCorpusHash,
+  computeTreeManifest,
+  diffManifest,
+  materializeVerifier,
   prepareEpisode,
-} = require('../scripts/lib/benchmark-fixtures');
+} = require('./lib/fixtures');
 
 const PROVIDER = 'claude-code-cli';
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -87,6 +91,12 @@ const COMPARISON_FINGERPRINT = computeComparisonFingerprint({
   runtime: RUNTIME,
   cliVersion: CLI_VERSION,
 });
+
+/**
+ * Pre-run workspace manifests, keyed by prepared cwd, so the post-run scope
+ * diff can tell what the agent actually changed.
+ */
+const preparedManifests = new Map();
 
 /**
  * Directory name for one prepared workspace. Baseline preflight attempts and
@@ -145,10 +155,15 @@ module.exports = {
       taskId: task.id,
       episodeRoot,
       fixtureRoot: FIXTURE_ROOT,
+      // Baseline preflight episodes run no agent, so the verifier can be
+      // placed now. Provider episodes get it only after the agent exits.
+      includeVerifier: Boolean(baselineAttempt),
     });
 
     const stateRoot = path.join(episodeRoot, 'state');
     fs.mkdirSync(stateRoot, { recursive: true });
+
+    if (!baselineAttempt) preparedManifests.set(prepared.cwd, prepared.manifest);
 
     return {
       cwd: prepared.cwd,
@@ -176,10 +191,21 @@ module.exports = {
 
     const conditionId = condition === 'on' ? ON_CONDITION : 'off';
 
-    // Never exceed the run-level remaining budget the runner is tracking.
-    const budget = typeof remainingCostUsd === 'number' && Number.isFinite(remainingCostUsd)
-      ? Math.max(0.01, Math.min(RUNTIME.maxBudgetUsd, remainingCostUsd))
-      : RUNTIME.maxBudgetUsd;
+    // Both members of a pair must run under the SAME budget, or the second
+    // condition is silently handicapped by whatever the first spent and the
+    // pair is still marked complete. The runner's remaining budget shrinks
+    // monotonically, so rather than clamping, refuse the episode when the
+    // remaining budget can no longer cover a full-price run.
+    if (typeof remainingCostUsd === 'number' && Number.isFinite(remainingCostUsd)
+        && remainingCostUsd < RUNTIME.maxBudgetUsd) {
+      const error = new Error(
+        `${episodeId} skipped: remaining run budget $${remainingCostUsd.toFixed(4)} cannot cover the `
+        + `per-episode budget $${RUNTIME.maxBudgetUsd.toFixed(4)}; a reduced budget would confound the pair`
+      );
+      error.code = 'INSUFFICIENT_PAIR_BUDGET';
+      throw error;
+    }
+    const budget = RUNTIME.maxBudgetUsd;
 
     const invocation = buildInvocation({
       conditionId,
@@ -225,7 +251,41 @@ module.exports = {
 
     const context = readContextTokens(parsed.usage);
 
+    // Contamination control, in this order:
+    //   1. diff the workspace against its prepared state
+    //   2. record anything the agent left in the episode root
+    //   3. only then place the verifier, which did not exist during the run
+    const before = preparedManifests.get(cwd) || {};
+    const changes = classifyChanges(diffManifest(before, computeTreeManifest(cwd)));
+    preparedManifests.delete(cwd);
+
+    const verifier = materializeVerifier({
+      taskId: task.id,
+      episodeRoot: path.dirname(cwd),
+      fixtureRoot: FIXTURE_ROOT,
+    });
+
+    if (!changes.clean) {
+      // Writing to protected paths means the run cannot be scored: the shipped
+      // tests or manifest were altered, so a pass proves nothing.
+      const error = new Error(
+        `${episodeId} wrote outside the editable scope: ${changes.outOfScope.join(', ')}`
+      );
+      error.code = 'OUT_OF_SCOPE_WRITE';
+      throw error;
+    }
+    if (verifier.unexpectedEntries.length > 0) {
+      const error = new Error(
+        `${episodeId} left unexpected entries in the episode root: ${verifier.unexpectedEntries.join(', ')}`
+      );
+      error.code = 'EPISODE_ROOT_TAMPER';
+      throw error;
+    }
+
     writeEpisodeArtifact(stateRoot, {
+      filesChanged: changes.changed,
+      outOfScopeWrites: changes.outOfScope,
+      verifierHash: verifier.verifierHash,
       episodeId,
       taskId: task.id,
       condition: conditionId,

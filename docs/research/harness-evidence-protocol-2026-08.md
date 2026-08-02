@@ -140,10 +140,15 @@ preflight before it may be scored:
    `--require-failing-baseline`.
 2. **Reference-passing** — the verifier passes when the checked-in reference fix
    is applied.
-3. **Hidden verifier** — the verifier lives outside the agent's working
-   directory, so it cannot be read or edited by the agent under test.
+3. **Verifier absent during the run** — the verifier is materialized only after
+   the agent exits. Note the threat model: the agent is assumed
+   non-adversarial. Claude Code does not enforce a filesystem boundary at the
+   working directory, so this detects contamination rather than preventing it.
+   Anything left in the episode root, and any change to a protected path, fails
+   the episode. See `benchmarks/README.md`.
 4. **Anti-gaming checks** — the verifier asserts the original defect is fixed,
-   that pre-existing tests still pass, and that out-of-scope files are unchanged.
+   re-runs its own copy of the public cases rather than the workspace's, and
+   includes generalization cases absent from the shipped tests.
 5. **Privacy** — no secrets, customer data, hostnames, usernames, or absolute
    paths in the prompt or fixture. The event log records a task hash, never the
    prompt.
@@ -278,6 +283,8 @@ and seed always reproduce the same interval.
 | 2026-08-01 | Initial registration | — |
 | 2026-08-02 | Added the 15-task cluster floor and the `insufficient_data` verdict | A one-task smoke run produced a zero-width interval and a `degradation` verdict. The floor makes the rule strictly harder to satisfy and was added before any result was scored. |
 | 2026-08-02 | Added the corroboration requirement | The bootstrap interval and the task-level sign test can disagree; an uncorroborated directional claim must be labelled rather than reported as a finding. Strictly narrows what may be claimed. |
+| 2026-08-02 | Corrected the verifier-isolation claim (§5.3) | Review found the claim false: the agent can read and write the episode root. Verified against the live CLI. Replaced with an explicit non-adversarial threat model plus contamination detection. This weakens a stated guarantee and is recorded as such. |
+| 2026-08-02 | Analysis overrides void the pre-registered label | `--margin-pp` / `--min-clusters` produced output still citing this protocol and still driving a CI exit code. Overridden runs now report `protocolCompliant: false` and never gate. |
 
 ## References
 

@@ -1,6 +1,6 @@
 {
   "suite": "model-performance",
-  "description": "Baseline-failing model-performance corpus. Scored under docs/research/harness-evidence-protocol-2026-08.md. Generated from benchmarks/fixtures/ by scripts/build-model-performance-suite.js — do not edit by hand.",
+  "description": "Baseline-failing model-performance corpus. Scored under docs/research/harness-evidence-protocol-2026-08.md. Generated from benchmarks/fixtures/ by benchmarks/build-suite.js — do not edit by hand.",
   "protocol": "docs/research/harness-evidence-protocol-2026-08.md",
   "corpus_hash": "sha256:872fb4786bd0156f34f7b65efa2186d52764e22accc7000ed679b1a565298196",
   "tasks": [

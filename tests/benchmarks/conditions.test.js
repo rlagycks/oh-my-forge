@@ -14,7 +14,7 @@ const {
   getCondition,
   getProfile,
   normalizeRuntime,
-} = require('../../scripts/lib/benchmark-conditions');
+} = require('../../benchmarks/lib/conditions');
 
 let passed = 0;
 let failed = 0;

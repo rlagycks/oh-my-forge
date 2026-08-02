@@ -9,8 +9,8 @@
  * that passed preflight.
  *
  * Usage:
- *   node scripts/build-model-performance-suite.js          # write
- *   node scripts/build-model-performance-suite.js --check   # verify up to date
+ *   node benchmarks/build-suite.js          # write
+ *   node benchmarks/build-suite.js --check   # verify up to date
  */
 
 const fs = require('fs');
@@ -22,7 +22,7 @@ const {
   computeCorpusHash,
   listFixtureIds,
   readFixture,
-} = require('./lib/benchmark-fixtures');
+} = require('./lib/fixtures');
 
 const OUTPUT_PATH = path.resolve(__dirname, '../docs/evals/model-performance-tasks.json');
 
@@ -49,7 +49,7 @@ function buildSuite(fixtureRoot = DEFAULT_FIXTURE_ROOT) {
 
   return {
     suite: 'model-performance',
-    description: 'Baseline-failing model-performance corpus. Scored under docs/research/harness-evidence-protocol-2026-08.md. Generated from benchmarks/fixtures/ by scripts/build-model-performance-suite.js — do not edit by hand.',
+    description: 'Baseline-failing model-performance corpus. Scored under docs/research/harness-evidence-protocol-2026-08.md. Generated from benchmarks/fixtures/ by benchmarks/build-suite.js — do not edit by hand.',
     protocol: 'docs/research/harness-evidence-protocol-2026-08.md',
     corpus_hash: computeCorpusHash(fixtureRoot),
     tasks,
@@ -64,7 +64,7 @@ function main() {
   if (check) {
     const current = fs.existsSync(OUTPUT_PATH) ? fs.readFileSync(OUTPUT_PATH, 'utf8') : '';
     if (current !== serialized) {
-      console.error('model-performance-tasks.json is out of date. Run: node scripts/build-model-performance-suite.js');
+      console.error('model-performance-tasks.json is out of date. Run: node benchmarks/build-suite.js');
       return 1;
     }
     console.log(`model-performance-tasks.json is up to date (${suite.tasks.length} tasks)`);

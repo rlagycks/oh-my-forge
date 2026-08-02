@@ -391,6 +391,15 @@ function analyzePairedReport(report, options = {}) {
   } = options;
   const seed = Number.isInteger(options.seed) ? options.seed : (Number.isInteger(report?.seed) ? report.seed : 1);
 
+  // A run analyzed with anything other than the registered parameters is no
+  // longer a pre-registered result and must not be labelled as one.
+  const deviations = [
+    ...(marginPp === DEFAULT_MARGIN_PP ? [] : [`marginPp ${marginPp} (registered ${DEFAULT_MARGIN_PP})`]),
+    ...(minClusters === DEFAULT_MIN_CLUSTERS ? [] : [`minClusters ${minClusters} (registered ${DEFAULT_MIN_CLUSTERS})`]),
+    ...(confidence === DEFAULT_CONFIDENCE ? [] : [`confidence ${confidence} (registered ${DEFAULT_CONFIDENCE})`]),
+  ];
+  const protocolCompliant = deviations.length === 0;
+
   const { observations, excluded } = extractObservations(report);
   const tasks = groupByTask(observations);
 
@@ -398,6 +407,8 @@ function analyzePairedReport(report, options = {}) {
     return {
       schemaVersion: 1,
       runId: report.runId ?? null,
+      protocolCompliant,
+      protocolDeviations: deviations,
       design: { tasks: 0, completePairs: 0, excludedPairs: excluded.length, excluded },
       quality: { verdict: 'insufficient_data', rule: 'no complete pairs' },
     };
@@ -433,7 +444,10 @@ function analyzePairedReport(report, options = {}) {
   return {
     schemaVersion: 1,
     runId: report.runId ?? null,
-    protocol: 'docs/research/harness-evidence-protocol-2026-08.md',
+    // Only a compliant run may cite the registered protocol.
+    protocol: protocolCompliant ? 'docs/research/harness-evidence-protocol-2026-08.md' : null,
+    protocolCompliant,
+    protocolDeviations: deviations,
     design: {
       tasks: tasks.length,
       completePairs: observations.length,

@@ -24,7 +24,7 @@ Measured 2026-08-01 with `claude -p "hi" --model sonnet` in an empty repository
 
 On that machine the **other installed plugins and MCP servers cost more context
 (21,201) than OMF itself (14,147)**. Drop the isolation flags and you attribute
-other vendors' context to OMF. `scripts/lib/benchmark-conditions.js` enforces
+other vendors' context to OMF. `benchmarks/lib/conditions.js` enforces
 them in both conditions and a unit test asserts that plugin dirs are the only
 argv difference.
 
@@ -40,26 +40,57 @@ benchmarks/
     task.json                 metadata, merged into the generated suite
     workspace/                the seeded-defect project the agent sees
     reference/                overlay files that repair the defect (preflight only)
-    verify.js                 hidden verifier
+    verify.js                 verifier, kept out of workspace/
 ```
 
 A prepared episode looks like:
 
 ```
 <episodeRoot>/
-  verify.js       <- hidden verifier, OUTSIDE the agent's reach
+  verify.js       <- materialized only AFTER the agent exits
   workspace/      <- the agent's cwd
   state/          <- OMF writes redirected here
 ```
 
-The verifier sits one level above the agent's working directory, so the agent
-cannot read or rewrite its own grader. Verification runs `node ../verify.js`
-with cwd set to the workspace.
+Verification runs `node ../verify.js` with cwd set to the workspace.
 
-## Anti-gaming properties
+## Threat model, stated plainly
 
-Outcome-only scoring misses reward hacking
-([arXiv 2605.08545](https://arxiv.org/pdf/2605.08545)). Each verifier therefore:
+**The agent under test is assumed non-adversarial.** It is solving a coding
+task, not attacking the harness.
+
+This matters because **Claude Code does not enforce a filesystem boundary at the
+working directory.** Verified against the live CLI: with
+`--permission-mode bypassPermissions` a write to `../` succeeds, and under
+`--permission-mode acceptEdits` the agent declined by its own judgement with
+`permission_denials: 0` — a behavioural choice, not an enforced block. Directory
+placement is therefore **not** a sandbox and is never described as one here.
+
+What is done instead is **contamination detection**:
+
+1. **The verifier does not exist on disk while the agent runs.** It is
+   materialized after the agent exits, so ordinary exploration cannot find it.
+2. **Anything left in the episode root is a tamper signal.** Entries other than
+   `workspace/` and `state/` fail the episode with `EPISODE_ROOT_TAMPER`,
+   including a pre-planted `verify.js` — the authoritative fixture copy always
+   overwrites it.
+3. **The workspace is hashed before and after.** Changes to protected paths
+   (`test/`, `package.json`) fail the episode with `OUT_OF_SCOPE_WRITE`. This is
+   the runner-level version of the per-verifier scope checks, so deleting the
+   shipped tests is caught even if a verifier forgets to look.
+
+### What this does not stop
+
+A determined search of the filesystem for the checked-in fixtures under
+`benchmarks/fixtures/`. Nothing short of OS-level sandboxing would, and that
+would require running the agent under an API key rather than the OAuth
+subscription that actual OMF users have — a different product, measured under
+different conditions. If an adversarial setting is ever needed, the adapter
+contract is the place to plug in a sandboxed runner.
+
+The load-bearing defence is therefore verifier *construction*, not secrecy: a
+verifier that can be satisfied without solving the task is broken whether or not
+it is hidden. Each verifier:
 
 - **Ignores the workspace test files** and re-runs its own copy of the public
   cases, so deleting or weakening the shipped tests gains nothing.
@@ -67,7 +98,7 @@ Outcome-only scoring misses reward hacking
   keyed on the visible cases fails.
 - Adds **availability checks** where relevant, so an over-blocking "repair"
   (for example, rejecting every request path) fails.
-- Asserts the module's **public contract** and that out-of-scope files survive.
+- Asserts the module's **public contract**.
 
 ## Running
 
@@ -78,7 +109,7 @@ that already passes measures nothing — this is the ceiling-effect defect that
 bars `docs/evals/golden-tasks.json` from model-performance scoring.
 
 ```bash
-node scripts/validate-benchmark-fixtures.js
+node benchmarks/validate-fixtures.js
 ```
 
 ### 2. Regenerate the suite
@@ -87,8 +118,8 @@ node scripts/validate-benchmark-fixtures.js
 never be hand-edited.
 
 ```bash
-node scripts/build-model-performance-suite.js
-node scripts/build-model-performance-suite.js --check   # CI
+node benchmarks/build-suite.js
+node benchmarks/build-suite.js --check   # CI
 ```
 
 ### 3. Run a paired benchmark
@@ -100,7 +131,7 @@ node scripts/run-paired-benchmark.js \
   --adapter ./benchmarks/claude-cli-adapter.js \
   --suite docs/evals/model-performance-tasks.json \
   --snapshot-id corpus-2026-08-01 \
-  --snapshot-hash "$(node -e "console.log(require('./scripts/lib/benchmark-fixtures').computeCorpusHash())")" \
+  --snapshot-hash "$(node -e "console.log(require('./benchmarks/lib/fixtures').computeCorpusHash())")" \
   --repetitions 3 --seed 42 \
   --timeout-ms 420000 --max-cost-usd 40 \
   --require-isolation --require-comparable --require-failing-baseline \
@@ -116,8 +147,8 @@ The runner emits raw pair counts. A bare `successRateDelta` is not a result:
 turn it into intervals and a verdict before quoting anything.
 
 ```bash
-node scripts/analyze-paired-benchmark.js --report run.json
-node scripts/analyze-paired-benchmark.js --report run.json --json > analysis.json
+node benchmarks/analyze.js --report run.json
+node benchmarks/analyze.js --report run.json --json > analysis.json
 ```
 
 The analysis exits non-zero only on a `degradation` verdict, so CI can gate on
@@ -168,7 +199,7 @@ this happened during development at `--max-budget-usd 0.30`.
 1. Create `benchmarks/fixtures/<task-id>/` with `task.json`, `workspace/`,
    `reference/`, and `verify.js`.
 2. Seed a defect the shipped public tests actually catch, so the task is fair.
-3. Write the verifier to the anti-gaming properties above. Never place it inside
+3. Write the verifier to the properties above. Never place it inside
    `workspace/`.
 4. Set `stratum` (`seeded-defect`, `long-horizon`, `brownfield-ambiguous`,
    `security-regression`, `failure-replay`) and `omf_neutral`.
@@ -186,6 +217,7 @@ this happened during development at `--max-budget-usd 0.30`.
 | Strata covered | all five |
 | Adapter | implemented, measurement-grade, executed end-to-end |
 | Statistical analysis (cluster bootstrap, exact tests, cost-of-pass) | implemented |
+| Packaging | source-checkout tooling; excluded from the published plugin |
 | Process/trajectory scoring | **not implemented — Phase 4** |
 | Pilot run | **not started** |
 

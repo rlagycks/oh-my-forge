@@ -10,14 +10,15 @@
  *   1. baseline-failing  — the verifier fails on the untouched fixture, twice,
  *                          with an identical failure signature
  *   2. reference-passing — the verifier passes with the reference fix applied
- *   3. hidden verifier   — the verifier is not reachable from the agent's cwd
+ *   3. verifier placement — the verifier is not shipped inside workspace/, so
+ *                          it is absent from the tree the agent is handed
  *   4. metadata          — required fields, known stratum, neutral-stratum flag
  *
  * A fixture that fails preflight must never be scored: a task that already
  * passes on a clean checkout measures nothing.
  *
  * Usage:
- *   node scripts/validate-benchmark-fixtures.js [--fixture <id>] [--json]
+ *   node benchmarks/validate-fixtures.js [--fixture <id>] [--json]
  */
 
 const fs = require('fs');
@@ -30,7 +31,7 @@ const {
   listFixtureIds,
   prepareEpisode,
   readFixture,
-} = require('./lib/benchmark-fixtures');
+} = require('./lib/fixtures');
 
 const VERIFIER_TIMEOUT_MS = 120000;
 const REQUIRED_FIELDS = ['id', 'prompt', 'stratum', 'tags', 'difficulty', 'success_criteria', 'provenance'];
@@ -122,7 +123,7 @@ function validateHiddenVerifier(fixture) {
   const errors = [];
   const workspaceVerifier = path.join(fixture.workspaceDir, 'verify.js');
   if (fs.existsSync(workspaceVerifier)) {
-    errors.push('verify.js must not exist inside workspace/ — the agent could read or rewrite it');
+    errors.push('verify.js must not exist inside workspace/ — it would be handed straight to the agent');
   }
   return errors;
 }
@@ -140,7 +141,7 @@ function validateFixture(taskId, fixtureRoot) {
   try {
     // 1. Baseline must fail deterministically, twice, in independent workspaces.
     const baselineAttempts = [1, 2].map(attempt => runVerifier(
-      prepareEpisode({ taskId, episodeRoot: path.join(tempRoot, `baseline-${attempt}`), fixtureRoot })
+      prepareEpisode({ taskId, episodeRoot: path.join(tempRoot, `baseline-${attempt}`), fixtureRoot, includeVerifier: true })
     ));
 
     checks.baselineFails = baselineAttempts.every(result => !result.passed);
@@ -159,7 +160,7 @@ function validateFixture(taskId, fixtureRoot) {
 
     // 2. The reference fix must make the verifier pass.
     const referenceResult = runVerifier(
-      prepareEpisode({ taskId, episodeRoot: path.join(tempRoot, 'reference'), applyReference: true, fixtureRoot })
+      prepareEpisode({ taskId, episodeRoot: path.join(tempRoot, 'reference'), applyReference: true, includeVerifier: true, fixtureRoot })
     );
     checks.referencePasses = referenceResult.passed;
     if (!referenceResult.passed) {
@@ -184,7 +185,7 @@ function validateFixture(taskId, fixtureRoot) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    console.log('Usage: node scripts/validate-benchmark-fixtures.js [--fixture <id>] [--json]');
+    console.log('Usage: node benchmarks/validate-fixtures.js [--fixture <id>] [--json]');
     return 0;
   }
 
