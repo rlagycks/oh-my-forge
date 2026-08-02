@@ -149,12 +149,18 @@ function renderText(analysis) {
   lines.push(`  human intervention   on ${safety.onHumanIntervention}  |  off ${safety.offHumanIntervention}`);
 
   for (const [label, rows] of Object.entries(strata)) {
-    if (rows.length <= 1) continue;
+    if (!Array.isArray(rows) || rows.length <= 1) continue;
     lines.push('');
-    lines.push(`BY ${label.toUpperCase()}`);
+    lines.push(`BY ${label.toUpperCase()}  (descriptive only — not verdicts)`);
     lines.push('-'.repeat(62));
     for (const row of rows) {
-      lines.push(`  ${row.group.padEnd(22)} n=${String(row.tasks).padStart(2)}  on ${pct(row.onSuccessRate).padStart(6)}  off ${pct(row.offSuccessRate).padStart(6)}  diff ${pp(row.meanDiff)}`);
+      // A group below the cluster floor cannot support inference; the headline
+      // verdict refuses at that size, so these rows must not read as findings.
+      const marker = row.inferential ? ' ' : '*';
+      lines.push(`${marker} ${row.group.padEnd(22)} n=${String(row.tasks).padStart(2)}  on ${pct(row.onSuccessRate).padStart(6)}  off ${pct(row.offSuccessRate).padStart(6)}  diff ${pp(row.meanDiff)}`);
+    }
+    if (rows.some(row => !row.inferential)) {
+      lines.push(`  * below the ${strata.minClusters}-task floor the verdict rule requires — describes this run only`);
     }
   }
 

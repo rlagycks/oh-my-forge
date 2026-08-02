@@ -7,9 +7,12 @@
  *
  * The unit of independence is the TASK, not the repetition. Repetitions of one
  * task share its difficulty, so treating them as independent understates the
- * standard error — by up to roughly 3x per Miller, "Adding Error Bars to Evals"
- * (arXiv 2411.00640). Every interval here therefore resamples tasks, and the
- * point estimate weights each task equally rather than each repetition.
+ * standard error. Miller, "Adding Error Bars to Evals" (arXiv 2411.00640),
+ * argues this for questions grouped within a passage and reports
+ * cluster-adjusted standard errors up to roughly 3x the naive ones; that
+ * figure is the paper's, for its setting, and is cited here for the principle
+ * rather than as a measured value for this corpus. Every interval here
+ * resamples tasks, and the point estimate weights each task equally.
  *
  * Deterministic: the bootstrap uses a seeded PRNG, so the same report and seed
  * always produce the same interval.
@@ -358,7 +361,15 @@ function taskLevelSignTest(tasks) {
   };
 }
 
-function stratify(tasks, taskMetadata, key) {
+/**
+ * Descriptive breakdowns only.
+ *
+ * The verdict rule refuses to conclude below `minClusters` tasks, so group
+ * means computed over 2-4 tasks cannot be findings. Each row is flagged with
+ * whether it clears the same bar the headline verdict must clear; renderers
+ * must not present a row that does not.
+ */
+function stratify(tasks, taskMetadata, key, minClusters) {
   const groups = tasks.reduce((map, task) => {
     const value = taskMetadata[task.taskId]?.[key];
     const label = value === undefined ? 'unknown' : String(value);
@@ -373,6 +384,7 @@ function stratify(tasks, taskMetadata, key) {
       onSuccessRate: mean(group.map(task => task.on.successRate)),
       offSuccessRate: mean(group.map(task => task.off.successRate)),
       meanDiff: mean(group.map(task => task.successRateDiff)),
+      inferential: group.length >= minClusters,
     }));
 }
 
@@ -508,9 +520,12 @@ function analyzePairedReport(report, options = {}) {
       offHumanIntervention: observations.filter(row => row.off.humanIntervention).length,
     },
     strata: {
-      stratum: stratify(tasks, taskMetadata, 'stratum'),
-      difficulty: stratify(tasks, taskMetadata, 'difficulty'),
-      omfNeutral: stratify(tasks, taskMetadata, 'omf_neutral'),
+      // Descriptive only unless a group independently clears the cluster floor.
+      descriptiveOnly: true,
+      minClusters,
+      stratum: stratify(tasks, taskMetadata, 'stratum', minClusters),
+      difficulty: stratify(tasks, taskMetadata, 'difficulty', minClusters),
+      omfNeutral: stratify(tasks, taskMetadata, 'omf_neutral', minClusters),
     },
     tasks,
   };

@@ -158,8 +158,41 @@ brownfield, security/regression-sensitive, and **OMF-neutral tasks with no
 relationship to OMF's feature set**. The neutral stratum is mandatory — without
 it the corpus cannot rule out a corpus-favors-OMF bias.
 
-Pilot: ≥15 tasks × 3 paired repetitions. Release-grade claims: ≥30 tasks × ≥5
-repetitions, with the final n set by power analysis once pilot variance is known.
+### Sizing (power analysis, 2026-08-03)
+
+Deferring power analysis was a mistake: the originally registered pilot cannot
+resolve a verdict. Simulating the **actual decision rule** — cluster bootstrap,
+margin comparison, sign-test corroboration — over 300-400 synthetic runs per
+effect size, with task baselines drawn around 0.6 ± 0.3 to reflect the corpus's
+deliberate difficulty spread:
+
+| Design | Episodes | MDE at 80% power | Power at a 10 pp effect |
+|---|---|---|---|
+| 15 × 3 (originally registered) | 90 | **30 pp** | 22% |
+| 30 × 3 | 180 | 20 pp | 38% |
+| 15 × 10 | 300 | **15 pp** | 54% |
+| 30 × 5 | 300 | 15 pp | 54% |
+| 50 × 3 | 300 | 15 pp | 50% |
+
+Reproduce with `node benchmarks/power-analysis.js --tasks N --reps K`.
+
+Two consequences:
+
+1. **15 × 3 is retired as the pilot design.** At a 10 pp true effect it returns
+   `inconclusive` 65% of the time. Published harness effects are smaller than
+   30 pp — Harness-Bench reports a 23.8-point spread between *different
+   harnesses*, and SWE-bench Pro 5.2 points from scaffold alone — so the
+   registered design was calibrated above the range it needed to resolve.
+2. **Repetitions buy power here, contrary to the usual clustering intuition.**
+   At 3 repetitions a task's success rate can only take the values 0, 1/3, 2/3
+   or 1, so within-task sampling noise dominates. 15 × 10 reaches the same MDE
+   as 50 × 3 — meaning the cheapest route to a usable pilot is **more
+   repetitions on the existing corpus, not more fixtures**.
+
+Registered pilot: **15 tasks × 10 repetitions (300 episodes)**, MDE 15 pp.
+Release-grade claims: 30 × 5 or better. The false-`improvement` rate under a
+true zero effect is 2-4% across all designs tested, so the decision rule itself
+is calibrated; only its sensitivity was wrong.
 
 ## 6. Metrics
 

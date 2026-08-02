@@ -141,11 +141,13 @@ node scripts/run-paired-benchmark.js \
 The three `--require-*` flags are mandatory for any result used in a claim.
 Without `--require-isolation` the report is `environmentIntegrity: "unverified"`.
 
-Add `--checkpoint` to any run you care about. A pilot is 90 provider episodes
-and tens of dollars, and a run that hits its cost ceiling — or any adapter
-error under `--require-comparable`, which the runner turns into a thrown
-`COMPARISON_CONFIG_MISMATCH` — aborts before a report is written. Without a
-ledger every pair that already completed is lost.
+Add `--checkpoint` to a long run. Note what it does and does not protect
+against: **cost exhaustion already loses nothing** — the runner marks the
+remaining pairs `skipped`/`cost_limit` and returns a complete report. The
+checkpoint matters for a *throw* mid-run: under `--require-comparable` the
+runner turns any adapter error into `COMPARISON_CONFIG_MISMATCH` and aborts
+before a report exists, which covers a provider outage, an operator interrupt,
+and the pair-budget guard. Narrower than first documented here.
 
 ```bash
 node scripts/run-paired-benchmark.js ... --checkpoint /tmp/pilot.jsonl
@@ -178,9 +180,12 @@ it. `inconclusive` is a legitimate outcome and exits zero.
 Key properties, all enforced by tests:
 
 - **Clusters are tasks, not repetitions.** Three runs of one task are not three
-  independent observations; treating them as such understates the standard error
-  by up to ~3x ([Miller, arXiv 2411.00640](https://arxiv.org/abs/2411.00640)).
-  Every interval resamples whole tasks and each task carries equal weight.
+  independent observations. [Miller, arXiv 2411.00640](https://arxiv.org/abs/2411.00640)
+  makes this point for *questions grouped within a passage*, where it reports
+  cluster-adjusted standard errors up to ~3x the naive ones; the same principle
+  is applied here to repetitions grouped within a task. The 3x figure is the
+  paper's, for its setting — not a measured value for this corpus. Every
+  interval resamples whole tasks and each task carries equal weight.
 - **No verdict below 15 tasks.** With one task the bootstrap collapses to a
   zero-width interval that reads as certainty; the analysis reports
   `insufficient_data` instead.
@@ -250,7 +255,8 @@ this happened during development at `--max-budget-usd 0.30`.
 | Statistical analysis (cluster bootstrap, exact tests, cost-of-pass) | implemented |
 | Packaging | source-checkout tooling; excluded from the published plugin |
 | Process/trajectory scoring | **not implemented — Phase 4** |
-| Pilot run | **not started** |
+| Power analysis | done — the original 15x3 design could not resolve a verdict |
+| Pilot run | **not started** (redesigned to 15 x 10 = 300 episodes) |
 
 **No harness-effectiveness claim has been made from this directory yet** — no
 pilot has been run. The machinery to make one honestly now exists.
@@ -266,6 +272,25 @@ pilot has been run. The machinery to make one honestly now exists.
 | `long-horizon` | event-bus-lifecycle, retry-backoff-policy, cursor-pagination |
 | `brownfield-ambiguous` | config-precedence, interval-overlap-convention, money-rounding-consistency |
 | `failure-replay` | pipeline-skipped-step-status, event-log-legacy-compat |
+
+### Sizing
+
+`node benchmarks/power-analysis.js` simulates the actual decision rule. The
+originally registered 15 x 3 pilot has an **MDE of 30 pp** — at a 10 pp true
+effect it returns `inconclusive` 65% of the time, and published harness effects
+are well under 30 pp. It is retired.
+
+| Design | Episodes | MDE at 80% power |
+|---|---|---|
+| 15 x 3 (retired) | 90 | 30 pp |
+| 30 x 3 | 180 | 20 pp |
+| **15 x 10 (registered pilot)** | 300 | **15 pp** |
+| 50 x 3 | 300 | 15 pp |
+
+Repetitions buy power here: at 3 repetitions a task's success rate can only be
+0, 1/3, 2/3 or 1, so within-task noise dominates. **More repetitions on this
+corpus is cheaper than more fixtures** — 15 x 10 matches 50 x 3, which would
+need 35 more fixtures.
 
 Difficulty: 8 medium, 7 hard. **13 of 15 are OMF-neutral** — unrelated to
 anything OMF does — which is what lets the corpus rule out a

@@ -3,10 +3,18 @@
 /**
  * Crash-safe checkpointing for paired benchmark runs.
  *
- * A pilot is 90 provider episodes and tens of dollars. Today a run that hits
- * its cost ceiling — or any adapter error under `--require-comparable`, which
- * the runner converts into a thrown COMPARISON_CONFIG_MISMATCH — throws before
- * a report is ever written, so every pair that already completed is lost.
+ * A pilot is 90 provider episodes and tens of dollars.
+ *
+ * Cost exhaustion does NOT lose work: the runner marks the remaining pairs
+ * `skipped`/`cost_limit` and returns a complete report (see runner.js, the
+ * `costExceeded` path). An earlier version of this comment claimed otherwise
+ * and was wrong.
+ *
+ * What does lose work is a THROW mid-run: under `--require-comparable` the
+ * runner converts any adapter error into COMPARISON_CONFIG_MISMATCH and
+ * aborts before a report exists. That covers a provider outage, an operator
+ * interrupt, and the pair-budget guard. Narrower than cost exhaustion, but the
+ * pairs already paid for are still lost when it happens.
  *
  * Each finished pair is therefore appended to a JSONL ledger as it completes.
  * A later run reads that ledger and reuses the pairs instead of paying for
