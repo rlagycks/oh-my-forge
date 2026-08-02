@@ -37,6 +37,16 @@ function writeInstinct(filePath, frontmatterLines, body = '') {
 }
 
 /**
+ * Instinct recall gates on `expires_at` being in the future, so a hard-coded
+ * date turns this fixture into a time bomb: once it passes, the failure
+ * instinct is filtered out and the test fails for every change, forever.
+ * Anchor the expiry to the run instead.
+ */
+function daysFromNow(days) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+/**
  * Fixture: project with dependsOn chain domain_a -> domain_b -> domain_c and
  * a fake home dir holding instincts. Instincts for domain_a: one failure, two
  * others (to prove the max-2 cap); one instinct linked to domain_b that must
@@ -73,7 +83,7 @@ function makeFixture({ withInstincts = true } = {}) {
       'evidence_count: 2',
       'evidence_ids: replay-a-failure-1,replay-a-failure-2',
       'last_validated: 2026-07-18T00:00:00.000Z',
-      'expires_at: 2026-08-01T00:00:00.000Z',
+      `expires_at: ${daysFromNow(30)}`,
     ], '\n# Watch the failure case\n');
     writeInstinct(path.join(personalDir, 'a-second.yaml'), [
       'id: inst-a-second',
