@@ -53,6 +53,7 @@ const {
   prepareEpisode,
 } = require('./lib/fixtures');
 const { createPairBudgetGuard } = require('./lib/pair-budget');
+const { classifyProviderResult } = require('./lib/provider-result');
 
 const PROVIDER = 'claude-code-cli';
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -254,6 +255,16 @@ module.exports = {
       parsed = JSON.parse(child.stdout);
     } catch {
       throw new Error(`claude CLI did not return parseable JSON for ${episodeId} (exit ${child.status})`);
+    }
+
+    // A provider outage exits 0 with well-formed JSON. Scoring it would record
+    // an API failure as an agent failure; ETIMEDOUT makes the runner treat it
+    // as infrastructure and drop the pair.
+    const health = classifyProviderResult(parsed);
+    if (!health.ok) {
+      const error = new Error(`${episodeId}: ${health.reason}`);
+      error.code = 'ETIMEDOUT';
+      throw error;
     }
 
     const context = readContextTokens(parsed.usage);
