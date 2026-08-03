@@ -1,0 +1,19 @@
+{
+  "id": "semver-compare",
+  "prompt": "compareVersions in src/compare-versions.js compares semantic versions as strings, so 1.10.0 sorts below 1.9.0 and prerelease versions are ignored. Fix it to return -1, 0, or 1 following semver precedence: compare major, minor, patch numerically; a version with a prerelease has LOWER precedence than the same version without one; compare prerelease identifiers dot-segment by dot-segment, where numeric segments compare numerically, numeric segments rank below non-numeric ones, non-numeric segments compare by ASCII, and a shorter prerelease with otherwise equal segments ranks lower; build metadata after + is ignored entirely. Run `node test/compare-versions.test.js` to check your work.",
+  "stratum": "seeded-defect",
+  "tags": ["versioning", "comparison", "seeded-defect", "omf-neutral"],
+  "difficulty": "medium",
+  "omf_neutral": true,
+  "success_criteria": [
+    "Numeric segments compare numerically, so 1.10.0 outranks 1.9.0",
+    "A prerelease version ranks below the same version without a prerelease",
+    "Prerelease identifiers compare per semver precedence rules",
+    "Build metadata does not affect precedence",
+    "Equal versions return 0"
+  ],
+  "provenance": {
+    "source": "benchmarks/fixtures/semver-compare",
+    "incident": "Synthetic neutral fixture. Seeded lexicographic-comparison defect with a hidden verifier covering prerelease precedence."
+  }
+}

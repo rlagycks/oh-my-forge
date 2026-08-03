@@ -1,0 +1,20 @@
+{
+  "id": "event-log-legacy-compat",
+  "prompt": "readEvents in src/read-events.js parses a JSONL event log, but it silently drops every legacy record written before the schema_version field existed, and one malformed line aborts the whole read. Fix it so that (1) a record with no schema_version is normalized to schema_version 0 rather than dropped, and its event_type is inferred as 'injection' when it has an injected_tokens field and 'outcome' when it has an outcome field; (2) a legacy record matching neither shape is counted as unrecognized, not dropped silently; (3) a line that is not valid JSON, or that parses to something other than a plain object, is counted as corrupt and skipped without throwing; (4) blank and whitespace-only lines are ignored entirely and counted nowhere; (5) the function returns {events, skipped} where skipped is {corrupt, unrecognized}, and events preserves input order. Run `node test/read-events.test.js` to check your work.",
+  "stratum": "failure-replay",
+  "tags": ["observability", "backward-compatibility", "jsonl"],
+  "difficulty": "medium",
+  "omf_neutral": false,
+  "success_criteria": [
+    "Legacy records without schema_version are retained and normalized",
+    "Legacy event_type is inferred from the record shape",
+    "Unrecognized legacy records are counted rather than dropped silently",
+    "A corrupt line is skipped and counted without aborting the read",
+    "Blank lines are ignored and counted nowhere",
+    "Input order is preserved"
+  ],
+  "provenance": {
+    "source": "benchmarks/fixtures/event-log-legacy-compat",
+    "incident": "Replays the event-log backward-compatibility failure mode: structured records added alongside legacy ones, with legacy records silently lost. Synthetic fixture, no incident data."
+  }
+}

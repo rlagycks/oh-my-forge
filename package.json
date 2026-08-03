@@ -1,7 +1,7 @@
 {
-  "name": "ecc-universal",
-  "version": "2.1.0",
-  "description": "Complete collection of battle-tested Claude Code configs — agents, skills, hooks, commands, and rules evolved over 10+ months of intensive daily use by an Anthropic hackathon winner",
+  "name": "oh-my-forge",
+  "version": "2.2.0",
+  "description": "Ontology-driven Claude Code harness — agents, skills, commands, hooks, and rules with structural error prevention and Codex delegation.",
   "keywords": [
     "claude-code",
     "ai",
@@ -49,7 +49,7 @@
     "rules/",
     "schemas/",
     "scripts/ci/",
-    "scripts/ecc.js",
+    "scripts/omf.js",
     "scripts/gan-harness.sh",
     "scripts/hooks/",
     "scripts/lib/",
@@ -87,11 +87,11 @@
     "README.md"
   ],
   "bin": {
-    "ecc": "scripts/ecc.js",
-    "ecc-install": "scripts/install-apply.js"
+    "omf": "scripts/omf.js",
+    "omf-install": "scripts/install-apply.js"
   },
   "scripts": {
-    "postinstall": "echo '\\n  ecc-universal installed!\\n  Run: npx ecc typescript\\n  Compat: npx ecc-install typescript\\n  Docs: https://github.com/affaan-m/everything-claude-code\\n'",
+    "postinstall": "echo '\\n  oh-my-forge installed!\\n  Run: npx omf typescript\\n  Docs: https://github.com/rlagycks/oh-my-forge\\n'",
     "lint": "eslint . && markdownlint '**/*.md' --ignore node_modules",
     "harness:audit": "node scripts/harness-audit.js",
     "claw": "node scripts/claw.js",
@@ -99,7 +99,7 @@
     "orchestrate:worker": "bash scripts/orchestrate-codex-worker.sh",
     "orchestrate:tmux": "node scripts/orchestrate-worktrees.js",
     "release:ontology-maintainer": "node scripts/ci/validate-ontology-maintainer-release.js",
-    "test": "node scripts/ci/check-unicode-safety.js && node scripts/ci/validate-eslint.js && node scripts/ci/validate-agents.js && node scripts/ci/validate-commands.js && node scripts/ci/validate-rules.js && node scripts/ci/validate-skills.js && node scripts/ci/validate-hooks.js && node scripts/ci/validate-install-manifests.js && node scripts/ci/validate-release-manifests.js && node scripts/ci/validate-package-artifact.js && node scripts/ci/validate-inline-resolver-snippets.js && node scripts/ci/validate-no-personal-paths.js && node scripts/ci/validate-ontology.js && node scripts/ci/catalog.js --text && node tests/run-all.js",
+    "test": "node scripts/ci/check-unicode-safety.js && node scripts/ci/validate-eslint.js && node scripts/ci/validate-agents.js && node scripts/ci/validate-commands.js && node scripts/ci/validate-rules.js && node scripts/ci/validate-skills.js && node scripts/ci/validate-hooks.js && node scripts/ci/validate-install-manifests.js && node scripts/ci/validate-release-manifests.js && node scripts/ci/validate-package-artifact.js && node scripts/ci/validate-inline-resolver-snippets.js && node scripts/ci/validate-no-personal-paths.js && node scripts/ci/validate-ontology.js && node benchmarks/build-suite.js --check && node scripts/ci/catalog.js --text && node tests/run-all.js",
     "coverage": "c8 --all --include=\"scripts/**/*.js\" --check-coverage --lines 80 --functions 80 --branches 80 --statements 80 --reporter=text --reporter=lcov node tests/run-all.js"
   },
   "dependencies": {

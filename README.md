@@ -287,7 +287,7 @@ Installs access to 36 agents, 144 skills, and 77 commands.
 git clone https://github.com/rlagycks/oh-my-forge.git
 cd oh-my-forge
 yarn install
-node scripts/ecc.js install
+node scripts/omf.js install
 ```
 
 ### Verify

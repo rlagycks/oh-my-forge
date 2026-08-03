@@ -1,0 +1,19 @@
+{
+  "id": "config-precedence",
+  "prompt": "Operators report that some settings in their config file are being ignored, and that clearing an environment variable does not fall back to the file value. loadConfig in src/load-config.js is not applying the precedence and merge rules this project documents. Bring it in line with the documented behaviour. Run `node test/load-config.test.js` to check your work.",
+  "stratum": "brownfield-ambiguous",
+  "tags": ["configuration", "brownfield", "omf-neutral"],
+  "difficulty": "hard",
+  "omf_neutral": true,
+  "success_criteria": [
+    "Precedence follows the documented order",
+    "Empty and unset environment variables fall back rather than overriding",
+    "Nested objects merge while arrays replace",
+    "Documented type coercion is applied to environment values",
+    "Unknown environment variables are ignored"
+  ],
+  "provenance": {
+    "source": "benchmarks/fixtures/config-precedence",
+    "incident": "Synthetic neutral fixture. The specification lives in the repository (docs/CONFIG.md), not in the prompt, so the task requires locating it."
+  }
+}

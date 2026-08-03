@@ -69,32 +69,32 @@ function showHelp(exitCode = 0) {
 OMF selective-install CLI
 
 Usage:
-  ecc <command> [args...]
-  ecc [install args...]
+  omf <command> [args...]
+  omf [install args...]
 
 Commands:
 ${PRIMARY_COMMANDS.map(command => `  ${command.padEnd(15)} ${COMMANDS[command].description}`).join('\n')}
 
 Compatibility:
-  ecc-install        Legacy install entrypoint retained for existing flows
-  ecc [args...]      Without a command, args are routed to "install"
-  ecc help <command> Show help for a specific command
+  omf-install        Legacy install entrypoint retained for existing flows
+  omf [args...]      Without a command, args are routed to "install"
+  omf help <command> Show help for a specific command
 
 Examples:
-  ecc typescript
-  ecc install --profile developer --target claude
-  ecc plan --profile core --target cursor
-  ecc catalog profiles
-  ecc catalog components --family language
-  ecc catalog show framework:nextjs
-  ecc list-installed --json
-  ecc doctor --target cursor
-  ecc repair --dry-run
-  ecc status --json
-  ecc sessions
-  ecc sessions session-active --json
-  ecc session-inspect claude:latest
-  ecc uninstall --target antigravity --dry-run
+  omf typescript
+  omf install --profile developer --target claude
+  omf plan --profile core --target cursor
+  omf catalog profiles
+  omf catalog components --family language
+  omf catalog show framework:nextjs
+  omf list-installed --json
+  omf doctor --target cursor
+  omf repair --dry-run
+  omf status --json
+  omf sessions
+  omf sessions session-active --json
+  omf session-inspect claude:latest
+  omf uninstall --target antigravity --dry-run
 `);
 
   process.exit(exitCode);

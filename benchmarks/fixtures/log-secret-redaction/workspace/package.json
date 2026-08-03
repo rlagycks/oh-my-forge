@@ -1,0 +1,10 @@
+{
+  "name": "log-secret-redaction-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Log line credential redaction.",
+  "main": "src/redact.js",
+  "scripts": {
+    "test": "node test/redact.test.js"
+  }
+}

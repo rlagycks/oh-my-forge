@@ -1,0 +1,10 @@
+{
+  "name": "interval-overlap-convention-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Half-open interval helpers.",
+  "main": "src/interval.js",
+  "scripts": {
+    "test": "node test/interval.test.js"
+  }
+}

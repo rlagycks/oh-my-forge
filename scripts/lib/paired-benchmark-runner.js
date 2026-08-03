@@ -1,6 +1,11 @@
 'use strict';
 
 const crypto = require('crypto');
+const {
+  createCheckpointWriter,
+  loadResumablePairs,
+  pairKey: checkpointPairKey,
+} = require('./paired-benchmark-checkpoint');
 const fs = require('fs');
 const path = require('path');
 
@@ -17,6 +22,14 @@ const DEFAULT_REPETITIONS = 1;
 const MAX_REPETITIONS = 100;
 const MAX_SEED = 0xffffffff;
 const CONDITIONS = Object.freeze(['on', 'off']);
+/**
+ * Transport/infrastructure failures. These say nothing about the agent, so a
+ * pair hitting one is dropped rather than scored or aborted on.
+ */
+const OPERATIONAL_ERROR_CODES = new Set([
+  'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENETDOWN', 'ENETUNREACH',
+  'EPIPE', 'EAI_AGAIN', 'ENOTFOUND',
+]);
 const SENSITIVE_KEY_PATTERN = /prompt|source|context|payload|message|content|raw|output|input|code|stdout|stderr|transcript|response|request|secret|password|token|authorization|credential|cookie|header|api[_-]?key|access[_-]?key|private[_-]?key/i;
 const SAFE_CONFIG_KEYS = new Set([
   'temperature', 'topp', 'topk', 'maxtokens', 'maxoutputtokens', 'maxcompletiontokens',
@@ -497,17 +510,49 @@ async function runPairedBenchmark(options = {}) {
   const runId = options.runId || createRunId(seed);
   const random = createRandom(seed);
   const pairs = createPairPlan(tasks, repetitions, random, runId);
+
+  // Checkpointing is opt-in and additive: without --checkpoint/--resume the
+  // loop behaves exactly as before.
+  const checkpointContext = {
+    seed,
+    repetitions,
+    suite: suite.suite || null,
+    snapshotId: snapshot?.id ?? null,
+    snapshotHash: snapshot?.hash ?? null,
+    comparisonFingerprint: rawAdapter?.measurementMetadata?.comparisonFingerprint ?? null,
+    guards: { isolation: requireIsolation, comparable: requireComparable, failingBaseline: requireFailingBaseline },
+  };
+  const resumed = options.resumeFrom
+    ? loadResumablePairs(options.resumeFrom, checkpointContext)
+    : { pairs: new Map(), skipped: 0, corrupt: 0 };
+  const checkpoint = options.checkpointPath
+    ? createCheckpointWriter(options.checkpointPath, checkpointContext)
+    : null;
+
   const results = [];
   let costUsd = 0;
   let costExceeded = false;
   let baselineConfiguration = null;
+  const operationalFailures = [];
   const usedStateRoots = new Set();
   const usedWorkingDirectories = new Set();
 
   for (const pair of pairs) {
+    // A pair already paid for in an earlier run is reused verbatim. Its cost
+    // is deliberately not added to this run's budget: it was spent before.
+    const restored = resumed.pairs.get(checkpointPairKey(pair.taskId, pair.repetition));
+    if (restored) {
+      Object.assign(pair, restored, { resumed: true });
+      for (const condition of CONDITIONS) {
+        if (pair.conditions?.[condition]) results.push(pair.conditions[condition]);
+      }
+      continue;
+    }
+
     if (costExceeded) {
       pair.status = 'skipped';
       pair.skippedReason = 'cost_limit';
+      checkpoint?.appendPair(pair);
       continue;
     }
     const task = tasks.find(candidate => candidate.id === pair.taskId);
@@ -579,9 +624,46 @@ async function runPairedBenchmark(options = {}) {
       let metadata = {};
       let baseResult;
       if (adapterRun.error) {
+        // An operational failure is an OUTCOME, not a broken comparison: the
+        // episode ran and did not finish. The protocol counts timeouts as a
+        // reported safety metric, and if one condition times out more often
+        // that is a real effect to measure rather than a reason to discard the
+        // run. Aborting here meant a single slow episode killed a 300-episode
+        // pilot. Only a genuine metadata problem invalidates the comparison.
+        // An operational failure — a timeout, a dropped connection, a provider
+        // outage — is infrastructure, not evidence. Aborting the run on one is
+        // wrong (a single dropped episode killed a 300-episode pilot), and so
+        // is scoring it as a task failure: whichever condition happened to be
+        // running would be penalised for the network. Drop the whole pair
+        // instead, which the analysis already excludes rather than imputes.
+        const operational = adapterRun.timedOut
+          || OPERATIONAL_ERROR_CODES.has(adapterRun.error.code);
+        if (operational) {
+          operationalFailures.push({
+            taskId: pair.taskId,
+            repetition: pair.repetition,
+            condition,
+            code: adapterRun.error.code || null,
+            timedOut: Boolean(adapterRun.timedOut),
+          });
+          // Recorded in `results` so timeouts stay countable as a safety
+          // metric, but deliberately NOT attached to pair.conditions: the pair
+          // stays incomplete and the analysis excludes it instead of scoring
+          // an infrastructure failure against whichever condition was running.
+          const dropped = createAdapterFailureResult(task, adapterRun.error, adapterRun.timedOut, Date.now() - startedAt);
+          results.push({ ...dropped, episodeId, condition, harnessEnabled: condition === 'on', repetition: pair.repetition, operationalFailure: true });
+          pair.status = 'incomplete';
+          pair.skippedReason = 'operational_failure';
+          break;
+        }
         if (requireComparable) {
-          const error = new Error('adapter run did not provide comparable execution metadata');
+          // Keep the adapter's own reason. Without it a budget stop or a
+          // provider outage both surface as an unexplained metadata error.
+          const error = new Error(
+            `adapter run did not provide comparable execution metadata: ${adapterRun.error.message}`
+          );
           error.code = 'COMPARISON_CONFIG_MISMATCH';
+          error.cause = adapterRun.error;
           throw error;
         }
         baseResult = createAdapterFailureResult(task, adapterRun.error, adapterRun.timedOut, Date.now() - startedAt);
@@ -699,6 +781,9 @@ async function runPairedBenchmark(options = {}) {
       pair.complete = false;
       pair.status = 'incomplete';
     }
+    // Written as each pair lands, so an abort later in the run cannot discard
+    // the pairs that already finished.
+    checkpoint?.appendPair(pair);
   }
 
   const providers = [...new Set(results.map(result => result.provider).filter(Boolean))];
@@ -717,6 +802,14 @@ async function runPairedBenchmark(options = {}) {
     executionOrder,
     providers,
     comparison: buildComparison(pairs),
+    operationalFailures,
+    resume: {
+      checkpointPath: checkpoint ? checkpoint.path : null,
+      resumedFrom: options.resumeFrom || null,
+      resumedPairs: pairs.filter(pair => pair.resumed).length,
+      executedPairs: pairs.filter(pair => !pair.resumed).length,
+      corruptCheckpointLines: resumed.corrupt,
+    },
     environmentIntegrity: requireIsolation && results.every(result => result.isolation?.attested)
       ? 'adapter_attested'
       : 'unverified',

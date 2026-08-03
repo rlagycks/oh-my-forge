@@ -1,0 +1,19 @@
+{
+  "id": "lru-cache-eviction",
+  "prompt": "createLruCache in src/lru-cache.js is meant to be a least-recently-used cache with a fixed capacity, but it evicts the wrong entry: a successful get() does not mark an entry as recently used, and overwriting an existing key does not refresh it either. Fix the recency tracking so eviction always removes the genuinely least-recently-used entry, and so overwriting an existing key updates its value without growing the cache. Keep the existing get/set/has/size API. Run `node test/lru-cache.test.js` to check your work.",
+  "stratum": "seeded-defect",
+  "tags": ["data-structures", "caching", "seeded-defect", "omf-neutral"],
+  "difficulty": "medium",
+  "omf_neutral": true,
+  "success_criteria": [
+    "A successful get() marks the entry as most recently used",
+    "Overwriting an existing key refreshes its recency",
+    "Overwriting an existing key does not increase size",
+    "Eviction removes the least recently used entry once capacity is exceeded",
+    "get/set/has/size keep their existing signatures and return types"
+  ],
+  "provenance": {
+    "source": "benchmarks/fixtures/lru-cache-eviction",
+    "incident": "Synthetic neutral fixture. Seeded recency-tracking defect with a hidden verifier covering interleaved access patterns."
+  }
+}

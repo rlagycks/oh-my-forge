@@ -1,0 +1,19 @@
+{
+  "id": "csv-quoted-fields",
+  "prompt": "The CSV parser in src/parse-csv.js does not follow RFC 4180. Quoted fields are not handled: a field wrapped in double quotes may contain commas, newlines, and escaped double quotes (\"\" for a literal quote), and the surrounding quotes must be stripped from the parsed value. Fix the parser so quoted fields parse correctly, and keep all existing unquoted behaviour working. Run `node test/parse-csv.test.js` to check your work.",
+  "stratum": "seeded-defect",
+  "tags": ["parsing", "seeded-defect", "omf-neutral"],
+  "difficulty": "medium",
+  "omf_neutral": true,
+  "success_criteria": [
+    "Quoted fields containing commas parse as a single field",
+    "Quoted fields containing newlines parse as a single field",
+    "Escaped double quotes inside a quoted field decode to one literal quote",
+    "Surrounding quotes are stripped from the parsed value",
+    "Existing unquoted parsing behaviour is unchanged"
+  ],
+  "provenance": {
+    "source": "benchmarks/fixtures/csv-quoted-fields",
+    "incident": "Synthetic neutral fixture. Seeded RFC 4180 quoted-field defect with a hidden generalization verifier."
+  }
+}

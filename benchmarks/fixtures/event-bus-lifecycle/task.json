@@ -1,0 +1,22 @@
+{
+  "id": "event-bus-lifecycle",
+  "prompt": "The event bus in src/event-bus.js and src/subscription.js mishandles listener lifecycle during emit. Fix all of the following: (1) emit must iterate over a snapshot of the listener list taken before dispatch, so subscribing or unsubscribing from inside a handler does not skip or double-invoke other handlers; newly added handlers do not run during the emit that added them, and a handler already in the snapshot still receives that emit even if it is removed part-way through; (2) a once() handler must run exactly once even if the same event is emitted re-entrantly from inside that handler; (3) a handler that throws must not prevent the remaining handlers from running, and emit must rethrow the first error after all handlers have run; (4) the unsubscribe handle returned by on() and once() must be idempotent, so calling it twice never removes a later listener registered for the same event. Keep the on/once/off/emit/listenerCount API. Run `node test/event-bus.test.js` to check your work.",
+  "stratum": "long-horizon",
+  "tags": ["events", "lifecycle", "concurrency", "omf-neutral"],
+  "difficulty": "hard",
+  "omf_neutral": true,
+  "success_criteria": [
+    "emit iterates a snapshot so mutation during dispatch is safe",
+    "Handlers added during an emit do not run in that same emit",
+    "A handler removed mid-dispatch still receives the in-flight emit",
+    "once() handlers run exactly once even under re-entrant emit",
+    "A throwing handler does not stop the remaining handlers",
+    "emit rethrows the first handler error after dispatch completes",
+    "Unsubscribe handles are idempotent",
+    "on/once/off/emit/listenerCount keep their existing signatures"
+  ],
+  "provenance": {
+    "source": "benchmarks/fixtures/event-bus-lifecycle",
+    "incident": "Synthetic neutral fixture. Multi-file listener-lifecycle defects requiring several coordinated changes."
+  }
+}

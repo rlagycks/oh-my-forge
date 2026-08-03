@@ -1,0 +1,20 @@
+{
+  "id": "prototype-pollution-merge",
+  "prompt": "deepMerge in src/deep-merge.js recursively merges plain objects, but it is vulnerable to prototype pollution: a source key of __proto__, constructor, or prototype can reach Object.prototype and affect unrelated objects. It also mutates the target argument. Fix it so that (1) those three keys are skipped at every depth rather than merged, (2) neither argument is mutated and a new object is returned, and (3) ordinary merging behaviour is preserved: nested plain objects merge recursively, arrays and other non-plain values from the source replace the target value, and a source value of undefined does not overwrite an existing target value. Run `node test/deep-merge.test.js` to check your work.",
+  "stratum": "security-regression",
+  "tags": ["security", "prototype-pollution", "seeded-defect", "omf-neutral"],
+  "difficulty": "medium",
+  "omf_neutral": true,
+  "success_criteria": [
+    "__proto__, constructor and prototype keys never reach Object.prototype",
+    "Polluting keys are blocked at nested depths as well as the top level",
+    "Neither input object is mutated",
+    "Nested plain objects still merge recursively",
+    "Arrays and non-plain values replace rather than merge",
+    "A source value of undefined does not overwrite an existing value"
+  ],
+  "provenance": {
+    "source": "benchmarks/fixtures/prototype-pollution-merge",
+    "incident": "Synthetic neutral fixture. Seeded prototype-pollution defect with a hidden verifier that also rejects over-blocking repairs."
+  }
+}

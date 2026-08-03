@@ -1,0 +1,19 @@
+{
+  "id": "interval-overlap-convention",
+  "prompt": "Schedulers are reporting a conflict when one booking ends at exactly the moment the next one begins, which should be allowed. overlaps() in src/interval.js does not follow the same interval convention as the rest of that module. Make it consistent with the convention the module already uses, and keep the other exported helpers behaving as they do today. Run `node test/interval.test.js` to check your work.",
+  "stratum": "brownfield-ambiguous",
+  "tags": ["intervals", "scheduling", "brownfield", "omf-neutral"],
+  "difficulty": "medium",
+  "omf_neutral": true,
+  "success_criteria": [
+    "Touching intervals are not treated as overlapping",
+    "Genuinely overlapping intervals are still detected",
+    "The convention matches the other helpers in the module",
+    "Empty intervals never overlap anything",
+    "contains and duration keep their current behaviour"
+  ],
+  "provenance": {
+    "source": "benchmarks/fixtures/interval-overlap-convention",
+    "incident": "Synthetic neutral fixture. The half-open convention is documented only by the module's sibling helpers, so the task requires reading the surrounding code."
+  }
+}

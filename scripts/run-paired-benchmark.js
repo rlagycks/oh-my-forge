@@ -31,6 +31,8 @@ Required:
 Options:
   --suite <path>              Golden task JSON path
   --task <id>                 Run one task instead of the full suite
+  --checkpoint <path>         Append each completed pair to a JSONL ledger
+  --resume <path>             Reuse completed pairs from a previous ledger
   --snapshot-id <id>          Opaque snapshot identifier
   --snapshot-hash <hash>      Opaque snapshot hash
   --repetitions <n>           Pair repetitions, 1-${MAX_REPETITIONS} (default: ${DEFAULT_REPETITIONS})
@@ -66,6 +68,8 @@ function parseArgs(argv) {
     else if (arg === '--require-failing-baseline') options.requireFailingBaseline = true;
     else if (arg === '--cwd') options.cwd = requireValue(argv, index++, arg);
     else if (arg === '--log') options.logPath = requireValue(argv, index++, arg);
+    else if (arg === '--checkpoint') options.checkpointPath = requireValue(argv, index++, arg);
+    else if (arg === '--resume') options.resumeFrom = requireValue(argv, index++, arg);
     else if (arg === '--json') options.json = true;
     else throw new Error(`Unknown option: ${arg}`);
   }
@@ -105,5 +109,12 @@ async function main() {
 
 main().catch(error => {
   console.error(`Error: ${error.message}`);
+  // A run can abort after several pairs have already been paid for. If a
+  // ledger was being written, say how to continue instead of losing them.
+  const checkpointPath = process.argv[process.argv.indexOf('--checkpoint') + 1];
+  if (process.argv.includes('--checkpoint') && checkpointPath) {
+    console.error(`\nCompleted pairs were checkpointed to ${checkpointPath}.`);
+    console.error(`Re-run the same command with --resume ${checkpointPath} to continue without paying for them again.`);
+  }
   process.exit(1);
 });

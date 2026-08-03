@@ -1,0 +1,10 @@
+{
+  "name": "cursor-pagination-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Listing pagination over an in-memory row store.",
+  "main": "src/paginate.js",
+  "scripts": {
+    "test": "node test/paginate.test.js"
+  }
+}

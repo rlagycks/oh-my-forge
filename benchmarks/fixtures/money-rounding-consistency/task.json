@@ -1,0 +1,19 @@
+{
+  "id": "money-rounding-consistency",
+  "prompt": "Finance reports that invoice totals occasionally disagree with the sum of their tax lines by one cent. The rounding in src/money.js is not applied consistently across the module's functions. Make the rounding consistent, and make allocate() distribute a total across weights so the parts always sum exactly back to the original amount. Do not change the existing rounding convention that the module already establishes. Run `node test/money.test.js` to check your work.",
+  "stratum": "brownfield-ambiguous",
+  "tags": ["money", "rounding", "brownfield", "omf-neutral"],
+  "difficulty": "hard",
+  "omf_neutral": true,
+  "success_criteria": [
+    "All rounding in the module uses the same convention",
+    "The established convention is preserved rather than replaced",
+    "allocate distributes an amount so the parts sum exactly to the input",
+    "Allocation remainders are distributed deterministically",
+    "Negative amounts round consistently with positive ones"
+  ],
+  "provenance": {
+    "source": "benchmarks/fixtures/money-rounding-consistency",
+    "incident": "Synthetic neutral fixture. The banker's-rounding convention is established by an existing helper, so the task requires reading the surrounding code rather than the prompt."
+  }
+}

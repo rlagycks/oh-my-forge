@@ -1,0 +1,323 @@
+'use strict';
+
+/**
+ * Fixture handling for the model-performance benchmark corpus.
+ *
+ * Registered protocol: docs/research/harness-evidence-protocol-2026-08.md
+ *
+ * On-disk fixture layout:
+ *
+ *   benchmarks/fixtures/<task-id>/
+ *     task.json      metadata merged into the corpus
+ *     workspace/     the seeded-defect project the agent sees
+ *     reference/     overlay files that repair the defect (preflight only)
+ *     verify.js      hidden verifier
+ *
+ * Prepared episode layout:
+ *
+ *   <episodeRoot>/
+ *     verify.js      materialized only AFTER the agent exits
+ *     workspace/     the agent's cwd
+ *
+ * Threat model: the agent under test is non-adversarial — it is solving a
+ * coding task, not attacking the harness. Claude Code does not enforce a
+ * filesystem boundary at the working directory (verified: with
+ * `--permission-mode bypassPermissions` a write to `../` succeeds), so path
+ * placement is NOT a sandbox and must never be described as one.
+ *
+ * What is done instead is contamination control:
+ *
+ *   1. The verifier does not exist on disk while the agent runs, so it cannot
+ *      be found by ordinary exploration.
+ *   2. Anything the agent leaves in the episode root is recorded as a tamper
+ *      signal before the verifier is materialized.
+ *   3. The workspace tree is hashed before and after, so writes outside the
+ *      editable scope invalidate the episode.
+ *
+ * This detects contamination; it does not prevent a determined search of the
+ * filesystem for the checked-in fixtures. See benchmarks/README.md.
+ */
+
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+const DEFAULT_FIXTURE_ROOT = path.resolve(__dirname, '../../benchmarks/fixtures');
+const VERIFIER_ARGV = Object.freeze(['node', '../verify.js']);
+const WORKSPACE_DIR = 'workspace';
+const REFERENCE_DIR = 'reference';
+const VERIFIER_FILE = 'verify.js';
+const TASK_FILE = 'task.json';
+
+const TASK_ID_PATTERN = /^[a-z0-9][a-z0-9-]{2,63}$/;
+
+function assertSafeTaskId(taskId) {
+  if (typeof taskId !== 'string' || !TASK_ID_PATTERN.test(taskId)) {
+    throw new Error(`Invalid fixture task id: ${taskId}`);
+  }
+  return taskId;
+}
+
+function listFilesRecursive(root, prefix = '') {
+  const entries = fs.readdirSync(path.join(root, prefix), { withFileTypes: true });
+  return entries
+    .flatMap(entry => {
+      const relative = prefix ? path.join(prefix, entry.name) : entry.name;
+      if (entry.isDirectory()) return listFilesRecursive(root, relative);
+      if (entry.isFile()) return [relative];
+      // Symlinks and special files would break content hashing and could point
+      // outside the fixture; reject rather than silently skip.
+      throw new Error(`Unsupported fixture entry (not a file or directory): ${relative}`);
+    })
+    .sort();
+}
+
+/**
+ * Content-addressed hash of a directory tree. Path-independent so the same
+ * fixture hashes identically in every prepared episode.
+ */
+function computeTreeHash(dir) {
+  const files = listFilesRecursive(dir);
+  const manifest = files
+    .map(relative => {
+      const digest = crypto.createHash('sha256').update(fs.readFileSync(path.join(dir, relative))).digest('hex');
+      // Normalize separators so the hash is stable across platforms.
+      return `${relative.split(path.sep).join('/')}\u0000${digest}`;
+    })
+    .join('\n');
+  return `sha256:${crypto.createHash('sha256').update(manifest).digest('hex')}`;
+}
+
+function copyTree(source, destination) {
+  fs.mkdirSync(destination, { recursive: true });
+  for (const relative of listFilesRecursive(source)) {
+    const target = path.join(destination, relative);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(path.join(source, relative), target);
+  }
+}
+
+function fixturePaths(taskId, fixtureRoot = DEFAULT_FIXTURE_ROOT) {
+  assertSafeTaskId(taskId);
+  const root = path.join(path.resolve(fixtureRoot), taskId);
+  return Object.freeze({
+    root,
+    taskFile: path.join(root, TASK_FILE),
+    workspaceDir: path.join(root, WORKSPACE_DIR),
+    referenceDir: path.join(root, REFERENCE_DIR),
+    verifierPath: path.join(root, VERIFIER_FILE),
+  });
+}
+
+function readFixture(taskId, fixtureRoot = DEFAULT_FIXTURE_ROOT) {
+  const paths = fixturePaths(taskId, fixtureRoot);
+
+  for (const [label, target] of [
+    ['task.json', paths.taskFile],
+    ['workspace/', paths.workspaceDir],
+    ['reference/', paths.referenceDir],
+    ['verify.js', paths.verifierPath],
+  ]) {
+    if (!fs.existsSync(target)) throw new Error(`Fixture ${taskId} is missing ${label}`);
+  }
+
+  const metadata = JSON.parse(fs.readFileSync(paths.taskFile, 'utf8'));
+  if (metadata.id !== taskId) {
+    throw new Error(`Fixture ${taskId} declares mismatched id: ${metadata.id}`);
+  }
+
+  return Object.freeze({
+    ...paths,
+    metadata,
+    snapshotHash: computeTreeHash(paths.workspaceDir),
+  });
+}
+
+function listFixtureIds(fixtureRoot = DEFAULT_FIXTURE_ROOT) {
+  const root = path.resolve(fixtureRoot);
+  if (!fs.existsSync(root)) return [];
+  return fs.readdirSync(root, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name)
+    .filter(name => TASK_ID_PATTERN.test(name))
+    .sort();
+}
+
+/** Path -> content hash for every file in a tree. */
+function computeTreeManifest(dir) {
+  return listFilesRecursive(dir).reduce((manifest, relative) => {
+    const key = relative.split(path.sep).join('/');
+    const digest = crypto.createHash('sha256').update(fs.readFileSync(path.join(dir, relative))).digest('hex');
+    return { ...manifest, [key]: digest };
+  }, {});
+}
+
+function diffManifest(before, after) {
+  const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
+  return keys.reduce((diff, key) => {
+    if (!(key in before)) return { ...diff, added: [...diff.added, key] };
+    if (!(key in after)) return { ...diff, removed: [...diff.removed, key] };
+    if (before[key] !== after[key]) return { ...diff, modified: [...diff.modified, key] };
+    return diff;
+  }, { added: [], modified: [], removed: [] });
+}
+
+/** Paths a task may not change. Changes here invalidate the episode. */
+const DEFAULT_PROTECTED_PATHS = Object.freeze(['test', 'package.json']);
+
+function isProtected(relativePath, protectedPaths) {
+  return protectedPaths.some(prefix => relativePath === prefix || relativePath.startsWith(`${prefix}/`));
+}
+
+/**
+ * Classify what the agent changed against the task's editable scope.
+ *
+ * The runner-level equivalent of the per-verifier scope checks: deleting or
+ * rewriting the shipped tests is caught here rather than relying on every
+ * verifier to remember to look.
+ */
+function classifyChanges(diff, protectedPaths = DEFAULT_PROTECTED_PATHS) {
+  const touched = [...diff.added, ...diff.modified, ...diff.removed];
+  const outOfScope = touched.filter(relative => isProtected(relative, protectedPaths)).sort();
+  return {
+    changed: touched.length,
+    outOfScope,
+    clean: outOfScope.length === 0,
+  };
+}
+
+/**
+ * Materialize the verifier for an already-prepared episode.
+ *
+ * Called only after the agent has exited. Returns any entries the agent left
+ * in the episode root, which are a tamper signal: nothing should appear there
+ * during a normal run.
+ *
+ * @returns {{verifierPath: string, verifierHash: string, unexpectedEntries: string[]}}
+ */
+function materializeVerifier({ taskId, episodeRoot, fixtureRoot = DEFAULT_FIXTURE_ROOT } = {}) {
+  const fixture = readFixture(taskId, fixtureRoot);
+  const root = path.resolve(episodeRoot);
+
+  const unexpectedEntries = fs.readdirSync(root, { withFileTypes: true })
+    .map(entry => entry.name)
+    .filter(name => name !== WORKSPACE_DIR && name !== 'state')
+    .sort();
+
+  const verifierPath = path.join(root, VERIFIER_FILE);
+  // Overwrite unconditionally: if the agent pre-created this path, the
+  // authoritative fixture copy wins and the attempt is reported above.
+  fs.copyFileSync(fixture.verifierPath, verifierPath);
+
+  return {
+    verifierPath,
+    verifierHash: `sha256:${crypto.createHash('sha256').update(fs.readFileSync(verifierPath)).digest('hex')}`,
+    unexpectedEntries,
+  };
+}
+
+/**
+ * Materialize one isolated episode.
+ *
+ * The verifier is NOT placed on disk here. Call materializeVerifier() after
+ * the agent exits, so the grader does not exist while the agent is running.
+ *
+ * @param {object} options
+ * @param {string} options.taskId
+ * @param {string} options.episodeRoot   Must not already exist.
+ * @param {boolean} [options.applyReference]  Overlay the reference fix, for
+ *   preflight validation that a correct patch makes the verifier pass.
+ * @param {boolean} [options.includeVerifier]  Place the verifier immediately.
+ *   Only for preflight and baseline episodes, where no agent runs.
+ * @returns {{cwd: string, snapshotHash: string, episodeRoot: string, manifest: object}}
+ */
+function prepareEpisode({
+  taskId,
+  episodeRoot,
+  applyReference = false,
+  includeVerifier = false,
+  fixtureRoot = DEFAULT_FIXTURE_ROOT,
+} = {}) {
+  const fixture = readFixture(taskId, fixtureRoot);
+  const root = path.resolve(episodeRoot);
+
+  if (fs.existsSync(root)) {
+    // Reusing a directory would let one episode observe another's edits, which
+    // is exactly the contamination the paired runner guards against.
+    throw new Error(`episodeRoot already exists: ${root}`);
+  }
+
+  const workspace = path.join(root, WORKSPACE_DIR);
+  copyTree(fixture.workspaceDir, workspace);
+
+  const preparedSnapshotHash = computeTreeHash(workspace);
+  if (preparedSnapshotHash !== fixture.snapshotHash) {
+    throw new Error(`Prepared workspace hash does not match fixture ${taskId}`);
+  }
+
+  if (applyReference) copyTree(fixture.referenceDir, workspace);
+
+  // Baseline and preflight episodes run no agent, so the verifier may be
+  // placed immediately. Provider episodes must call materializeVerifier()
+  // after the agent exits instead.
+  if (includeVerifier) fs.copyFileSync(fixture.verifierPath, path.join(root, VERIFIER_FILE));
+
+  return Object.freeze({
+    episodeRoot: root,
+    cwd: workspace,
+    verifierPath: includeVerifier ? path.join(root, VERIFIER_FILE) : null,
+    // Always the pristine fixture hash: the runner compares this against the
+    // requested snapshot, and applying the reference must not change it.
+    snapshotHash: fixture.snapshotHash,
+    // Baseline for the post-run scope diff.
+    manifest: computeTreeManifest(workspace),
+  });
+}
+
+/**
+ * Hash of the whole fixture corpus.
+ *
+ * The paired runner carries one snapshot per run, so the immutable source
+ * artifact is the corpus, not a single task. Each episode materializes its
+ * task's slice of that corpus; `verifySnapshot` recomputes this value
+ * independently from the checked-in fixtures.
+ */
+function computeCorpusHash(fixtureRoot = DEFAULT_FIXTURE_ROOT) {
+  const ids = listFixtureIds(fixtureRoot);
+  if (ids.length === 0) throw new Error(`No fixtures found under ${fixtureRoot}`);
+
+  const manifest = ids
+    .map(id => {
+      const paths = fixturePaths(id, fixtureRoot);
+      // Workspace, reference and verifier all define the task; a change to any
+      // of them changes what is being measured.
+      return [
+        id,
+        computeTreeHash(paths.workspaceDir),
+        computeTreeHash(paths.referenceDir),
+        `sha256:${crypto.createHash('sha256').update(fs.readFileSync(paths.verifierPath)).digest('hex')}`,
+        `sha256:${crypto.createHash('sha256').update(fs.readFileSync(paths.taskFile)).digest('hex')}`,
+      ].join(' ');
+    })
+    .join('\n');
+
+  return `sha256:${crypto.createHash('sha256').update(manifest).digest('hex')}`;
+}
+
+module.exports = {
+  DEFAULT_FIXTURE_ROOT,
+  DEFAULT_PROTECTED_PATHS,
+  VERIFIER_ARGV,
+  classifyChanges,
+  computeCorpusHash,
+  computeTreeHash,
+  computeTreeManifest,
+  diffManifest,
+  materializeVerifier,
+  copyTree,
+  fixturePaths,
+  listFixtureIds,
+  listFilesRecursive,
+  prepareEpisode,
+  readFixture,
+};

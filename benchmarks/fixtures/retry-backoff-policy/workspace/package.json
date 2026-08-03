@@ -1,0 +1,10 @@
+{
+  "name": "retry-backoff-policy-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Retry helper with exponential backoff.",
+  "main": "src/retry.js",
+  "scripts": {
+    "test": "node test/retry.test.js"
+  }
+}
